@@ -48,6 +48,8 @@ void loop() {
       break;
     case 'Z': //zero
       digitalWrite(relay_1, LOW);
+      digitalWrite(relay_2, LOW);
+      digitalWrite(relay_4, LOW);
       state="Z";
       Serial.println(state+"\n");
       break;
