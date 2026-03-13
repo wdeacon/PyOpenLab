@@ -3,6 +3,7 @@ from enum import Enum
 from threading import Thread
 import threading
 from typing import Generic, TypeVar, Union
+import h5py
 from typing_extensions import Self
 
 class InterruptedException(Exception):
@@ -21,6 +22,15 @@ class Status(Enum):
     INTERRUPTED = 4
 
 
+class Type(Enum):
+
+    AUTO      = 0
+    TIME      = 1
+    FILE_SAVE = 2
+    FILE_OPEN = 3
+    DIRECTORY = 4
+
+
 class MessageType(Enum):
     '''Enumeration of all possible types of message emitted by an action'''
 
@@ -33,11 +43,12 @@ T = TypeVar("T")
 
 class Parameter(Generic[T]):
 
-    def __init__(self, name: str, defaultValue: T):
+    def __init__(self, name: str, defaultValue: T, type: Type = Type.AUTO, options: list = []):
 
         self._name         : str             = name
         self._defaultValue : T               = defaultValue
         self._values       : dict[object, T] = {}
+        self._options      : list[T]         = options
 
 
     def __set__(self, obj, value: T):
@@ -107,20 +118,23 @@ class Message:
         return Message(self.type, self.message, [PathPart(part, sweepValue, sweepText)] + self.path, self.timestamp)
 
 
+    @property
     def pathString(self):
         return " → ".join(["%s (%s)" % (p.part.name, p.sweepText) if p.sweepText is not None else p.part.name for p in self.path])
 
-class Result:
 
-    def __init__(self, type: Status, errors: list, messages: list):
+R = TypeVar("R")
+
+class Result(Generic[R]):
+
+    def __init__(self, type: Status, errors: list, messages: list, data: R = None):
 
         self.type     = type
         self.errors   = errors
         self.messages = messages
+        self.data     = data
 
 
-
-R = TypeVar("R")
 
 class Action(ABC, Generic[R]):
 
@@ -176,8 +190,10 @@ class Action(ABC, Generic[R]):
         self.status = Status.RUNNING
         self.message(MessageType.INFO, "Started.")
 
+        prepared = self.prepareData(self.name, self.description, data)
+
         try:
-            self.main(data)
+            self.main(prepared)
 
             if self._interrupted:
                 raise InterruptedException()
@@ -187,20 +203,20 @@ class Action(ABC, Generic[R]):
         except InterruptedException as e:
             self.status = Status.INTERRUPTED
             self.message(MessageType.WARNING, "Interrupted.")
-            self.interrupted(data)
+            self.interrupted(prepared)
 
         except Exception as e:
             self.status = Status.ERROR
             self._errors.append(e)
             self.message(MessageType.ERROR, str(e))
-            self.error(self._errors, data)
+            self.error(self._errors, prepared)
 
         finally:
-            self.finish(data)
+            self.finish(prepared)
             self.message(MessageType.INFO, "Finished.")
             self.removeMessageListener(listener)
 
-        return Result(self.status, self._errors, messages)
+        return Result(self.status, self._errors, messages, prepared)
     
 
     def addStatusListener(self, listener: callable) -> callable:
@@ -252,6 +268,9 @@ class Action(ABC, Generic[R]):
         if self._interrupted:
             raise InterruptedException()
 
+    @abstractmethod
+    def prepareData(self, name: str, description: str, data: R) -> R:
+        pass
 
     @abstractmethod
     def main(self, data: R = None):
@@ -273,3 +292,22 @@ class Action(ABC, Generic[R]):
     def interrupted(self, data: R = None):
         '''This method is only called in the main() method is interrupted before completion (called before finish())'''
         pass
+
+class SimpleAction(Action[object]):
+
+    def prepareData(self, name, decription, data):
+        return data
+
+
+class H5Action(Action[h5py.Group]):
+
+    def prepareData(self, name: str, description: str, data: h5py.Group):
+
+        name = "%s (%s)" % (name, description)
+
+        i = 1
+        while name in data:
+            name = "%s (%s) [%d]" % (name, description, i)
+            i += 1
+
+        return data.create_group(name)

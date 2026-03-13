@@ -35,7 +35,7 @@ class Sweep(Action[R], Generic[R, D]):
 
 
     @abstractmethod
-    def prepareData(self, tag: str, value: D, data: R) -> R:
+    def prepareDataForIteration(self, tag: str, value: D, data: R) -> R:
         pass
 
     @abstractmethod
@@ -52,11 +52,13 @@ class Sweep(Action[R], Generic[R, D]):
 
             self.message(MessageType.INFO, "%s = %s." % (self._tag, self.valueToString(value)))
 
+            prepared = self.prepareDataForIteration(self._tag, value, data)
+
             for action in actions:
 
                 listener = action.addMessageListener(lambda msg: self.pass_message(msg.propagate(self, value, "%s = %s" % (self._tag, self.valueToString(value)))))
 
-                result: Result = action.run(self.prepareData(self._tag, value, data))
+                result: Result = action.run(prepared)
 
                 action.removeMessageListener(listener)
 
@@ -79,6 +81,17 @@ class H5Sweep(Sweep[Group, D], Generic[D]):
     def __init__(self, name, tag, actions = []):
         super().__init__(name, tag, actions)
 
+    def prepareData(self, name, description, data):
+        
+        name = "%s (%s)" % (name, self._tag)
 
-    def prepareData(self, tag: str, value: int, data: Group):
-        return data.create_group("%s = %d" % (tag, value))
+        i = 1
+        while name in data:
+            name = "%s (%s) [%d]" % (name, self._tag, i)
+            i += 1
+
+        return data.create_group(name)
+
+    def prepareDataForIteration(self, tag: str, value: D, data: Group):
+        return data.create_group("%s = %s" % (tag, self.valueToString(value)))
+    
