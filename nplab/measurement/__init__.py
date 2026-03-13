@@ -80,10 +80,49 @@ class Instrument(Generic[I]):
         else:
             return None
         
+class PathPart:
+
+    def __init__(self, part, sweepValue = None, sweepText: str = None):
+
+        self.part       = part
+        self.sweepValue = sweepValue
+        self.sweepText  = sweepText
+
+
+class Message:
+
+    def __init__(self, type: MessageType, message: str, path: list, timestamp: int = None):
+
+        if timestamp is None:
+            import time
+            timestamp = int(time.time())
+
+        self.type      = type
+        self.message   = message
+        self.path      = path
+        self.timestamp = timestamp
+
+
+    def propagate(self, part, sweepValue = None, sweepText = None):
+        return Message(self.type, self.message, [PathPart(part, sweepValue, sweepText)] + self.path, self.timestamp)
+
+
+    def pathString(self):
+        return " → ".join(["%s (%s)" % (p.part.name, p.sweepText) if p.sweepText is not None else p.part.name for p in self.path])
+
+class Result:
+
+    def __init__(self, type: Status, errors: list, messages: list):
+
+        self.type     = type
+        self.errors   = errors
+        self.messages = messages
+
+
+
 R = TypeVar("R")
 
 class Action(ABC, Generic[R]):
-
 
     def __init__(self, name: str, description: str):
         
@@ -92,17 +131,22 @@ class Action(ABC, Generic[R]):
 
         self._status : Status = Status.QUEUED
 
-        self._statusListeners  : list[callable[Status]]           = []
-        self._messageListeners : list[callable[MessageType, str]] = []
+        self._statusListeners  : list[callable] = []
+        self._messageListeners : list[callable] = []
 
         self._thread      : Thread = None
         self._interrupted : bool   = False
+        self._errors      : list   = []
 
 
     def start(self, data: R = None):
         
         thread = Thread(None, lambda: self.run(data))
         thread.start()
+
+
+    def interrupt(self):
+        self._interrupted = True
 
 
     def getStatus(self):
@@ -118,15 +162,21 @@ class Action(ABC, Generic[R]):
 
     status = property(getStatus, setStatus)
 
-    def run(self, data: R = None):
+    def run(self, data: R = None) -> Result:
 
-        self._thread = threading.current_thread()
+        self._interrupted = False
+        self._thread      = threading.current_thread()
+
+        self._errors.clear()
+
+        messages = []
+
+        listener = self.addMessageListener(lambda message: messages.append(message))
 
         self.status = Status.RUNNING
         self.message(MessageType.INFO, "Started.")
 
         try:
-
             self.main(data)
 
             if self._interrupted:
@@ -141,12 +191,25 @@ class Action(ABC, Generic[R]):
 
         except Exception as e:
             self.status = Status.ERROR
-            self.message(MessageType.ERROR, "Error encountered.")
-            self.error([e], data)
+            self._errors.append(e)
+            self.message(MessageType.ERROR, str(e))
+            self.error(self._errors, data)
 
         finally:
             self.finish(data)
             self.message(MessageType.INFO, "Finished.")
+            self.removeMessageListener(listener)
+
+        return Result(self.status, self._errors, messages)
+    
+
+    def addStatusListener(self, listener: callable) -> callable:
+        self._statusListeners.append(listener)
+        return listener
+    
+
+    def removeStatusListener(self, listener: callable):
+        self._statusListeners.remove(listener)
 
 
     def addMessageListener(self, listener: callable) -> callable:
@@ -160,31 +223,34 @@ class Action(ABC, Generic[R]):
 
     def message(self, type: MessageType, message: str):
 
+        msg = Message(type, message, [PathPart(self)])
+        self.pass_message(msg)
+
+
+    def pass_message(self, msg: Message):
         for listener in self._messageListeners:
-            listener(type, message)
+            listener(msg)
 
 
     def checkpoint(self):
+        '''Call this at points in your measurement code where it is safe for the measurement to be interrupted'''
+
         if self._interrupted:
             raise InterruptedException()
 
 
-    def sleep(self, time: int):
+    def sleep(self, milliseconds: int):
+        '''Makes the current tread sleep for the specified integer number of milliseconds'''
 
         from time import sleep
 
         if self._interrupted:
             raise InterruptedException()
 
-        seconds = time / 1e3
-        part    = seconds / 10
+        sleep(milliseconds / 1e3)
 
-        for i in range(10):
-
-            sleep(part)
-
-            if self._interrupted:
-                raise InterruptedException()
+        if self._interrupted:
+            raise InterruptedException()
 
 
     @abstractmethod
