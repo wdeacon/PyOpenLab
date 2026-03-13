@@ -36,7 +36,7 @@ spec              = TakeSpectra("Testing")
 spec.numSpctra    = 12
 spec.spectrometer = DummySpectrometer()
 
-spec._messageListeners.append(lambda type, message: print("%s: %s" % (type, message)))
+spec.addMessageListener(lambda type, message: print("%s: %s" % (type, message)))
 
 data  = File("/home/william/Desktop/test.h5", mode="w")
 group = data.create_group("Spectra")

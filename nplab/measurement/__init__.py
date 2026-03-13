@@ -149,6 +149,14 @@ class Action(ABC, Generic[R]):
             self.message(MessageType.INFO, "Finished.")
 
 
+    def addMessageListener(self, listener: callable) -> callable:
+        self._messageListeners.append(listener)
+        return listener
+
+
+    def removeMessageListener(self, listener: callable):
+        self._messageListeners.remove(listener)
+
 
     def message(self, type: MessageType, message: str):
 
