@@ -83,14 +83,14 @@ class H5Sweep(Sweep[Group, D], Generic[D]):
 
     def prepareData(self, name, description, data):
         
-        name = "%s (%s)" % (name, self._tag)
+        nm = "%s (%s)" % (name, self._tag)
 
         i = 1
-        while name in data:
-            name = "%s (%s) [%d]" % (name, self._tag, i)
+        while nm in data:
+            nm = "%s (%s) [%d]" % (name, self._tag, i)
             i += 1
 
-        return data.create_group(name)
+        return data.create_group(nm)
 
     def prepareDataForIteration(self, tag: str, value: D, data: Group):
         return data.create_group("%s = %s" % (tag, self.valueToString(value)))

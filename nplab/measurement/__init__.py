@@ -48,6 +48,7 @@ class Parameter(Generic[T]):
         self._name         : str             = name
         self._defaultValue : T               = defaultValue
         self._values       : dict[object, T] = {}
+        self._type         : Type            = type
         self._options      : list[T]         = options
 
 
@@ -124,6 +125,52 @@ class Message:
 
 
 R = TypeVar("R")
+
+class PValue:
+
+    def __init__(self, parameter: Parameter, getter: callable, setter: callable):
+
+        self._parameter = parameter
+        self._getter    = getter
+        self._setter    = setter
+
+        self.name    = parameter._name
+        self.options = parameter._options
+        self.type    = parameter._type
+
+
+    def get(self):
+        return self._getter()
+    
+
+    def set(self, value):
+        self._setter(value)
+
+
+    value = property(get, set)
+
+class IValue:
+
+    def __init__(self, instrument: Instrument, getter: callable, setter: callable):
+
+        self._instrument = instrument
+        self._getter     = getter
+        self._setter     = setter
+
+        self.name     = instrument._name
+        self.required = instrument._required
+
+
+    def get(self):
+        return self._getter()
+    
+
+    def set(self, value):
+        self._setter(value)
+
+
+    value = property(get, set)
+
 
 class Result(Generic[R]):
 
@@ -267,7 +314,42 @@ class Action(ABC, Generic[R]):
 
         if self._interrupted:
             raise InterruptedException()
+        
+    
+    def getParameters(self) -> list:
 
+        cls    = type(self)
+        params = []
+
+        for name in dir(cls):
+
+            obj = getattr(cls, name)
+
+            if type(obj) is not Parameter:
+                continue
+
+            params.append(PValue(obj, lambda n=name: getattr(self, n), lambda v, n=name: setattr(self, n, v)))
+
+        return params
+        
+    
+    def getInstruments(self) -> list:
+
+        cls         = type(self)
+        instruments = []
+
+        for name in dir(cls):
+
+            obj = getattr(cls, name)
+
+            if type(obj) is not Instrument:
+                continue
+
+            instruments.append(IValue(obj, lambda n=name: getattr(self, n), lambda v, n=name: setattr(self, n, v)))
+
+        return instruments
+
+        
     @abstractmethod
     def prepareData(self, name: str, description: str, data: R) -> R:
         pass
@@ -303,11 +385,11 @@ class H5Action(Action[h5py.Group]):
 
     def prepareData(self, name: str, description: str, data: h5py.Group):
 
-        name = "%s (%s)" % (name, description)
+        nm = "%s (%s)" % (name, description)
 
         i = 1
-        while name in data:
-            name = "%s (%s) [%d]" % (name, description, i)
+        while nm in data:
+            nm = "%s (%s) [%d]" % (name, description, i)
             i += 1
 
-        return data.create_group(name)
+        return data.create_group(nm)
