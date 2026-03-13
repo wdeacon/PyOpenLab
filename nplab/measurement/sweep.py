@@ -1,5 +1,6 @@
 from abc import abstractmethod
 from typing import Generic, TypeVar
+from h5py import Group
 
 from nplab.measurement import R, Action, InterruptedException, MessageType, Result, Status
 
@@ -7,13 +8,20 @@ D = TypeVar("D")
 
 class Sweep(Action[R], Generic[R, D]):
 
-    def __init__(self, name: str, tag: str, values: list, actions: list):
+    def __init__(self, name: str, tag: str, actions: list = []):
 
         super().__init__(name, "")
 
         self._tag     = tag
-        self._values  = values
         self._actions = actions
+
+
+    def addAction(self, action: Action[R]):
+        self._actions.append(action)
+
+    
+    def removeAction(self, action: Action[R]):
+        self._actions.remove(action)
 
     
     @abstractmethod
@@ -30,10 +38,15 @@ class Sweep(Action[R], Generic[R, D]):
     def prepareData(self, tag: str, value: D, data: R) -> R:
         pass
 
+    @abstractmethod
+    def getValues(self) -> list:
+        pass
 
     def main(self, data: R = None):
 
-        for value in self._values:
+        values = self.getValues()
+
+        for value in values:
 
             actions = self.generate(value, self._actions)
 
@@ -56,3 +69,16 @@ class Sweep(Action[R], Generic[R, D]):
         if len(self._errors) > 0:
             raise Exception("Errors were encountered during the sweep.")
 
+
+    def finish(self, data: R = None):
+        pass
+
+
+class H5Sweep(Sweep[Group, D], Generic[D]):
+
+    def __init__(self, name, tag, actions = []):
+        super().__init__(name, tag, actions)
+
+
+    def prepareData(self, tag: str, value: int, data: Group):
+        return data.create_group("%s = %d" % (tag, value))

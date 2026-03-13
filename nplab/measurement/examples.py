@@ -3,7 +3,7 @@ from nplab.instrument.spectrometer import DummySpectrometer, Spectrometer
 from nplab.measurement import *
 from h5py import Group, File
 
-from nplab.measurement.sweep import Sweep
+from nplab.measurement.sweep import H5Sweep
 
 
 class TakeSpectra(Action[Group]):
@@ -39,10 +39,15 @@ class TakeSpectra(Action[Group]):
 
 
 
-class RepeatSweep(Sweep[Group, int]):
+class RepeatSweep(H5Sweep[int]):
 
-    def __init__(self, tag, values, actions):
-        super().__init__("Repeat Sweep", tag, values, actions)
+    repeats = Parameter[int](name = "Repeats", defaultValue = 5)
+
+    def __init__(self, tag, actions = []):
+        super().__init__("Repeat Sweep", tag, actions)
+
+    def getValues(self):
+        return list(range(self.repeats))
 
     def generate(self, value: int, actions: list) -> list:
         return actions
@@ -50,11 +55,6 @@ class RepeatSweep(Sweep[Group, int]):
     def valueToString(self, value: int) -> str:
         return "%d" % value
     
-    def prepareData(self, tag: str, value: int, data: Group):
-        return data.create_group("%s = %d" % (tag, value))
-    
-    def finish(self, data: Group = None):
-        pass
     
 
 spec              = TakeSpectra("Testing")
@@ -65,10 +65,14 @@ spec.delayTime    = 10
 data  = File("/home/william/Desktop/test.h5", mode="w")
 group = data.create_group("Spectra")
 
-sweep = RepeatSweep("N", [0, 1, 2, 3, 4, 5], [spec])
+sweep = RepeatSweep("N")
+sweep.repeats = 4
 
+sweep.addAction(spec)
 sweep.addMessageListener(lambda msg: print("[%s] %s: %s" % (msg.pathString(), msg.type, msg.message)))
 
 result = sweep.run(group)
 
-print(result)
+data.close()
+
+print(result.type)
