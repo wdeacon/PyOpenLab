@@ -1,35 +1,37 @@
 import builtins
 
+import numpy as np
 import pyjisa.autoload
+from PyQt5.QtWidgets import QApplication
 from nplab.measurement import *
 from h5py import Group, File
 
+from nplab.measurement.gui import Setup
 from nplab.measurement.sweep import H5Sweep
 
 from jisa.devices.spectrometer import Spectrometer, FakeSpectrometer
-from jisa.devices.camera import Camera, FakeCamera
+from jisa.devices.camera       import Camera, FakeCamera, Andor3
 from jisa.devices.camera.frame import Frame
-from jisa.devices.meter import TMeter
-from jisa.devices.source import VSource
-from jisa.devices.smu import K1234
+from jisa.devices.meter        import IMeter, TMeter
+from jisa.devices.source       import VSource
+from jisa.devices.smu          import K1234
 
 
 class TakeSpectra(H5Action):
 
+    def __init__(self, description): super().__init__("Take Spectra", description)
+
     # =====[ Measurement Parameters ]================================================================ 
-    count       = Parameter[int]   (name = "Number of Spectra",    defaultValue = 5)
-    delay       = Parameter[int]   (name = "Delay Time [ms]",      defaultValue = 500,    type = Type.TIME)
-    integration = Parameter[float] (name = "Integration Time [s]", defaultValue = 100e-3)
+    count       = Parameter(name = "Number of Spectra", defaultValue = 5,      range = (0, None))
+    delay       = Parameter(name = "Delay Time",        defaultValue = 500,    type  = Type.TIME)
+    integration = Parameter(name = "Integration Time",  defaultValue = 100e-3, type  = Type.TIME)
 
     # =====[ Instruments ]===========================================================================
-    spectrometer = Instrument[Spectrometer] (name = "Spectrometer",      required = True)
-    camera       = Instrument[Camera]       (name = "Microscope Camera", required = False)
+    spectrometer = Instrument(name = "Spectrometer",      type = Spectrometer, required = True)
+    camera       = Instrument(name = "Microscope Camera", type = Camera,       required = False)
 
 
-    def __init__(self, description):
-        super().__init__("Take Spectra", description)
-
-
+    # =====[ Main Method ]===========================================================================
     def main(self, data: Group):
 
         self.spectrometer.setIntegrationTime(self.integration)
@@ -51,21 +53,74 @@ class TakeSpectra(H5Action):
                 frame = self.camera.getFrame()
                 img   = data.create_dataset(name = "Snapshot %d" % i, data = frame.getARGBImage())
 
-                img.attrs["Timestamp"] = frame.getTimestamp()
+                img.attrs["Timestamp"]            = frame.getTimestamp()
                 img.attrs["Integration Time [s]"] = self.camera.getIntegrationTime()
 
 
             self.sleep(self.delay)
 
 
+    # =====[ On Finish ]============================================================================
     def finish(self, data: Group = None):
         pass
+
+
+class IVCurve(H5Action):
+
+    def __init__(self, description): super().__init__("IV Curve", description)
+
+    voltages = Parameter(name = "Voltages [V]", defaultValue = [0.0, 1.0, 2.0, 3.0])
+    delay    = Parameter(name = "Delay Time",   defaultValue = 50, type = Type.TIME)
+    autoOff  = Parameter(name = "Auto Off?",    defaultValue = True)
+
+    vsource  = Instrument(name = "Voltage Source", type = VSource, required = True)
+    imeter   = Instrument(name = "Ammeter",        type = IMeter,  required = True)
+    tmeter   = Instrument(name = "Thermometer",    type = TMeter,  required = False)
+
+    def main(self, data: Group):
+
+        self.vsource.setVoltage(self.voltages[0])
+        self.vsource.turnOn()
+        self.imeter.turnOn()
+
+        if self.tmeter is not None:
+            self.tmeter.turnOn()
+
+        sweep = np.zeros((len(self.voltages), 3))
+
+        for (i, voltage) in enumerate(self.voltages):
+
+            self.vsource.setVoltage(voltage)
+
+            self.sleep(self.delay)
+
+            sweep[i, 0] = voltage
+            sweep[i, 1] = self.imeter.getCurrent()
+
+            if self.tmeter is not None:
+                sweep[i, 2] = self.tmeter.getTemperature()
+            else:
+                sweep[i, 2] = np.nan
+
+
+        data.create_dataset("Sweep", data=sweep)
+
+
+    def finish(self, data: Group):
+
+        if self.autoOff:
+
+            self.vsource.turnOff()
+            self.imeter.turnOff()
+
+            if self.tmeter is not None:
+                self.tmeter.turnOff()
 
 
 
 class RepeatSweep(H5Sweep[int]):
 
-    repeats = Parameter[int](name = "Repeats", defaultValue = 5)
+    repeats = Parameter(name = "Repeats", defaultValue = 5)
 
     def __init__(self, tag, actions = []):
         super().__init__("Repeat Sweep", tag, actions)
@@ -73,17 +128,19 @@ class RepeatSweep(H5Sweep[int]):
     def getValues(self):
         return list(range(self.repeats))
 
-    def generate(self, value: int, actions: list) -> list:
+    def generate(self, value: int, actions: List[Action]) -> List[Action]:
         return actions
     
     def valueToString(self, value: int) -> str:
         return "%d" % value
     
 
+
+
 class ChangeVoltage(SimpleAction):
 
     def __init__(self, vsource: VSource, voltage: float):
-        super().__init__("Change Voltage", "V = %.02e V" % voltage)
+        super().__init__("Change Voltage (%.02g V)" % voltage, "V = %.02g V" % voltage)
         self.vsource = vsource
         self.voltage = voltage
 
@@ -95,11 +152,14 @@ class ChangeVoltage(SimpleAction):
         self.vsource.turnOff()
     
     
+
+
 class VoltageSweep(H5Sweep[float]):
 
-    voltages = Parameter[list](name = "Voltages [V]", defaultValue = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
+    voltages = Parameter(name = "Voltages [V]", defaultValue = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
+    off      = Parameter(name = "Off?",         defaultValue = True)
 
-    source = Instrument[VSource](name = "Voltage Source", required = True)
+    source = Instrument(name = "Voltage Source", type = VSource, required = True)
 
     def __init__(self, tag, actions=[]):
         super().__init__("Voltage Sweep", tag, actions)
@@ -107,7 +167,7 @@ class VoltageSweep(H5Sweep[float]):
     def getValues(self):
         return self.voltages
     
-    def generate(self, value: float, actions: list) -> list:
+    def generate(self, value: float, actions: List[Action]) -> List[Action]:
         return [ChangeVoltage(self.source, value)] + actions
     
     def valueToString(self, value: float):
@@ -116,24 +176,28 @@ class VoltageSweep(H5Sweep[float]):
 
 # ===========================================================================================
 
-spec   = TakeSpectra("Testing")
-repeat = RepeatSweep("N", [spec])
+spec   = TakeSpectra("William")
+iv     = IVCurve("Conductivity")
+repeat = RepeatSweep("N", [spec, iv])
 sweep  = VoltageSweep("V", [repeat])
+k1234  = K1234(None)
 
 spec.count        = 5
 spec.delay        = 100
 spec.spectrometer = FakeSpectrometer(None)
 spec.camera       = FakeCamera(None)
 
+iv.vsource = k1234.getSMU(0)
+iv.imeter  = k1234.getSMU(0)
+
+iv.voltages = list(np.arange(0, 60, 1))
+
 repeat.repeats = 4
 
 sweep.voltages = [0.0, 0.5, 1.0, 1.5, 2.0]
-sweep.source   = K1234(None).getSMU(0)
+sweep.source   = k1234.getSMU(1)
 
 sweep.addMessageListener(lambda m: print("[%s] %s" % (m.pathString, m.message)))
-
-print(["%s = %s" % (p.name, p.value) for p in spec.getParameters()])
-print(["%s = %s" % (p.name, p.value) for p in spec.getInstruments()])
 
 data   = File("/home/william/Desktop/test.h5", mode="w")
 result = sweep.run(data)

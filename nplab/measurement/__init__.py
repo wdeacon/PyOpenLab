@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from threading import Thread
 import threading
-from typing import Generic, TypeVar, Union
+from typing import Callable, Dict, Generic, List, Tuple, TypeVar, Union, Type as Tpe
 import h5py
 from typing_extensions import Self
 
@@ -43,13 +43,14 @@ T = TypeVar("T")
 
 class Parameter(Generic[T]):
 
-    def __init__(self, name: str, defaultValue: T, type: Type = Type.AUTO, options: list = []):
+    def __init__(self, name: str, defaultValue: T, type: Type = Type.AUTO, options: List[T] = [], range: Tuple[T, T] = (None, None)):
 
         self._name         : str             = name
         self._defaultValue : T               = defaultValue
-        self._values       : dict[object, T] = {}
+        self._values       : Dict[object, T] = {}
         self._type         : Type            = type
-        self._options      : list[T]         = options
+        self._options      : List[T]         = options
+        self._range        : Tuple[T, T]     = range
 
 
     def __set__(self, obj, value: T):
@@ -71,11 +72,12 @@ I = TypeVar("I")
 
 class Instrument(Generic[I]):
 
-    def __init__(self, name: str, required = True):
+    def __init__(self, name: str, type: Tpe[I], required: bool = True):
 
         self._name     = name
         self._required = required
         self._values   = {}
+        self._type     = type
 
 
     def __set__(self, obj, value: I):
@@ -103,7 +105,7 @@ class PathPart:
 
 class Message:
 
-    def __init__(self, type: MessageType, message: str, path: list, timestamp: int = None):
+    def __init__(self, type: MessageType, message: str, path: List[PathPart], timestamp: int = None):
 
         if timestamp is None:
             import time
@@ -115,7 +117,7 @@ class Message:
         self.timestamp = timestamp
 
 
-    def propagate(self, part, sweepValue = None, sweepText = None):
+    def propagate(self, part, sweepValue = None, sweepText: str = None):
         return Message(self.type, self.message, [PathPart(part, sweepValue, sweepText)] + self.path, self.timestamp)
 
 
@@ -126,9 +128,9 @@ class Message:
 
 R = TypeVar("R")
 
-class PValue:
+class PValue(Generic[T]):
 
-    def __init__(self, parameter: Parameter, getter: callable, setter: callable):
+    def __init__(self, parameter: Parameter[T], getter: Callable[[], T], setter: Callable[[T], None]):
 
         self._parameter = parameter
         self._getter    = getter
@@ -137,44 +139,48 @@ class PValue:
         self.name    = parameter._name
         self.options = parameter._options
         self.type    = parameter._type
+        self.range   = parameter._range
 
 
-    def get(self):
+    def get(self) -> T:
         return self._getter()
     
 
-    def set(self, value):
+    def set(self, value: T):
         self._setter(value)
 
 
     value = property(get, set)
 
-class IValue:
 
-    def __init__(self, instrument: Instrument, getter: callable, setter: callable):
+class IValue(Generic[I]):
+
+    def __init__(self, instrument: Instrument[I], getter: Callable[[], I], setter: Callable[[I], None]):
 
         self._instrument = instrument
         self._getter     = getter
         self._setter     = setter
 
+
         self.name     = instrument._name
+        self.type     = instrument._type
         self.required = instrument._required
 
 
-    def get(self):
+    def get(self) -> I:
         return self._getter()
     
 
-    def set(self, value):
+    def set(self, value: I):
         self._setter(value)
 
 
-    value = property(get, set)
+    value: I = property(get, set)
 
 
 class Result(Generic[R]):
 
-    def __init__(self, type: Status, errors: list, messages: list, data: R = None):
+    def __init__(self, type: Status, errors: List[Exception], messages: List[Message], data: R = None):
 
         self.type     = type
         self.errors   = errors
@@ -184,16 +190,18 @@ class Result(Generic[R]):
 
 
 class Action(ABC, Generic[R]):
+    '''Base class to represent individual actions.'''
 
     def __init__(self, name: str, description: str):
+        
         
         self.name        : str    = name
         self.description : str    = description
 
         self._status : Status = Status.QUEUED
 
-        self._statusListeners  : list[callable] = []
-        self._messageListeners : list[callable] = []
+        self._statusListeners  : List[Callable[[Status], None]]  = []
+        self._messageListeners : List[Callable[[Message], None]] = []
 
         self._thread      : Thread = None
         self._interrupted : bool   = False
@@ -210,7 +218,7 @@ class Action(ABC, Generic[R]):
         self._interrupted = True
 
 
-    def getStatus(self):
+    def getStatus(self) -> Status:
         return self._status
 
 
@@ -221,7 +229,9 @@ class Action(ABC, Generic[R]):
         for listener in self._statusListeners:
             listener(status)
 
+
     status = property(getStatus, setStatus)
+
 
     def run(self, data: R = None) -> Result:
 
@@ -263,24 +273,25 @@ class Action(ABC, Generic[R]):
             self.message(MessageType.INFO, "Finished.")
             self.removeMessageListener(listener)
 
+
         return Result(self.status, self._errors, messages, prepared)
     
 
-    def addStatusListener(self, listener: callable) -> callable:
+    def addStatusListener(self, listener: Callable[[Status], None]) -> Callable[[Status], None]:
         self._statusListeners.append(listener)
         return listener
     
 
-    def removeStatusListener(self, listener: callable):
+    def removeStatusListener(self, listener: Callable[[Status], None]):
         self._statusListeners.remove(listener)
 
 
-    def addMessageListener(self, listener: callable) -> callable:
+    def addMessageListener(self, listener: Callable[[Message], None]) -> Callable[[Message], None]:
         self._messageListeners.append(listener)
         return listener
 
 
-    def removeMessageListener(self, listener: callable):
+    def removeMessageListener(self, listener: Callable[[Message], None]):
         self._messageListeners.remove(listener)
 
 
@@ -316,7 +327,7 @@ class Action(ABC, Generic[R]):
             raise InterruptedException()
         
     
-    def getParameters(self) -> list:
+    def getParameters(self) -> List[PValue]:
 
         cls    = type(self)
         params = []
@@ -333,7 +344,7 @@ class Action(ABC, Generic[R]):
         return params
         
     
-    def getInstruments(self) -> list:
+    def getInstruments(self) -> List[IValue]:
 
         cls         = type(self)
         instruments = []
@@ -349,33 +360,66 @@ class Action(ABC, Generic[R]):
 
         return instruments
 
+
+    def getParameterMap(self) -> Dict[str, object]:
+        return {p.name: p.value for p in self.getParameters()}
+    
+
+    def loadParametersFromMap(self, map: Dict[str, object]):
+
+        parameters = self.getParameters()
+
+        for (name, value) in map.items():
+
+            matches = [p for p in parameters if p.name == name and type(p.value) == type(value)]
+
+            if len(matches) > 0:
+
+                found       = matches[0]
+                found.value = value
+
+
+    def getParameterJSON(self) -> str:
+        import json
+        return json.dumps(self.getParameterMap())
+    
+
+    def loadParametersFromJSON(self, data: str):
+        import json
+        self.loadParametersFromMap(json.loads(data))
         
+
     @abstractmethod
     def prepareData(self, name: str, description: str, data: R) -> R:
-        pass
+        '''The object returned by this method is what is given to the main, finish, error, and interrupted methods.
+           It should therefore be used to prepare the data structure for the measurement. For instance, in a H5 structure
+           this method is used to create a new group.'''
+        ...
 
     @abstractmethod
     def main(self, data: R = None):
         '''The main method of this action. This is where one should put the code this action is meant to run'''
-        pass
+        ...
 
 
     @abstractmethod
     def finish(self, data: R = None):
         '''This method is always called after main() has finished, regardless of whether it finished successfully or not'''
-        pass
+        ...
     
     
-    def error(self, errors: list, data = None):
+    def error(self, errors: List[Exception], data = None):
         '''This method is only called if the main() method finished in error (called before calling finish())'''
-        pass
+        ...
 
 
     def interrupted(self, data: R = None):
         '''This method is only called in the main() method is interrupted before completion (called before finish())'''
-        pass
+        ...
 
-class SimpleAction(Action[object]):
+
+
+class SimpleAction(Action[None]):
 
     def prepareData(self, name, decription, data):
         return data

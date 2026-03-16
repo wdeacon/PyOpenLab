@@ -10,7 +10,7 @@ class TemplateMeasurement(H5Action):
     #
     # Examples:
     #
-    # voltages = Parameter[list](name = "Voltages [V]", defaultValue = [0,1,2,3,4,5])
+    # voltages = Parameter[List[float]](name = "Voltages [V]", defaultValue = [0,1,2,3,4,5])
     # delay    = Parameter[int](name = "Delay Time", defaultValue = 500, type = Type.TIME)
     # type     = Parameter[str](name = "Sweep Type", defaultValue = "Voltage", options = ["Voltage", "Current", "Power"])
     #
