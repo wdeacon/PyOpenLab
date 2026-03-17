@@ -4,6 +4,7 @@ from threading import Thread
 import threading
 from typing import Callable, Dict, Generic, List, Tuple, TypeVar, Union, Type as Tpe
 import h5py
+from qtpy.QtWidgets import QWidget
 from typing_extensions import Self
 
 class InterruptedException(Exception):
@@ -24,11 +25,13 @@ class Status(Enum):
 
 class Type(Enum):
 
-    AUTO      = 0
-    TIME      = 1
-    FILE_SAVE = 2
-    FILE_OPEN = 3
-    DIRECTORY = 4
+    AUTO       = 0
+    TIME       = 1
+    FILE_SAVE  = 2
+    FILE_OPEN  = 3
+    DIRECTORY  = 4
+    SCIENTIFIC = 5
+    SLIDER     = 6
 
 
 class MessageType(Enum):
@@ -43,14 +46,17 @@ T = TypeVar("T")
 
 class Parameter(Generic[T]):
 
-    def __init__(self, name: str, defaultValue: T, type: Type = Type.AUTO, options: List[T] = [], range: Tuple[T, T] = (None, None)):
+    def __init__(self, name: str, defaultValue: T, type: Type = Type.AUTO, options: List[T] = [], range: Tuple[T, T] = (None, None), customWidget: QWidget = None, customGetter: Callable[[], T] = None, customSetter: Callable[[T], None] = None):
 
-        self._name         : str             = name
-        self._defaultValue : T               = defaultValue
-        self._values       : Dict[object, T] = {}
-        self._type         : Type            = type
-        self._options      : List[T]         = options
-        self._range        : Tuple[T, T]     = range
+        self._name         : str                 = name
+        self._defaultValue : T                   = defaultValue
+        self._values       : Dict[object, T]     = {}
+        self._type         : Type                = type
+        self._options      : List[T]             = options
+        self._range        : Tuple[T, T]         = range
+        self._customWidget : QWidget             = customWidget
+        self._customGetter : Callable[[], T]     = customGetter
+        self._customSetter : Callable[[T], None] = customSetter
 
 
     def __set__(self, obj, value: T):
@@ -140,6 +146,9 @@ class PValue(Generic[T]):
         self.options = parameter._options
         self.type    = parameter._type
         self.range   = parameter._range
+        self.custom  = parameter._customWidget
+        self.customG = parameter._customGetter
+        self.customS = parameter._customSetter
 
 
     def get(self) -> T:
@@ -416,6 +425,26 @@ class Action(ABC, Generic[R]):
     def interrupted(self, data: R = None):
         '''This method is only called in the main() method is interrupted before completion (called before finish())'''
         ...
+
+    
+
+class WithWidget(ABC):
+
+    @property
+    @abstractmethod
+    def widget(self) -> QWidget:
+        pass
+
+
+class WithPlot(WithWidget):
+
+    def __init__(self):
+        super(self).__innit__()
+        self._widget = None
+
+    @property
+    def widget(self):
+        return self._widget
 
 
 
