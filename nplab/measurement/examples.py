@@ -3,6 +3,9 @@ import builtins
 import numpy as np
 import pyjisa.autoload
 from PyQt5.QtWidgets import QApplication
+import pyqtgraph
+from qtpy.QtGui import QWindow
+from qtpy.QtWidgets import QVBoxLayout
 from nplab.measurement import *
 from h5py import Group, File
 
@@ -10,8 +13,7 @@ from nplab.measurement.gui import Setup
 from nplab.measurement.sweep import H5Sweep
 
 from jisa.devices.spectrometer import Spectrometer, FakeSpectrometer
-from jisa.devices.camera       import Camera, FakeCamera, Andor3
-from jisa.devices.camera.frame import Frame
+from jisa.devices.camera       import Camera, FakeCamera
 from jisa.devices.meter        import IMeter, TMeter
 from jisa.devices.source       import VSource
 from jisa.devices.smu          import K1234
@@ -19,12 +21,13 @@ from jisa.devices.smu          import K1234
 
 class TakeSpectra(H5Action):
 
-    def __init__(self, description): super().__init__("Take Spectra", description)
+    def __init__(self, description): 
+        super().__init__("Take Spectra", description)
 
     # =====[ Measurement Parameters ]================================================================ 
     count       = Parameter(name = "Number of Spectra", defaultValue = 5,      range = (0, None))
     delay       = Parameter(name = "Delay Time",        defaultValue = 500,    type  = Type.TIME)
-    integration = Parameter(name = "Integration Time",  defaultValue = 100e-3, type  = Type.TIME)
+    integration = Parameter(name = "Integration Time",  defaultValue = 100e-3, type  = Type.SCIENTIFIC)
 
     # =====[ Instruments ]===========================================================================
     spectrometer = Instrument(name = "Spectrometer",      type = Spectrometer, required = True)
@@ -67,17 +70,24 @@ class TakeSpectra(H5Action):
 
 class IVCurve(H5Action):
 
-    def __init__(self, description): super().__init__("IV Curve", description)
-
-    voltages = Parameter(name = "Voltages [V]", defaultValue = [0.0, 1.0, 2.0, 3.0])
-    delay    = Parameter(name = "Delay Time",   defaultValue = 50, type = Type.TIME)
-    autoOff  = Parameter(name = "Auto Off?",    defaultValue = True)
+    voltages = Parameter(name = "Voltages [V]", defaultValue = [0.0, 1.0, 2.0, 3.0], type = Type.AUTO)
+    delay    = Parameter(name = "Delay Time",   defaultValue = 50,                   type = Type.TIME)
+    autoOff  = Parameter(name = "Auto Off?",    defaultValue = True,                 type = Type.AUTO)
 
     vsource  = Instrument(name = "Voltage Source", type = VSource, required = True)
     imeter   = Instrument(name = "Ammeter",        type = IMeter,  required = True)
     tmeter   = Instrument(name = "Thermometer",    type = TMeter,  required = False)
 
+    def __init__(self, description): 
+
+        super().__init__("IV Curve", description)
+        self.plot = pyqtgraph.PlotWidget()
+
+
     def main(self, data: Group):
+
+        self.plot.getPlotItem().clear()
+            
 
         self.vsource.setVoltage(self.voltages[0])
         self.vsource.turnOn()
@@ -96,6 +106,8 @@ class IVCurve(H5Action):
 
             sweep[i, 0] = voltage
             sweep[i, 1] = self.imeter.getCurrent()
+
+            self.plot.addItem([sweep[i,0], sweep[i,1]])
 
             if self.tmeter is not None:
                 sweep[i, 2] = self.tmeter.getTemperature()
@@ -116,6 +128,9 @@ class IVCurve(H5Action):
             if self.tmeter is not None:
                 self.tmeter.turnOff()
 
+
+    def widget(self) -> pyqtgraph.PlotWidget:
+        return self.plot
 
 
 class RepeatSweep(H5Sweep[int]):
@@ -176,6 +191,8 @@ class VoltageSweep(H5Sweep[float]):
 
 # ===========================================================================================
 
+app = QApplication([])
+
 spec   = TakeSpectra("William")
 iv     = IVCurve("Conductivity")
 repeat = RepeatSweep("N", [spec, iv])
@@ -198,6 +215,7 @@ sweep.voltages = [0.0, 0.5, 1.0, 1.5, 2.0]
 sweep.source   = k1234.getSMU(1)
 
 sweep.addMessageListener(lambda m: print("[%s] %s" % (m.pathString, m.message)))
+
 
 data   = File("/home/william/Desktop/test.h5", mode="w")
 result = sweep.run(data)

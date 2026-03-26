@@ -426,25 +426,11 @@ class Action(ABC, Generic[R]):
         '''This method is only called in the main() method is interrupted before completion (called before finish())'''
         ...
 
-    
 
-class WithWidget(ABC):
-
-    @property
-    @abstractmethod
     def widget(self) -> QWidget:
-        pass
-
-
-class WithPlot(WithWidget):
-
-    def __init__(self):
-        super(self).__innit__()
-        self._widget = None
-
-    @property
-    def widget(self):
-        return self._widget
+        '''This method should return a QWidget that contains whatever GUI element you want to be displayed as this
+           action is running. Otherwise it should return None.'''
+        return None
 
 
 
