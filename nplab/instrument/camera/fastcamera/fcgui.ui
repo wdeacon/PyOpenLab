@@ -210,14 +210,14 @@
         <string>Stream Frames to File</string>
        </property>
        <layout class="QGridLayout" name="gridLayout_5">
-        <item row="2" column="0">
+        <item row="3" column="0">
          <widget class="QLabel" name="label">
           <property name="text">
-           <string>Output File:</string>
+           <string>Output File</string>
           </property>
          </widget>
         </item>
-        <item row="2" column="1">
+        <item row="3" column="1">
          <widget class="QLineEdit" name="streamFile"/>
         </item>
         <item row="6" column="0" colspan="2">
@@ -259,19 +259,6 @@
           </property>
          </widget>
         </item>
-        <item row="3" column="1">
-         <spacer name="verticalSpacer">
-          <property name="orientation">
-           <enum>Qt::Vertical</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>20</width>
-            <height>0</height>
-           </size>
-          </property>
-         </spacer>
-        </item>
         <item row="1" column="0" colspan="4">
          <widget class="QLabel" name="writingH5">
           <property name="styleSheet">
@@ -295,7 +282,7 @@
           </property>
          </widget>
         </item>
-        <item row="2" column="2" colspan="2">
+        <item row="3" column="2" colspan="2">
          <widget class="QPushButton" name="streamBrowse">
           <property name="text">
            <string>Browse</string>
@@ -305,12 +292,38 @@
         <item row="4" column="2" colspan="2">
          <widget class="QLabel" name="label_6">
           <property name="text">
-           <string>Convert After To:</string>
+           <string>Convert After To</string>
           </property>
           <property name="alignment">
            <set>Qt::AlignCenter</set>
           </property>
          </widget>
+        </item>
+        <item row="7" column="2" colspan="2">
+         <widget class="QPushButton" name="deleteButton">
+          <property name="enabled">
+           <bool>false</bool>
+          </property>
+          <property name="text">
+           <string>Delete Original</string>
+          </property>
+          <property name="checkable">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="2">
+         <spacer name="verticalSpacer">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>0</height>
+           </size>
+          </property>
+         </spacer>
         </item>
        </layout>
       </widget>

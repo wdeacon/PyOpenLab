@@ -1,13 +1,18 @@
 import pyjisa.autoload
 
 from jisa.devices.camera import FakeCamera, Andor2, Andor3
+from qtpy.QtWidgets import QApplication
 from java.lang import System
 
 from nplab.instrument.camera.fastcamera import FastCamera
+from nplab.utils.gui_generator import GuiGenerator
+
+app = QApplication([])
 
 camera     = FakeCamera()
 fastCamera = FastCamera(camera)
 
-fastCamera.show_gui(blocking=True)
+lab = GuiGenerator({"camera": fastCamera})
 
-System.exit(0)
+lab.show()
+app.exec()

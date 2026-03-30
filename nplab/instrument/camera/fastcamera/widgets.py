@@ -404,7 +404,7 @@ class ScientificSpinBox(QWidget):
         if (value == 0.0):
             return 0.0, 0
 
-        exponent = int(np.floor(np.log10(value)) / 3) * 3
+        exponent = int(np.floor(np.log10(np.abs(value))) / 3) * 3
         mantissa = value / (10 ** exponent)
         return mantissa, exponent
     

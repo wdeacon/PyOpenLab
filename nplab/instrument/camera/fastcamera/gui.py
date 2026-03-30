@@ -69,6 +69,7 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.h5Button            : QPushButton
         self.writingMP4          : QLabel
         self.writingH5           : QLabel
+        self.deleteButton        : QPushButton
          
         # Load UI from file
         uic.loadUi((os.path.dirname(__file__) + '/fcgui.ui'), self)
@@ -79,9 +80,9 @@ class FastCameraGUI(QWidget, Generic[C]):
             self.timer.setInterval(1000)
             self.timer.timeout.connect(self.updateTemperature)
             self.timer.start()
-            self.temperatureControl.setDisabled(False)
+            self.temperatureControl.setVisible(self.temperatureControl)
         else:
-            self.temperatureControl.setDisabled(True)
+            self.temperatureControl.setVisible(False)
             
 
 
@@ -90,15 +91,19 @@ class FastCameraGUI(QWidget, Generic[C]):
 
         def reEnable():
 
-            if self.writingMP4.isVisible() or self.writingH5.isVisible():
-                pass
-            else:
+            if not (self.writingMP4.isVisible() or self.writingH5.isVisible()):
+
+                if self.deleteButton.isChecked():
+                    os.remove(self.streamPath)
+
                 self.streamFile.setDisabled(False)
                 self.streamBrowse.setDisabled(False)
                 self.streamToDiskButton.setChecked(False)
                 self.streamToDiskButton.setDisabled(False)
                 self.mp4Button.setDisabled(False)
                 self.h5Button.setDisabled(False)
+                self.deleteButton.setDisabled(False)
+
 
 
         def doneMP4():
@@ -109,6 +114,19 @@ class FastCameraGUI(QWidget, Generic[C]):
         def doneH5():
             self.writingH5.setVisible(False)
             reEnable()
+
+        
+        def checkDelete():
+
+            if self.mp4Button.isChecked() or self.h5Button.isChecked():
+                self.deleteButton.setDisabled(False)
+            else:
+                self.deleteButton.setChecked(False)
+                self.deleteButton.setDisabled(True)
+
+
+        self.mp4Button.clicked.connect(checkDelete)
+        self.h5Button.clicked.connect(checkDelete)
 
         # Connect QT signals
         self.captureButton.clicked.connect(self.capture)
@@ -171,14 +189,18 @@ class FastCameraGUI(QWidget, Generic[C]):
             self.streamToDiskButton.setDisabled(True)
             self.mp4Button.setDisabled(True)
             self.h5Button.setDisabled(True)
+            self.deleteButton.setDisabled(True)
 
             if self.mp4Button.isChecked():
 
                 self.writingMP4.setVisible(True)
 
                 def saveMP4():
-                    self.camera.openFrameReader(self.streamPath).convertToMP4(self.streamPath + ".mp4")
-                    self.mp4Signal.emit()
+
+                    try:
+                        self.camera.openFrameReader(self.streamPath).convertToMP4(self.streamPath + ".mp4")
+                    finally:
+                        self.mp4Signal.emit()
 
                 self.pool.start(saveMP4)
 
@@ -189,31 +211,34 @@ class FastCameraGUI(QWidget, Generic[C]):
 
                 def saveH5():
 
-                    file   = h5py.File(self.streamPath + ".h5", "w")
-                    reader = self.camera.openFrameReader(self.streamPath)
+                    try:
+                        
+                        with h5py.File(self.streamPath + ".h5", "w") as file:
 
-                    i = 0
+                            reader = self.camera.openFrameReader(self.streamPath)
 
-                    while reader.hasFrame():
+                            i = 0
 
-                        frame = reader.readFrame()
-                        nm    = "Frame %d" % i
+                            while reader.hasFrame():
 
-                        if isinstance(frame, Frame.IntFrame):
-                            ds = file.create_dataset(nm, data=frame.image())
-                        elif isinstance(frame, RGBFrame):
-                            ds = file.create_dataset(nm, data=frame.getRGBImage())
-                        elif isinstance(frame, U16RGBFrame):
-                            ds = file.create_dataset(nm, data=frame.getRGBImage())
-                        else:
-                            ds = file.create_dataset(nm, data=frame.getARGBImage())
+                                frame = reader.readFrame()
+                                nm    = "Frame %d" % i
 
-                        ds.attrs["Timestamp"] = frame.getTimestamp()
+                                if isinstance(frame, Frame.IntFrame):
+                                    ds = file.create_dataset(nm, data=frame.image())
+                                elif isinstance(frame, RGBFrame):
+                                    ds = file.create_dataset(nm, data=frame.getRGBImage())
+                                elif isinstance(frame, U16RGBFrame):
+                                    ds = file.create_dataset(nm, data=frame.getRGBImage())
+                                else:
+                                    ds = file.create_dataset(nm, data=frame.getARGBImage())
 
-                        i += 1
+                                ds.attrs["Timestamp"] = frame.getTimestamp()
 
-                    file.close()
-                    self.h5Signal.emit()
+                                i += 1
+
+                    finally:
+                        self.h5Signal.emit()
 
 
                 self.pool.start(saveH5)
@@ -221,15 +246,18 @@ class FastCameraGUI(QWidget, Generic[C]):
 
             self.streamToDiskButton.setText(original)
 
-            if self.writingMP4.isVisible() or self.writingH5.isVisible():
-                pass
-            else:
+            if not (self.writingMP4.isVisible() or self.writingH5.isVisible()):
+
+                if self.deleteButton.isChecked():
+                    os.remove(self.streamPath)
+
                 self.streamFile.setDisabled(False)
                 self.streamBrowse.setDisabled(False)
                 self.streamToDiskButton.setChecked(False)
                 self.streamToDiskButton.setDisabled(False)
                 self.mp4Button.setDisabled(False)
                 self.h5Button.setDisabled(False)
+                self.deleteButton.setDisabled(False)
 
 
 

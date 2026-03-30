@@ -64,6 +64,12 @@ class FastCamera(Camera, Generic[C]):
 
     def get_qt_ui(self, control_only=False, parameters_only=False):
         return FastCameraGUI(self._camera.getCamera())
+    
+    def get_preview_widget(self):
+        return None
+    
+    def get_control_widget(self):
+        return self.get_qt_ui()
 
 
 class FastCameraBad(Camera, Generic[C]):
