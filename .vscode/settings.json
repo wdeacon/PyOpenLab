@@ -1,0 +1,18 @@
+{
+    "terminal.integrated.env.linux": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "QT_QPA_PLATFORM": "xcb"
+    },
+    "terminal.integrated.env.osx": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "QT_QPA_PLATFORM": "xcb"
+    },
+    "terminal.integrated.env.windows": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "QT_QPA_PLATFORM": "xcb"
+    },
+    "jupyter.notebookFileRoot": "${workspaceFolder}",
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportMissingModuleSource": "none"
+    }
+}

@@ -15,8 +15,6 @@ from qtpy.QtCore import QTimer, Qt, QThreadPool, Signal
 from qtpy.QtGui import QBrush, QColor, QIcon, QImage, QPainter, QPen, QPixmap, QResizeEvent
 from qtpy.QtWidgets import *
 
-import pyqtgraph as pg
-
 from nplab.instrument.camera.fastcamera.datastream import DataStreamGUI
 from nplab.instrument.camera.fastcamera.widgets import *
 
@@ -49,7 +47,7 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.lastHeight : int                        = None
 
         # Define types for automatically linked widgets
-        self.cameraParameters    : QFormLayout 
+        self.cameraParameters    : QVBoxLayout 
         self.numberOfFrames      : QSpinBox    
         self.captureButton       : QPushButton 
         self.liveViewButton      : QPushButton 
@@ -137,7 +135,7 @@ class FastCameraGUI(QWidget, Generic[C]):
                 self.h5Button.setDisabled(False)
                 self.deleteButton.setDisabled(False)
                 self.streamToDiskButton.setStyleSheet("")
-                self.streamToDiskButton.setText("Stream to Disk")
+                self.streamToDiskButton.setText("Start Streaming to Disk")
 
 
         def doneMP4():
@@ -159,12 +157,12 @@ class FastCameraGUI(QWidget, Generic[C]):
                 self.deleteButton.setDisabled(True)
 
             if self.mp4Button.isChecked():
-                self.mp4Button.setStyleSheet("background: orange;")
+                self.mp4Button.setStyleSheet("background: teal;")
             else:
                 self.mp4Button.setStyleSheet("")
 
             if self.h5Button.isChecked():
-                self.h5Button.setStyleSheet("background: teal;")
+                self.h5Button.setStyleSheet("background: orange;")
             else:
                 self.h5Button.setStyleSheet("")
 
@@ -227,11 +225,17 @@ class FastCameraGUI(QWidget, Generic[C]):
 
         if self.stream is None:
 
+            if str(self.streamFile.text()).strip() == "":
+                self.errorMessage.showMessage("You must choose a file to output to before starting the stream.")
+                return
+
+
             self.streamFile.setDisabled(True)
             self.streamBrowse.setDisabled(True)
 
-            self.streamPath = self.streamFile.text()
-            self.stream     = self.camera.streamToFile(self.streamPath)
+            self.streamAttrs = self.camera.getAllParametersAsMap()
+            self.streamPath  = self.streamFile.text()
+            self.stream      = self.camera.streamToFile(self.streamPath)
 
             self.streamToDiskButton.setStyleSheet("background: brown;")
             self.streamToDiskButton.setText("Stop Streaming")
@@ -270,29 +274,64 @@ class FastCameraGUI(QWidget, Generic[C]):
 
                     try:
                         
-                        with h5py.File(self.streamPath + ".h5", "w") as file:
+                        file = df.current()
 
-                            reader = self.camera.openFrameReader(self.streamPath)
+                        j = 0
+                        nm = "Stream %d" % j
 
-                            i = 0
+                        while nm in file:
+                            j += 1
+                            nm = "Stream %d" % j
 
-                            while reader.hasFrame():
+                        group  = file.create_group(nm)
 
-                                frame = reader.readFrame()
-                                nm    = "Frame %d" % i
+                        for key, value in self.streamAttrs.items():
+                            
+                            if isinstance(value, Instrument.AutoQuantity):
 
-                                if isinstance(frame, Frame.IntFrame):
-                                    ds = file.create_dataset(nm, data=frame.image())
-                                elif isinstance(frame, RGBFrame):
-                                    ds = file.create_dataset(nm, data=frame.getRGBImage())
-                                elif isinstance(frame, U16RGBFrame):
-                                    ds = file.create_dataset(nm, data=frame.getRGBImage())
-                                else:
-                                    ds = file.create_dataset(nm, data=frame.getARGBImage())
+                                group.attrs[key + ": Auto"]  = value.isAuto()
+                                value = value.getValue()
+                                key   = key + ": Value"
+                        
 
-                                ds.attrs["Timestamp"] = frame.getTimestamp()
+                            if isinstance(value, Instrument.OptionalQuantity):
 
-                                i += 1
+                                group.attrs[key + ": Used"]  = value.isUsed()
+                                value = value.getValue()
+                                key   = key + ": Value"
+
+
+                            if isinstance(value, ResultTable):
+
+                                con = [[str(v) for v in r] for r in value.asStringArray()]
+                                con = [[str(c.getTitle()) for c in value.getColumns()]] + con
+                                group.attrs[key] = con
+
+                            else:
+                                group.attrs[key] = str(value)
+
+
+                        reader = self.camera.openFrameReader(self.streamPath)
+
+                        i = 0
+
+                        while reader.hasFrame():
+
+                            frame = reader.readFrame()
+                            nm    = "frame_%d" % i
+
+                            if isinstance(frame, Frame.IntFrame):
+                                ds = group.create_dataset(nm, data=frame.image())
+                            elif isinstance(frame, RGBFrame):
+                                ds = group.create_dataset(nm, data=frame.getRGBImage())
+                            elif isinstance(frame, U16RGBFrame):
+                                ds = group.create_dataset(nm, data=frame.getRGBImage())
+                            else:
+                                ds = group.create_dataset(nm, data=frame.getARGBImage())
+
+                            ds.attrs["Timestamp"] = frame.getTimestamp()
+
+                            i += 1
 
                     finally:
                         self.h5Signal.emit()
@@ -312,13 +351,22 @@ class FastCameraGUI(QWidget, Generic[C]):
                 self.h5Button.setDisabled(False)
                 self.deleteButton.setDisabled(False)
                 self.streamToDiskButton.setStyleSheet("")
-                self.streamToDiskButton.setText("Stream to Disk")
+                self.streamToDiskButton.setText("Start Streaming to Disk")
 
 
 
     def setupParameters(self):
 
+        forms = {"General": QFormLayout()}
+
         for param in self.camera.getAllParameters():
+
+            group = param.getGroup() if param.isGrouped() else "General"
+
+            if group not in forms:
+                forms[group] = QFormLayout()
+
+            form = forms[group]
 
             w, g, s = self.createParameterWidget(param.getDefaultValue(), param.getChoices())
 
@@ -338,13 +386,17 @@ class FastCameraGUI(QWidget, Generic[C]):
             hbox.addWidget(setB, 0, Qt.AlignTop)
             hbox.addWidget(status, 0, Qt.AlignTop)
 
-            self.cameraParameters.addRow(param.getName(), hbox)
+            form.addRow(param.getName(), hbox)
 
             s(param.getCurrentValue())
 
             setB.clicked.connect(lambda v, g=g, s=s, p=param, st=status: self.applyParameter(g, s, p, st, True))
             self.params.append((w, g, s, param, status))
 
+        for name, form in forms.items():
+            box = QGroupBox(name)
+            box.setLayout(form)
+            self.cameraParameters.addWidget(box)
 
     def updateTemperature(self):
         self.currentTemperature.display(self.camera.getControlledTemperature())
@@ -439,6 +491,14 @@ class FastCameraGUI(QWidget, Generic[C]):
 
 
         self.cameraImage.setPixmap(pixmap.scaled(self.cameraImage.width(), self.cameraImage.height(), Qt.KeepAspectRatio))
+
+        if self.camera.isAcquiring():
+            self.liveViewButton.setStyleSheet("background: brown;")
+            self.liveViewButton.setText("Stop Continuous Acquisition")
+        else:
+            self.liveViewButton.setStyleSheet("")
+            self.liveViewButton.setText("Start Continuous Acquisition")
+            
 
 
     def redrawFrame(self):
