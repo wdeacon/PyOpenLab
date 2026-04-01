@@ -7,12 +7,21 @@ from java.lang import System
 from nplab.instrument.camera.fastcamera import FastCamera
 from nplab.utils.gui_generator import GuiGenerator
 
-app = QApplication([])
+try:
 
-camera     = FakeCamera()
-fastCamera = FastCamera(camera)
+    app = QApplication([])
 
-lab = GuiGenerator({"camera": fastCamera})
+    camera     = FakeCamera(None)
+    fastCamera = FastCamera(camera)
 
-lab.show()
-app.exec()
+    lab = GuiGenerator({"camera": fastCamera})
+
+    lab.show()
+    app.exec()
+
+except Exception as e:
+    del app
+    from jisa.gui import GUI
+    GUI.showException(e)
+finally:
+    System.exit(0)

@@ -164,7 +164,7 @@ class ResultTableWidget(QWidget):
         self.layout().setContentsMargins(0,0,0,0)
 
         self.table.setMinimumWidth(100)
-        self.table.setMinimumHeight(200)
+        self.table.setMinimumHeight(150)
         self.addBtn.setMinimumWidth(25)
         self.remBtn.setMinimumWidth(25)
         self.upBtn.setMinimumWidth(25)
@@ -384,12 +384,13 @@ class ScientificSpinBox(QWidget):
 
         self.mantissaSpin.setMaximum(+np.inf)
         self.mantissaSpin.setMinimum(-np.inf)
+        self.mantissaSpin.setDecimals(10)
 
         # Layout: mantissa × 10 ^ exponent
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.mantissaSpin, 1)
-        layout.addWidget(QLabel("× 10^"), 0)
+        layout.addWidget(QLabel("×10^"), 0)
         layout.addWidget(self.exponentSpin, 0)
 
         self.setValue(value)

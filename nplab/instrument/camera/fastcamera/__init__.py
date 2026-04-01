@@ -27,8 +27,10 @@ class FastCamera(Camera, Generic[C]):
         self._camera     = NPAdapter(camera)
         camera.addFrameListener(self.updateFrame)
 
+
     def updateFrame(self, frame):
         self.update_latest_frame(np.array(frame.image()))
+
 
     def raw_snapshot(self):
         return True, np.array(self._camera.raw_snapshot())
@@ -42,6 +44,7 @@ class FastCamera(Camera, Generic[C]):
     def live_view(self) -> bool:
         return self._camera.live_view()
     
+
     @live_view.setter
     def live_view(self, live: bool):
         self._camera.live_view(live)
@@ -50,26 +53,33 @@ class FastCamera(Camera, Generic[C]):
     def getCamera(self) -> C:
         return self._camera.getCamera()
     
+
     def camera_parameter_names(self):
         return [p.getName() for p in self._parameters]
     
+
     def get_camera_parameter(self, parameter_name):
         found = [p for p in self._parameters if p.getName() == parameter_name]
         print(found)
         return found[0].getCurrentValue()
     
+
     def set_camera_parameter(self, parameter_name, value):
         found = [p for p in self._parameters if p.getName() == parameter_name]
         return found[0].set(value)
 
+
     def get_qt_ui(self, control_only=False, parameters_only=False):
         return FastCameraGUI(self._camera.getCamera())
     
+
     def get_preview_widget(self):
         return None
     
+
     def get_control_widget(self):
         return self.get_qt_ui()
+
 
 
 class FastCameraBad(Camera, Generic[C]):
