@@ -1,6 +1,7 @@
 import pyjisa.autoload
 
 from jisa.devices.camera import FakeCamera, Andor2, Andor3
+from qtpy import QtWidgets
 from qtpy.QtWidgets import QApplication
 
 from nplab.instrument.camera.fastcamera import FastCamera
@@ -8,10 +9,14 @@ from nplab.utils.gui_generator import GuiGenerator
 
 try:
 
+
     app = QApplication([])
+    app.setStyle("Breeze")
 
     camera     = FakeCamera(None)
     fastCamera = FastCamera(camera)
+
+#    fastCamera.show_gui(blocking=True)
 
     lab = GuiGenerator({"camera": fastCamera})
 
@@ -20,7 +25,6 @@ try:
 
 except Exception as e:
 
-    del app
     from jisa.gui import GUI
     GUI.showException(e)
 

@@ -1,3 +1,5 @@
+from threading import Lock
+
 import h5py
 import pyjisa.autoload
 import os
@@ -25,7 +27,8 @@ C = TypeVar("C", bound=JCamera)
 
 class FastCameraGUI(QWidget, Generic[C]):
 
-    captureCompleteSignal = Signal(list)
+    frameCapturedSignal   = Signal(Frame)
+    captureCompleteSignal = Signal()
     clearImagesSignal     = Signal()
     mp4Signal             = Signal()
     h5Signal              = Signal()
@@ -82,6 +85,7 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.captured     = ImageListWidget()
         self.pool         = QThreadPool()
         self.errorMessage = QErrorMessage()
+        self.updateLock   = Lock()
 
         self.capturedImages.layout().addWidget(self.captured)
             
@@ -187,6 +191,7 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.captureButton.clicked.connect(self.capture)
         self.liveViewButton.clicked.connect(self.live)
         self.clearImages.clicked.connect(self.clearAllImages)
+        self.frameCapturedSignal.connect(self.addFrame)
         self.captureCompleteSignal.connect(self.captureComplete)
         self.applyButton.clicked.connect(self.applyParameters)
         self.refreshButton.clicked.connect(self.refreshParameters)
@@ -418,27 +423,23 @@ class FastCameraGUI(QWidget, Generic[C]):
 
         def doCapture():
             frames = self.camera.getFrameSeries(self.numberOfFrames.value())
-            self.captureCompleteSignal.emit(list(frames))
+
+            for frame in frames:
+                self.frameCapturedSignal.emit(frame)
+
+            self.captureCompleteSignal.emit()
 
         self.pool.start(doCapture)
 
 
-    def captureComplete(self, frames):
+    def captureComplete(self):
 
         self.captureButton.setDisabled(False)
         self.captureButton.setText("Capture")
         self.captureButton.setStyleSheet("")
-
-        self.frames.clear()
-        self.frames += frames
-
-        self.captured.children().clear()
-
-        for frame in frames:
-            self.addFrame(frame)
         
         if not self.camera.isAcquiring():
-            self.drawFrame(frames[len(frames) - 1])
+            self.drawFrame(self.frames[len(self.frames) - 1])
 
 
     def clearAllImages(self):
@@ -469,64 +470,60 @@ class FastCameraGUI(QWidget, Generic[C]):
 
     def drawFrame(self, frame: Frame):
 
-        if self.buffer is None or len(self.buffer) != frame.size():
-            self.buffer     = frame.getARGBData()
-            self.lastWidth  = frame.getWidth()
-            self.lastHeight = frame.getHeight()
-        else:
-            frame.readARGBData(self.buffer)
+        with self.updateLock:
 
-        pixmap = QPixmap(QImage(self.buffer, self.lastWidth, self.lastHeight, QImage.Format.Format_ARGB32))
+            if self.buffer is None or len(self.buffer) != frame.size():
+                self.buffer     = frame.getARGBData()
+                self.lastWidth  = frame.getWidth()
+                self.lastHeight = frame.getHeight()
+            else:
+                frame.readARGBData(self.buffer)
 
-        if self.crosshairButton.isChecked():
+            pixmap = QPixmap(QImage(self.buffer, self.lastWidth, self.lastHeight, QImage.Format.Format_ARGB32))
 
-            painter = QPainter(pixmap)
-            midX    = int(self.lastWidth / 2)
-            midY    = int(self.lastHeight  / 2)
+            if self.crosshairButton.isChecked():
 
-            painter.setPen(QPen(Qt.white, self.crosshairPixels.value()))
-            painter.drawLine(midX, 0, midX, self.lastHeight - 1)
-            painter.drawLine(0, midY, self.lastWidth - 1, midY)
-            painter.end()
+                painter = QPainter(pixmap)
+                midX    = int(self.lastWidth / 2)
+                midY    = int(self.lastHeight  / 2)
+
+                painter.setPen(QPen(Qt.white, self.crosshairPixels.value()))
+                painter.drawLine(midX, 0, midX, self.lastHeight - 1)
+                painter.drawLine(0, midY, self.lastWidth - 1, midY)
+                painter.end()
 
 
-        self.cameraImage.setPixmap(pixmap.scaled(self.cameraImage.width(), self.cameraImage.height(), Qt.KeepAspectRatio))
-
-        if self.camera.isAcquiring():
-            self.liveViewButton.setStyleSheet("background: brown;")
-            self.liveViewButton.setText("Stop Continuous Acquisition")
-        else:
-            self.liveViewButton.setStyleSheet("")
-            self.liveViewButton.setText("Start Continuous Acquisition")
-            
+            self.cameraImage.setPixmap(pixmap.scaled(self.cameraImage.width(), self.cameraImage.height(), Qt.KeepAspectRatio))            
 
 
     def redrawFrame(self):
 
-        if self.lastWidth is None or self.lastHeight is None:
-            return
+        with self.updateLock:
 
-        pixmap = QPixmap(QImage(self.buffer, self.lastWidth, self.lastHeight, QImage.Format.Format_ARGB32))
+            if self.lastWidth is None or self.lastHeight is None:
+                return
 
-        if self.crosshairButton.isChecked():
+            pixmap = QPixmap(QImage(self.buffer, self.lastWidth, self.lastHeight, QImage.Format.Format_ARGB32))
 
-            painter = QPainter(pixmap)
-            midX    = int(self.lastWidth / 2)
-            midY    = int(self.lastHeight  / 2)
+            if self.crosshairButton.isChecked():
 
-            painter.setPen(QPen(Qt.white, self.crosshairPixels.value()))
-            painter.drawLine(midX, 0, midX, self.lastHeight - 1)
-            painter.drawLine(0, midY, self.lastWidth - 1, midY)
-            painter.end()
+                painter = QPainter(pixmap)
+                midX    = int(self.lastWidth / 2)
+                midY    = int(self.lastHeight  / 2)
+
+                painter.setPen(QPen(Qt.white, self.crosshairPixels.value()))
+                painter.drawLine(midX, 0, midX, self.lastHeight - 1)
+                painter.drawLine(0, midY, self.lastWidth - 1, midY)
+                painter.end()
 
 
-        self.cameraImage.setPixmap(pixmap.scaled(self.cameraImage.width(), self.cameraImage.height(), Qt.KeepAspectRatio))
+            self.cameraImage.setPixmap(pixmap.scaled(self.cameraImage.width(), self.cameraImage.height(), Qt.KeepAspectRatio))
 
 
     def addFrame(self, frame: Frame):
-    
-        image = QImage(frame.getARGBData(), frame.getWidth(), frame.getHeight(), QImage.Format.Format_ARGB32)
-        self.captured.addImage(image)
+
+        self.frames.append(frame)
+        self.captured.addImage(QImage(frame.getARGBData(), frame.getWidth(), frame.getHeight(), QImage.Format.Format_ARGB32))
 
 
     def applyParameters(self):
@@ -697,15 +694,15 @@ class FastCameraGUI(QWidget, Generic[C]):
 
     def saveToH5(self):
 
-        self.writeImages.setDisabled(True)
-        self.saveImages.setDisabled(True)
-        self.clearImages.setDisabled(True)
-
         try:
             file = df.current()
         except:
             return
 
+
+        self.writeImages.setDisabled(True)
+        self.saveImages.setDisabled(True)
+        self.clearImages.setDisabled(True)
 
         def threadMethod():
 
