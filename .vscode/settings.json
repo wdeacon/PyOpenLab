@@ -1,6 +1,8 @@
 {
     "terminal.integrated.env.linux": {
-        "PYTHONPATH": "${workspaceFolder}"
+        "PYTHONPATH": "${workspaceFolder}",
+        "QT_QPA_PLATFORM": "xcb"
+
     },
     "terminal.integrated.env.osx": {
         "PYTHONPATH": "${workspaceFolder}"
