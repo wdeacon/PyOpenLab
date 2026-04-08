@@ -131,17 +131,27 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
         if hasattr(self.instr_dict[instrument_name], 'get_control_widget') or hasattr(self.instr_dict[instrument_name],
                                                                                       'get_preview_widget'):
             if hasattr(self.instr_dict[instrument_name], 'get_control_widget'):
-                self.allWidgets[instrument_name + ' controls'] = self.instr_dict[instrument_name].get_control_widget()
-                self.allDocks[instrument_name + ' controls'] = pyqtgraph.dockarea.Dock(instrument_name + ' controls')
-                self.dockwidgetArea.addDock(self.allDocks[instrument_name + ' controls'], 'left')
-                self.allDocks[instrument_name + ' controls'].addWidget(self.allWidgets[instrument_name + ' controls'])
-                self._addActionViewMenu(instrument_name + ' controls')
+
+                widget = self.instr_dict[instrument_name].get_control_widget()
+
+                if widget is not None:
+                    self.allWidgets[instrument_name + ' controls'] = widget
+                    self.allDocks[instrument_name + ' controls'] = pyqtgraph.dockarea.Dock(instrument_name + ' controls')
+                    self.dockwidgetArea.addDock(self.allDocks[instrument_name + ' controls'], 'left')
+                    self.allDocks[instrument_name + ' controls'].addWidget(self.allWidgets[instrument_name + ' controls'])
+                    self._addActionViewMenu(instrument_name + ' controls')
+
             if hasattr(self.instr_dict[instrument_name], 'get_preview_widget'):
-                self.allWidgets[instrument_name + ' display'] = self.instr_dict[instrument_name].get_preview_widget()
-                self.allDocks[instrument_name + ' display'] = pyqtgraph.dockarea.Dock(instrument_name + ' display')
-                self.dockwidgetArea.addDock(self.allDocks[instrument_name + ' display'], 'left')
-                self.allDocks[instrument_name + ' display'].addWidget(self.allWidgets[instrument_name + ' display'])
-                self._addActionViewMenu(instrument_name + ' display')
+
+                widget = self.instr_dict[instrument_name].get_preview_widget()
+
+                if widget is not None:
+                    self.allWidgets[instrument_name + ' display'] = widget
+                    self.allDocks[instrument_name + ' display'] = pyqtgraph.dockarea.Dock(instrument_name + ' display')
+                    self.dockwidgetArea.addDock(self.allDocks[instrument_name + ' display'], 'left')
+                    self.allDocks[instrument_name + ' display'].addWidget(self.allWidgets[instrument_name + ' display'])
+                    self._addActionViewMenu(instrument_name + ' display')
+
         elif hasattr(self.instr_dict[instrument_name], 'get_qt_ui'):
             self.allWidgets[instrument_name] = self.instr_dict[instrument_name].get_qt_ui()
             self.allDocks[instrument_name] = pyqtgraph.dockarea.Dock(instrument_name)
