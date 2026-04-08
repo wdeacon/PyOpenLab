@@ -37,3 +37,4 @@ tqdm
 traits
 traitsui
 visa
+opencv-python-headless
