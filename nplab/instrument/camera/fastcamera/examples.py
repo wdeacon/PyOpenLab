@@ -1,7 +1,7 @@
 import pyjisa.autoload
 
-from jisa.devices.camera import FakeCamera, Andor2, Andor3
-from jisa.devices.spectrometer import CameraSpectrometer, FakeSpectrometer
+from jisa.devices.camera import FakeCamera, Andor2, Andor3, Lumenera
+from jisa.devices.spectrometer import CameraSpectrometer, FakeSpectrometer, OceanOptics
 from qtpy import QtWidgets
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication
@@ -15,13 +15,12 @@ from nplab.utils.gui_generator import GuiGenerator
 try:
 
     app = QApplication([])
-
-    camera     = FakeCamera(None)
-    fastCamera = FastCamera(camera)
-    spec       = CameraSpectrometer(camera, None)
-    fastSpec   = FastSpectrometer(spec)
+    cam  = FakeCamera()
+    spec = OceanOptics(0)
+    fastCam  = FastCamera(cam)
+    fastSpec = FastSpectrometer(spec)
     
-    lab = GuiGenerator({"cam": fastCamera, "spec": fastSpec})
+    lab = GuiGenerator({"spec": fastSpec})
 
     lab.show()
 

@@ -161,7 +161,10 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
             if not self.writingH5.isVisible():
 
                 if self.deleteButton.isChecked():
-                    os.remove(self.streamPath)
+                    try:
+                        os.remove(self.streamPath)
+                    except:
+                        pass
 
                 self.streamFile.setDisabled(False)
                 self.streamBrowse.setDisabled(False)
@@ -280,7 +283,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
 
         else:
 
-            self.streamClick.stop()
+            self.stream.stop()
             self.stream = None
 
             self.streamToDiskButton.setDisabled(True)
@@ -327,7 +330,10 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
             if not self.writingH5.isVisible():
 
                 if self.deleteButton.isChecked():
-                    os.remove(self.streamPath)
+                    try:
+                        os.remove(self.streamPath)
+                    except:
+                        pass
 
                 self.streamFile.setDisabled(False)
                 self.streamBrowse.setDisabled(False)

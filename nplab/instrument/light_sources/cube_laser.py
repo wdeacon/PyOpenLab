@@ -114,6 +114,6 @@ if __name__ == "__main__":
     win = CubeLaserUI()
     win.show()
     #sys.exit(app.exec_())
-    #laser = CubeLaser("COM7")
+    laser = CubeLaser("COM5")
     #laser.set_power(10)
     #laser.close()

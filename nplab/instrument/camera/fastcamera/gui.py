@@ -478,7 +478,7 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.delayTime.setDisabled(True)
         self.captureButton.setText("Capturing...")
         self.captureButton.setStyleSheet("background: brown; color: white;")
-        self.progressBar.setValue(0.0)
+        self.progressBar.setValue(0)
         self.progressBar.setVisible(True)
         self.liveViewButton.setVisible(False)
         self.configPanel.setDisabled(True)
@@ -498,7 +498,7 @@ class FastCameraGUI(QWidget, Generic[C]):
                 frames.append(frame)
 
                 if output and not self.drawLock.locked():
-                    self.frameCapturedSignal.emit(frame)
+                    self.frameListener(frame)
                 
                 self.progressSignal.emit((100.0 / (count)))
 
@@ -510,21 +510,22 @@ class FastCameraGUI(QWidget, Generic[C]):
                     frames.append(frame)
 
                     if output and not self.drawLock.locked():
-                        self.frameCapturedSignal.emit(frame)
+                        self.frameListener(frame)
                         self.fc.updateFrame(frame)
 
                     self.progressSignal.emit((100.0 * (i + 1) / (count)))
-
+                
 
                 self.progressSignal.emit(100.0)
-
+                
                 if self.h5SaveButton.isChecked():
                     self.captureWritingSignal.emit()
                     self.saveToH5(frames)
-
+                    
                 if self.pngSaveButton.isChecked():
                     self.captureWritingSignal.emit()
                     self.savePNGs(frames)
+                    
 
             finally:
                 # When done, we need to signal the GUI to re-enable everything
@@ -536,7 +537,7 @@ class FastCameraGUI(QWidget, Generic[C]):
 
 
     def updateProgress(self, progress: float):
-        self.progressBar.setValue(progress)
+        self.progressBar.setValue(int(progress))
 
 
     def captureComplete(self):
@@ -586,17 +587,19 @@ class FastCameraGUI(QWidget, Generic[C]):
                 # If the frame size has changed, then we need to recreate the buffer, otherwise we should reuse it
                 if self.buffer is None or len(self.buffer) != frame.size():
                     self.buffer = frame.getARGBData()
+                    self.arr    = np.array(self.buffer)
                 else:
                     frame.readARGBData(self.buffer)
+                    np.copyto(self.arr, self.buffer)
 
                 # Record dimensions incase we need to redraw before a new frame comes in
                 self.lastWidth  = frame.getWidth()
                 self.lastHeight = frame.getHeight()
 
                 # Convert the buffer into a pixmap
-                pixmap = QPixmap(QImage(self.buffer, self.lastWidth, self.lastHeight, QImage.Format.Format_ARGB32))
+                pixmap = QPixmap(QImage(self.arr, self.lastWidth, self.lastHeight, QImage.Format.Format_ARGB32))
 
-                # If crosshair is enabled, then paint one on top of the image in the pixmap
+                # If crosshair is enabled, then paint one on top of the image in the pixmap 
                 if self.crosshairButton.isChecked():
 
                     painter = QPainter(pixmap)
@@ -631,8 +634,8 @@ class FastCameraGUI(QWidget, Generic[C]):
                     return
 
                 # Convert the buffer into a pixmap
-                pixmap = QPixmap(QImage(self.buffer, self.lastWidth, self.lastHeight, QImage.Format.Format_ARGB32))
-
+                pixmap = QPixmap(QImage(np.array(self.buffer), self.lastWidth, self.lastHeight, QImage.Format.Format_ARGB32))
+                
                 # If crosshair is enabled, then paint one on top of the image in the pixmap
                 if self.crosshairButton.isChecked():
 
@@ -658,7 +661,7 @@ class FastCameraGUI(QWidget, Generic[C]):
         
 
     def drawFrame(self, pixmap: QPixmap):
-        
+
         with self.drawLock:
             try:
                 self.cameraImage.setPixmap(pixmap.scaled(self.cameraImage.width(), self.cameraImage.height(), Qt.KeepAspectRatio if self.keepRatio.isChecked() else Qt.IgnoreAspectRatio))      

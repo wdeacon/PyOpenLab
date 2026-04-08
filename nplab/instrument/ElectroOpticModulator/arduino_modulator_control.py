@@ -65,6 +65,8 @@ class Modulator(SerialInstrument):
                  'GVO', #get_Vout;  
                  'IL', #:is_locked; 
                  'SL', # start_locking();
+                 'SL0', # start_locking() down slope;
+                 'SL1', # start_locking() up slope;
                  'QL', # quit_locking;
                  'SS', #:set_step;
                  'GS', #:get_step
@@ -161,6 +163,12 @@ class Modulator(SerialInstrument):
     
     def start_lock(self):
          self.write(self.s_mark+'SL'+self.e_mark)
+         
+    def start_lock_0(self): #down slope
+          self.write(self.s_mark+'SL0'+self.e_mark)
+          
+    def start_lock_1(self): #up slope
+          self.write(self.s_mark+'SL1'+self.e_mark)
     
     # def start_lock(self, slope = 0):
     #     self.write(self.s_mark+'SL'+f':{slope}'+self.e_mark)
@@ -209,27 +217,38 @@ class Modulator(SerialInstrument):
                                                    y,
                                                    [40,1/5000,1000,20] # fit for Bessel
                                                    )
-        x_fake = np.linspace(np.min(x),np.max(x),1000)
+        x_fake = np.linspace(np.min(x),2*np.max(x),2000)
         y_fake = fit_func(x_fake,calc_params)
         ind1 = find_index(y_fake,np.max(y_fake))[0][0]
+        ind2 = find_index(y_fake,np.min(y_fake))[0][0]
         period = np.abs(calc_params[1])
         quarter_period = 3.1415/(2*period)
-        setpoint = np.round(x_fake[ind1]+quarter_period)
-        # slope = 1
-        # if setpoint > 5000:
-        #     setpoint = np.round(x_fake[ind1]-quarter_period)
-        #     slope = 0
+        setpoint = np.round(x_fake[ind2]-quarter_period)
+        slope = 0
+        if setpoint > 5000 or setpoint < 0:
+            # for i in range(len(x)):
+            #     if y[i] > 0:
+            #         break
+            # setpoint = (x[-1] - x[i])/2 + x[i]
+            setpoint = np.round(x_fake[ind2]+quarter_period)
+            self.set_Vout(setpoint)
+            print(setpoint)
+            
+            self.start_lock_1() #up slope
+        else:
+            self.start_lock_0() #down slope
         self.set_Vout(setpoint)
-        self.start_lock()
+        
         # self.start_lock(slope)
         
         if prnt:
             plt.figure()
             plt.scatter(x,y)
+            # plt.scatter(setpoint,1, linewidth = 10)
             plt.plot(x_fake,y_fake)
             plt.scatter(setpoint,fit_func(setpoint,calc_params))
         
-        return x,y,setpoint,x_fake,y_fake
+        return x,y,setpoint,x_fake,y_fake, period
         
     # def get_qt_ui(self):
     #     """Return a graphical interface for the lamp slider."""

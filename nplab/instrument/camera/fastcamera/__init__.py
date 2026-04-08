@@ -17,6 +17,8 @@ from .widgets import *
 
 from nplab.utils.notified_property import NotifiedProperty
 
+from qtpy.QtCore import QThreadPool
+
 C = TypeVar("C", bound=JCamera)
 
 class FastCamera(Camera, Generic[C]):
@@ -27,6 +29,9 @@ class FastCamera(Camera, Generic[C]):
         super().__init__()
         
         self.camera = NPAdapter(camera)
+        self.buffer = None
+        self.arr    = None
+        self.pool   = QThreadPool()
         camera.addFrameListener(self.updateFrame)
 
 
@@ -38,7 +43,6 @@ class FastCamera(Camera, Generic[C]):
             self.update_latest_frame(np.array(frame.getRGBImage()))
         else:
             self.update_latest_frame(np.array(frame.getARGBImage()))
-
 
 
     def raw_snapshot(self):
