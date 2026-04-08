@@ -32,7 +32,6 @@ class FastCamera(Camera, Generic[C]):
         self.buffer = None
         self.arr    = None
         self.pool   = QThreadPool()
-        camera.addFrameListener(self.updateFrame)
 
 
     def updateFrame(self, frame: Frame):
@@ -104,6 +103,9 @@ class FastCamera(Camera, Generic[C]):
 
     def get_control_widget(self):
         return self.get_qt_ui()
+    
+    def get_preview_widget(self):
+        return None
 
 
 
