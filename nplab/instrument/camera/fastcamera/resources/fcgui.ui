@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1114</width>
+    <width>1115</width>
     <height>1011</height>
    </rect>
   </property>
@@ -375,7 +375,75 @@
       <string>Streaming</string>
      </property>
      <layout class="QGridLayout" name="gridLayout_5">
-      <item row="6" column="2" rowspan="3" colspan="2">
+      <item row="3" column="0" colspan="4">
+       <widget class="QGroupBox" name="groupBox_5">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+          <horstretch>1</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="title">
+         <string>Configuration</string>
+        </property>
+        <layout class="QHBoxLayout" name="horizontalLayout_7">
+         <item>
+          <widget class="QLabel" name="label">
+           <property name="text">
+            <string>Output File</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="streamFile"/>
+         </item>
+         <item>
+          <widget class="QPushButton" name="streamBrowse">
+           <property name="text">
+            <string>Browse</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item row="2" column="0" colspan="4">
+       <widget class="QLabel" name="writingH5">
+        <property name="styleSheet">
+         <string notr="true">background: purple; padding: 5px; color: white;</string>
+        </property>
+        <property name="text">
+         <string>Writing HDF5...</string>
+        </property>
+       </widget>
+      </item>
+      <item row="10" column="3">
+       <spacer name="verticalSpacer">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>20</width>
+          <height>0</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item row="1" column="0" colspan="4">
+       <widget class="QLabel" name="writingMP4">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">background: teal; padding: 5px; color: white;</string>
+        </property>
+        <property name="text">
+         <string>Writing MP4...</string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="2" rowspan="3" colspan="2">
        <widget class="QGroupBox" name="groupBox_3">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
@@ -449,43 +517,7 @@
         </layout>
        </widget>
       </item>
-      <item row="9" column="3">
-       <spacer name="verticalSpacer">
-        <property name="orientation">
-         <enum>Qt::Vertical</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>20</width>
-          <height>0</height>
-         </size>
-        </property>
-       </spacer>
-      </item>
-      <item row="1" column="0" colspan="4">
-       <widget class="QLabel" name="writingH5">
-        <property name="styleSheet">
-         <string notr="true">background: purple; padding: 5px; color: white;</string>
-        </property>
-        <property name="text">
-         <string>Writing HDF5...</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="0" colspan="4">
-       <widget class="QLabel" name="writingMP4">
-        <property name="enabled">
-         <bool>true</bool>
-        </property>
-        <property name="styleSheet">
-         <string notr="true">background: teal; padding: 5px; color: white;</string>
-        </property>
-        <property name="text">
-         <string>Writing MP4...</string>
-        </property>
-       </widget>
-      </item>
-      <item row="6" column="0" rowspan="3" colspan="2">
+      <item row="7" column="0" rowspan="3" colspan="2">
        <widget class="QGroupBox" name="groupBox_4">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
@@ -528,36 +560,17 @@
         </layout>
        </widget>
       </item>
-      <item row="2" column="0" colspan="4">
-       <widget class="QGroupBox" name="groupBox_5">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
-          <horstretch>1</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
+      <item row="0" column="0" colspan="4">
+       <widget class="QLabel" name="writingGIF">
+        <property name="enabled">
+         <bool>true</bool>
         </property>
-        <property name="title">
-         <string>Configuration</string>
+        <property name="styleSheet">
+         <string notr="true">background: navy; padding: 5px; color: white;</string>
         </property>
-        <layout class="QHBoxLayout" name="horizontalLayout_7">
-         <item>
-          <widget class="QLabel" name="label">
-           <property name="text">
-            <string>Output File</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLineEdit" name="streamFile"/>
-         </item>
-         <item>
-          <widget class="QPushButton" name="streamBrowse">
-           <property name="text">
-            <string>Browse</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
+        <property name="text">
+         <string>Writing GIF...</string>
+        </property>
        </widget>
       </item>
      </layout>

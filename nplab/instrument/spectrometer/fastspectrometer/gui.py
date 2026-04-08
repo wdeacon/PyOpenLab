@@ -39,12 +39,13 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
     h5Signal              = Signal()
     warningIcon           = QIcon.fromTheme("dialog-warning")
 
-    def __init__(self, spectrometer: S):
+    def __init__(self, spectrometer: S, fs):
 
         super().__init__()
         
         # Hold onto camera
         self.spectrometer = spectrometer
+        self.fs           = fs
 
         # Create buffers
         self.buffer     : Spectrum                   = None
@@ -92,7 +93,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.bufferLock   = Lock()
         self.plot         = pg.plot(title="Spectrum", left="Counts", bottom="Wavelength [m]")
         self.plotData     = self.plot.plotItem.plot([],[])
-        self.configPanel  = JISAConfigPanel(self.spectrometer)
+        self.configPanel  = JISAConfigPanel(self.spectrometer, self.prepareSpectrometer, self.restoreSpectrometer)
 
         # Add custom GUI elements to the overall layout
         self.configBox.layout().addWidget(self.configPanel)
@@ -116,6 +117,20 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.spectrometer.addSpectrumListener(self.spectrumListener)
         self.spectrometer.addAcquisitionListener(self.updateAcquisition)
 
+    def prepareSpectrometer(self, spec: S) -> bool:
+
+        if spec.isAcquiring():
+            spec.stopAcquisition()
+            return True
+        else:
+            return False
+        
+
+    def restoreSpectrometer(self, spec: S, actioned: bool):
+
+        if actioned:
+            spec.startAcquisition()
+
 
     def setupStatusMonitoring(self):
 
@@ -123,7 +138,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.timer.setInterval(1000)
 
         # Check if the camera implements some sort of temperature control
-        if isinstance(self.spectrometer, TemperatureControlled):
+        if isinstance(self.spectrometer, TemperatureControlled) or (isinstance(self.spectrometer, CameraSpectrometer) and isinstance(self.spectrometer.getCamera(), TemperatureControlled)):
             self.timer.timeout.connect(self.updateTemperature)
             self.currentTemperature.setEnabled(True)
             self.temperatureLabel.setEnabled(True)
@@ -132,6 +147,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
             self.currentTemperature.setEnabled(False)
             self.temperatureLabel.setEnabled(False)
 
+        self.timer.timeout.connect(self.updateFPS)
 
         self.timer.start()
     
@@ -195,10 +211,14 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.spectrumSignal.connect(self.drawSpectrum)
         self.captureWritingSignal.connect(lambda: self.captureButton.setText("Writing..."))
         self.captureCompleteSignal.connect(self.captureComplete)
-        self.streamToDiskButton.clicked.connect(self.stream)
+        self.streamToDiskButton.clicked.connect(self.streamClick)
         self.streamBrowse.clicked.connect(self.browseStreamFile)
         self.h5SaveButton.clicked.connect(self.updateSaveButtons)
         self.progressSignal.connect(self.updateCaptureProgress)
+
+
+    def updateFPS(self):
+        self.fpsCounter.display(self.spectrometer.getAcquisitionRate())
 
 
     def updateSaveButtons(self):
@@ -239,7 +259,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.streamFile.setText(file)
 
 
-    def stream(self):
+    def streamClick(self):
 
         if self.stream is None:
 
@@ -260,7 +280,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
 
         else:
 
-            self.stream.stop()
+            self.streamClick.stop()
             self.stream = None
 
             self.streamToDiskButton.setDisabled(True)
@@ -320,7 +340,16 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
 
 
     def updateTemperature(self):
-        self.currentTemperature.display(self.spectrometer.getControlledTemperature())
+
+        if isinstance(self.spectrometer, TemperatureControlled):
+            self.currentTemperature.display(self.spectrometer.getControlledTemperature())
+
+        elif isinstance(self.spectrometer, CameraSpectrometer):
+
+            camera = self.spectrometer.getCamera()
+
+            if isinstance(camera, TemperatureControlled):
+                self.currentTemperature.display(camera.getControlledTemperature())
 
 
     def showException(self, e: Exception):
@@ -359,6 +388,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
 
                 if output and not self.bufferLock.locked():
                     self.spectrumSignal.emit(spectrum)
+                    self.fs.updateSpectrum(spectrum)
 
                 self.progressSignal.emit(100.0 / count)
 
@@ -371,6 +401,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
 
                     if output and not self.bufferLock.locked():
                         self.spectrumSignal.emit(spectrum)
+                        self.fs.updateSpectrum(spectrum)
 
                     self.progressSignal.emit(100.0 * (i + 1) / count)
 
@@ -589,31 +620,31 @@ class FastSpectrometerPreviewGUI(QWidget, Generic[S]):
         plot = pg.plot(left="Counts", bottom="Wavelength [m]")
         self.layout().addWidget(plot)
         
-        data = plot.plotItem.plot([], [])
+        self.data = plot.plotItem.plot([], [])
 
 
         self.buffer: Spectrum = None
         self.bufferLock       = Lock()
-        
-        def update(spectrum: Spectrum):
 
-            with self.bufferLock:
+        self.drawSignal.connect(self.draw)
+        spectrometer.addSpectrumListener(self.update)
 
-                if self.buffer is None or self.buffer.size() != spectrum.size():
-                    self.buffer = spectrum.copy()
-                else:
-                    self.buffer.copyFrom(spectrum)
+    
+    def update(self, spectrum: Spectrum):
 
-                self.drawSignal.emit(self.buffer)
+        with self.bufferLock:
 
-            Util.sleep(10)
+            if self.buffer is None or self.buffer.size() != spectrum.size():
+                self.buffer = spectrum.copy()
+            else:
+                self.buffer.copyFrom(spectrum)
+
+            self.drawSignal.emit(self.buffer)
+
+        Util.sleep(10)
 
 
-        def draw(spectrum: Spectrum):
-            with self.bufferLock:
-                data.setData(spectrum.getWavelengths(), spectrum.getCounts())
-
-
-        self.drawSignal.connect(draw)
-        spectrometer.addSpectrumListener(update)
+    def draw(self, spectrum: Spectrum):
+        with self.bufferLock:
+            self.data.setData(spectrum.getWavelengths(), spectrum.getCounts())
 

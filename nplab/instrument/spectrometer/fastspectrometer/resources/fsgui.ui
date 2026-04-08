@@ -179,6 +179,13 @@
        </widget>
       </item>
      </layout>
+     <zorder>liveViewButton</zorder>
+     <zorder>delayLabel</zorder>
+     <zorder>countLabel</zorder>
+     <zorder>captureButton</zorder>
+     <zorder>delayTime</zorder>
+     <zorder>progressBar</zorder>
+     <zorder>numberOfFrames</zorder>
     </widget>
    </item>
    <item row="1" column="1">
@@ -449,7 +456,7 @@
         <item>
          <widget class="QLabel" name="label_8">
           <property name="text">
-           <string>FPS:</string>
+           <string>SPS:</string>
           </property>
          </widget>
         </item>

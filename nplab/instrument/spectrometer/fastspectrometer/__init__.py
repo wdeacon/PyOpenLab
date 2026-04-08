@@ -15,13 +15,13 @@ S = TypeVar("S", bound=JSpectrometer)
 
 class FastSpectrometer(Instrument, Generic[S]):
 
-    drawSignal = Signal(Spectrum)
-
     def __init__(self, spectrometer: S):
 
         super().__init__()
 
         self.spectrometer = spectrometer
+
+        self.previews: List[FastSpectrometerPreviewGUI] = []
 
 
     def getSpectrometer(self) -> S:
@@ -29,12 +29,20 @@ class FastSpectrometer(Instrument, Generic[S]):
     
 
     def get_qt_ui(self, control_only=False, display_only=False):
-        return FastSpectrometerGUI(self.spectrometer)
+        return FastSpectrometerGUI(self.spectrometer, self)
     
     def get_control_widget(self):
         return self.get_qt_ui()
     
+    def updateSpectrum(self, spectrum: Spectrum):
+
+        for preview in self.previews:
+            preview.update(spectrum)
+
+
     def get_preview_widget(self):
-        return FastSpectrometerPreviewGUI(self.spectrometer)
+        preview = FastSpectrometerPreviewGUI(self.spectrometer)
+        self.previews.append(preview)
+        return preview
 
         

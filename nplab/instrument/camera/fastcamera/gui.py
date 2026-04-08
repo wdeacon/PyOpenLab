@@ -24,6 +24,8 @@ from nplab.instrument.camera.fastcamera.widgets import *
 import nplab.datafile as df
 from nplab.ui.widgets.jisa import JISAConfigPanel
 
+from PIL import Image
+
 
 C = TypeVar("C", bound=JCamera)
 
@@ -36,6 +38,7 @@ class FastCameraGUI(QWidget, Generic[C]):
     captureWritingSignal  = Signal()
     mp4Signal             = Signal()
     h5Signal              = Signal()
+    gifSignal             = Signal()
 
     def __init__(self, camera: C, fc):
 
@@ -76,6 +79,7 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.gifButton           : QPushButton
         self.writingMP4          : QLabel
         self.writingH5           : QLabel
+        self.writingGIF          : QLabel
         self.deleteButton        : QPushButton
         self.namePattern         : QLineEdit
         self.pngLabel            : QLabel
@@ -164,12 +168,13 @@ class FastCameraGUI(QWidget, Generic[C]):
 
     def setupStreamer(self):
 
+        self.writingGIF.setVisible(False)
         self.writingMP4.setVisible(False)
         self.writingH5.setVisible(False)
 
         def _reenable():
 
-            if not (self.writingMP4.isVisible() or self.writingH5.isVisible()):
+            if not (self.writingMP4.isVisible() or self.writingH5.isVisible() or self.writingGIF.isVisible()):
 
                 if self.deleteButton.isChecked():
                     os.remove(self.streamPath)
@@ -194,6 +199,9 @@ class FastCameraGUI(QWidget, Generic[C]):
             self.writingH5.setVisible(False)
             _reenable()
 
+        def _doneGIF():
+            self.writingGIF.setVisible(False)
+            _reenable()
         
         def _checkDelete():
 
@@ -231,6 +239,7 @@ class FastCameraGUI(QWidget, Generic[C]):
 
         self.mp4Signal.connect(_doneMP4)
         self.h5Signal.connect(_doneH5)
+        self.gifSignal.connect(_doneGIF)
         self.mp4Button.clicked.connect(_checkDelete)
         self.h5Button.clicked.connect(_checkDelete)
         self.gifButton.clicked.connect(_checkDelete)
@@ -246,7 +255,7 @@ class FastCameraGUI(QWidget, Generic[C]):
 
 
     def updateFPS(self):
-        self.fpsCounter.display(self.camera.getAcquisitionFPS())
+        self.fpsCounter.display(self.camera.getAcquisitionRate())
 
 
     def updateSaveButtons(self):
@@ -336,6 +345,7 @@ class FastCameraGUI(QWidget, Generic[C]):
             self.streamToDiskButton.setDisabled(True)
             self.mp4Button.setDisabled(True)
             self.h5Button.setDisabled(True)
+            self.gifButton.setDisabled(True)
             self.deleteButton.setDisabled(True)
             self.streamToDiskButton.setText("Converting...")
             self.streamToDiskButton.setStyleSheet("")
@@ -389,7 +399,50 @@ class FastCameraGUI(QWidget, Generic[C]):
 
                 self.pool.start(_saveH5)
 
-            if not (self.writingMP4.isVisible() or self.writingH5.isVisible()):
+            if self.gifButton.isChecked():
+
+                self.writingGIF.setVisible(True)
+
+                def _saveGIF():
+
+                    try:
+
+                        reader = self.camera.openFrameReader(self.streamPath)
+                        output = self.streamPath + ".gif"
+                        images = []
+                        last   = None
+                        diff   = 0.0
+
+                        while reader.hasFrame():
+
+                            frame     = reader.readFrame()
+                            argbArray = np.fromstring( bytes(frame.getARGBData()), 'c' ).reshape( -1, 4 )
+                            rgbArray  = argbArray[ :, 2::-1 ]
+                            pilData   = rgbArray.reshape( -1 ).tostring()
+                            image     = Image.frombuffer("RGB", (frame.getWidth(), frame.getHeight()), pilData, "raw", "RGB", 0, 1 )
+                            images.append(image)
+
+                            if diff == 0.0:
+                                timestamp = frame.getTimestamp()
+
+                                if last is not None:
+                                    diff = timestamp - last
+
+                                last = timestamp
+
+                        dur = diff * len(images) / 1e9
+
+                        image: Image = images[0]
+                        images.remove(image)
+                        image.save(fp=output, format="GIF", append_images=images, save_all=True, duration=dur, loop=0)
+
+                    finally:
+                        self.gifSignal.emit()
+                    
+                self.pool.start(_saveGIF)
+
+
+            if not (self.writingMP4.isVisible() or self.writingH5.isVisible() or self.writingGIF.isVisible()):
 
                 if self.deleteButton.isChecked():
                     os.remove(self.streamPath)
@@ -399,6 +452,7 @@ class FastCameraGUI(QWidget, Generic[C]):
                 self.streamToDiskButton.setDisabled(False)
                 self.mp4Button.setDisabled(False)
                 self.h5Button.setDisabled(False)
+                self.gifButton.setDisabled(False)
                 self.deleteButton.setDisabled(False)
                 self.streamToDiskButton.setStyleSheet("")
                 self.streamToDiskButton.setText("Start Streaming to Disk")
