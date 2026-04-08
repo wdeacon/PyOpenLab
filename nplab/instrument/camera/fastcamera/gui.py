@@ -37,12 +37,13 @@ class FastCameraGUI(QWidget, Generic[C]):
     mp4Signal             = Signal()
     h5Signal              = Signal()
 
-    def __init__(self, camera: C):
+    def __init__(self, camera: C, fc):
 
         super().__init__()
         
         # Hold onto camera
         self.camera = camera
+        self.fc     = fc
 
         # Create buffers
         self.buffer                                  = None
@@ -105,7 +106,7 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.setupStreamer()
         self.setupConnections()
 
-        self.camera.addFrameListener(self.drawFrame)
+        self.camera.addFrameListener(self.frameListener)
         self.camera.addAcquisitionListener(self.updateAcquisition)
 
 
@@ -148,7 +149,7 @@ class FastCameraGUI(QWidget, Generic[C]):
 
         self.captureButton.clicked.connect(self.capture)
         self.liveViewButton.clicked.connect(self.live)
-        self.frameCapturedSignal.connect(self.drawFrame)
+        self.frameCapturedSignal.connect(self.frameListener)
         self.captureWritingSignal.connect(lambda: self.captureButton.setText("Writing..."))
         self.captureCompleteSignal.connect(self.captureComplete)
         self.streamToDiskButton.clicked.connect(self.streamClick)
@@ -157,7 +158,7 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.h5SaveButton.clicked.connect(self.updateSaveButtons)
         self.pngSaveButton.clicked.connect(self.updateSaveButtons)
         self.pngBrowse.clicked.connect(self.browsePNGDirectory)
-        self.drawSignal.connect(self.doDraw)
+        self.drawSignal.connect(self.drawFrame)
         self.keepRatio.clicked.connect(self.redrawFrame)
         self.progressSignal.connect(self.updateProgress)
 
@@ -166,7 +167,7 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.writingMP4.setVisible(False)
         self.writingH5.setVisible(False)
 
-        def reEnable():
+        def _reenable():
 
             if not (self.writingMP4.isVisible() or self.writingH5.isVisible()):
 
@@ -184,17 +185,17 @@ class FastCameraGUI(QWidget, Generic[C]):
                 self.streamToDiskButton.setText("Start Streaming to Disk")
 
 
-        def doneMP4():
+        def _doneMP4():
             self.writingMP4.setVisible(False)
-            reEnable()
+            _reenable()
 
 
-        def doneH5():
+        def _doneH5():
             self.writingH5.setVisible(False)
-            reEnable()
+            _reenable()
 
         
-        def checkDelete():
+        def _checkDelete():
 
             checked = False
 
@@ -228,12 +229,12 @@ class FastCameraGUI(QWidget, Generic[C]):
                 self.deleteButton.setStyleSheet("")
 
 
-        self.mp4Signal.connect(doneMP4)
-        self.h5Signal.connect(doneH5)
-        self.mp4Button.clicked.connect(checkDelete)
-        self.h5Button.clicked.connect(checkDelete)
-        self.gifButton.clicked.connect(checkDelete)
-        self.deleteButton.clicked.connect(checkDelete)
+        self.mp4Signal.connect(_doneMP4)
+        self.h5Signal.connect(_doneH5)
+        self.mp4Button.clicked.connect(_checkDelete)
+        self.h5Button.clicked.connect(_checkDelete)
+        self.gifButton.clicked.connect(_checkDelete)
+        self.deleteButton.clicked.connect(_checkDelete)
 
 
     def resizeEvent(self, a0):
@@ -343,21 +344,21 @@ class FastCameraGUI(QWidget, Generic[C]):
 
                 self.writingMP4.setVisible(True)
 
-                def saveMP4():
+                def _saveMP4():
 
                     try:
                         self.camera.openFrameReader(self.streamPath).convertToMP4(self.streamPath + ".mp4")
                     finally:
                         self.mp4Signal.emit()
 
-                self.pool.start(saveMP4)
+                self.pool.start(_saveMP4)
 
 
             if self.h5Button.isChecked():
 
                 self.writingH5.setVisible(True)
 
-                def saveH5():
+                def _saveH5():
 
                     try:
                         
@@ -386,7 +387,7 @@ class FastCameraGUI(QWidget, Generic[C]):
                         self.h5Signal.emit()
 
 
-                self.pool.start(saveH5)
+                self.pool.start(_saveH5)
 
             if not (self.writingMP4.isVisible() or self.writingH5.isVisible()):
 
@@ -429,7 +430,7 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.configPanel.setDisabled(True)
 
         # Define what we want to happen
-        def doCapture():
+        def _thread():
 
             output = not self.camera.isAcquiring()
 
@@ -456,6 +457,7 @@ class FastCameraGUI(QWidget, Generic[C]):
 
                     if output and not self.drawLock.locked():
                         self.frameCapturedSignal.emit(frame)
+                        self.fc.updateFrame(frame)
 
                     self.progressSignal.emit((100.0 * (i + 1) / (count)))
 
@@ -476,7 +478,7 @@ class FastCameraGUI(QWidget, Generic[C]):
 
 
         # Give the method to our thread pool to execute in the background
-        self.pool.start(doCapture)
+        self.pool.start(_thread)
 
 
     def updateProgress(self, progress: float):
@@ -517,7 +519,7 @@ class FastCameraGUI(QWidget, Generic[C]):
             self.camera.startAcquisition()
 
 
-    def drawFrame(self, frame: Frame):
+    def frameListener(self, frame: Frame):
 
         if self.drawLock.locked():
             Util.sleep(10)
@@ -601,7 +603,7 @@ class FastCameraGUI(QWidget, Generic[C]):
                 Util.sleep(10)
         
 
-    def doDraw(self, pixmap: QPixmap):
+    def drawFrame(self, pixmap: QPixmap):
         
         with self.drawLock:
             try:

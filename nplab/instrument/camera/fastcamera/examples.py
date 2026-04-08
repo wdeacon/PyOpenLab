@@ -6,7 +6,6 @@ from qtpy import QtWidgets
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication
 
-from nplab.instrument.camera.camera_with_location import CameraWithLocation
 from nplab.instrument.camera.fastcamera import FastCamera
 from nplab.instrument.spectrometer.fastspectrometer import FastSpectrometer
 from nplab.instrument.spectrometer.fastspectrometer.csconfig import CSConfigGUI
@@ -23,7 +22,7 @@ try:
     fastSpec   = FastSpectrometer(spec)
     
 
-    lab = GuiGenerator({"spec": fastSpec})
+    lab = GuiGenerator({"spec": fastCamera})
 
     lab.show()
 

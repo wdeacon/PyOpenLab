@@ -34,9 +34,10 @@ class CSConfigGUI(QWidget, Generic[S, C]):
 
         super().__init__()
 
-        self.spectrometer : S = cs
-        self.camera       : C = cs.getCamera()
-        self.buffer           = None
+        self.spectrometer : S        = cs
+        self.camera       : C        = cs.getCamera()
+        self.buffer                  = None
+        self.specBuffer   : Spectrum = None
 
         self.cameraImage     : QLabel
         self.spectrumBox     : QGroupBox
@@ -210,24 +211,25 @@ class CSConfigGUI(QWidget, Generic[S, C]):
         # So that we don't have multiple threads trying to access the buffer at the same time
         with self.spectrumLock:
 
-            try:
-               self.drawSpectrumSignal.emit(spec)
+            if self.specBuffer is None or self.specBuffer.size() != spec.size():
+                self.specBuffer = spec.copy()
+            else:
+                self.specBuffer.copyFrom(spec)
 
-            except:
-                print("Exception when drawing spectrum")
+            self.drawSpectrumSignal.emit(self.specBuffer)
 
-            finally:
-                # Limit display to 100 Hz. Anything more is just excessive.
-                Util.sleep(10)
+        Util.sleep(10)
 
 
     def doDrawSpectrum(self, spec: Spectrum):
             
-        try:
-            if self.showWavelengths.isChecked():
-                self.plotData.setData(spec.getWavelengths(), spec.getCounts())
-            else:
-                self.plotData.setData(np.arange(spec.size()), spec.getCounts())
+        with self.spectrumLock:
 
-        except:
-            print("Exception when drawing spectrum")
+            try:
+                if self.showWavelengths.isChecked():
+                    self.plotData.setData(spec.getWavelengths(), spec.getCounts())
+                else:
+                    self.plotData.setData(np.arange(spec.size()), spec.getCounts())
+
+            except:
+                print("Exception when drawing spectrum")

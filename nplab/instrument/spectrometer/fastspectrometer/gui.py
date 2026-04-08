@@ -47,7 +47,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.spectrometer = spectrometer
 
         # Create buffers
-        self.buffer                                  = None
+        self.buffer     : Spectrum                   = None
         self.params     : List[Instrument.Parameter] = []
         self.stream     : SpectrumThread             = None
         self.lastWidth  : int                        = None
@@ -94,15 +94,17 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.plotData     = self.plot.plotItem.plot([],[])
         self.configPanel  = JISAConfigPanel(self.spectrometer)
 
+        # Add custom GUI elements to the overall layout
         self.configBox.layout().addWidget(self.configPanel)
+        self.spectrumGroup.layout().addWidget(self.plot)
 
+        # If this is a camera-based spectrometer, then include a button to configure the frame to spectrum conversion
         if isinstance(self.spectrometer, CameraSpectrometer):
             self.csconfig = CSConfigGUI(self.spectrometer)
             self.csbutton = QPushButton("Configure Transformation...")
             self.csbutton.clicked.connect(self.csconfig.show)
             self.configBox.layout().addWidget(self.csbutton)
 
-        self.spectrumGroup.layout().addWidget(self.plot)
 
         self.progressBar.setVisible(False)
 
@@ -110,7 +112,8 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.setupStreamer()
         self.setupConnections()
 
-        self.spectrometer.addSpectrumListener(self.drawSpectrum)
+        # Connect listeners
+        self.spectrometer.addSpectrumListener(self.spectrumListener)
         self.spectrometer.addAcquisitionListener(self.updateAcquisition)
 
 
@@ -131,25 +134,13 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
 
 
         self.timer.start()
-
-
-    def setupConnections(self):
-
-        self.captureButton.clicked.connect(self.capture)
-        self.liveViewButton.clicked.connect(self.live)
-        self.spectrumSignal.connect(self.doDraw)
-        self.captureWritingSignal.connect(lambda: self.captureButton.setText("Writing..."))
-        self.captureCompleteSignal.connect(self.captureComplete)
-        self.streamToDiskButton.clicked.connect(self.streamClick)
-        self.streamBrowse.clicked.connect(self.browseForStream)
-        self.h5SaveButton.clicked.connect(self.updateSaveButtons)
-        self.progressSignal.connect(self.updateProgress)
     
+
     def setupStreamer(self):
 
         self.writingH5.setVisible(False)
 
-        def reEnable():
+        def _reenable():
 
             if not self.writingH5.isVisible():
 
@@ -165,12 +156,12 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
                 self.streamToDiskButton.setText("Start Streaming to Disk")
 
 
-        def doneH5():
+        def _doneH5():
             self.writingH5.setVisible(False)
-            reEnable()
+            _reenable()
 
         
-        def checkDelete():
+        def _checkDelete():
 
             checked = False
 
@@ -192,9 +183,22 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
                 self.deleteButton.setStyleSheet("")
 
 
-        self.h5Signal.connect(doneH5)
-        self.h5Button.clicked.connect(checkDelete)
-        self.deleteButton.clicked.connect(checkDelete)
+        self.h5Signal.connect(_doneH5)
+        self.h5Button.clicked.connect(_checkDelete)
+        self.deleteButton.clicked.connect(_checkDelete)
+
+
+    def setupConnections(self):
+
+        self.captureButton.clicked.connect(self.capture)
+        self.liveViewButton.clicked.connect(self.live)
+        self.spectrumSignal.connect(self.drawSpectrum)
+        self.captureWritingSignal.connect(lambda: self.captureButton.setText("Writing..."))
+        self.captureCompleteSignal.connect(self.captureComplete)
+        self.streamToDiskButton.clicked.connect(self.stream)
+        self.streamBrowse.clicked.connect(self.browseStreamFile)
+        self.h5SaveButton.clicked.connect(self.updateSaveButtons)
+        self.progressSignal.connect(self.updateCaptureProgress)
 
 
     def updateSaveButtons(self):
@@ -222,7 +226,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.pngDirectory.setText(file)
 
 
-    def browseForStream(self):
+    def browseStreamFile(self):
 
         file = QFileDialog.getSaveFileName()
 
@@ -235,7 +239,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.streamFile.setText(file)
 
 
-    def streamClick(self):
+    def stream(self):
 
         if self.stream is None:
 
@@ -340,7 +344,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.configPanel.setDisabled(True)
 
         # Define what we want to happen
-        def doCapture():
+        def _thread():
 
             output = not self.spectrometer.isAcquiring()
 
@@ -384,10 +388,12 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
 
 
         # Give the method to our thread pool to execute in the background
-        self.pool.start(doCapture)
+        self.pool.start(_thread)
 
-    def updateProgress(self, value: float):
+
+    def updateCaptureProgress(self, value: float):
         self.progressBar.setValue(int(value))
+
 
     def captureComplete(self):
 
@@ -403,6 +409,14 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.liveViewButton.setVisible(True)
         self.configPanel.setDisabled(False)
 
+    
+    def live(self):
+
+        if self.spectrometer.isAcquiring():
+            self.spectrometer.stopAcquisition()
+        else:
+            self.spectrometer.startAcquisition()
+
 
     def updateAcquisition(self, acquiring: bool):
 
@@ -414,25 +428,22 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
             self.liveViewButton.setText("Start Continuous Acquisition")
 
 
-    
-    def live(self):
+    def spectrumListener(self, spec: Spectrum):
 
-        if self.spectrometer.isAcquiring():
-            self.spectrometer.stopAcquisition()
-        else:
-            self.spectrometer.startAcquisition()
+        with self.bufferLock:
 
+            if self.buffer is None or self.buffer.size() != spec.size():
+                self.buffer = spec.copy()
+            else:
+                self.buffer.copyFrom(spec)
 
-    def drawSpectrum(self, spec: Spectrum):
+            self.spectrumSignal.emit(self.buffer)
 
-        if self.bufferLock.locked():
-            return
-
-        self.spectrumSignal.emit(spec)
+        # Limit frame sampling to 100 Hz
         Util.sleep(10)
 
         
-    def doDraw(self, spec: Spectrum):
+    def drawSpectrum(self, spec: Spectrum):
 
         with self.bufferLock:
 
@@ -444,6 +455,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
 
     def saveToH5(self, spectra):
 
+        # Attempt to get the currently opened H5 file
         try:
             file = df.current()
         except:
@@ -452,6 +464,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
 
         try:
 
+            # Parse the path specified by the user
             groupName = self.h5Group.text().strip("/")
             parts     = [p for p in groupName.split("/") if p.strip() != ""]
             group     = file
@@ -474,26 +487,31 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
             except:
                 pattern += r"_%d"
 
+
+            # Create a new dataset for each spectrum
             for spectrum in spectra:
                 self.spectrumToDataset(group, spectrum, pattern, counter)
                 counter += 1
 
-        finally:
 
+        finally:
+            # When done, make sure any changes are flushed to the backing file
             file.flush()
 
 
     def spectrumToDataset(self, group: h5py.Group, spectrum: Spectrum, pattern: str, counter: int = 0) -> h5py.Dataset:
         
+        # Attempt to find a name that hasn't already been used
         name = pattern % counter
 
         while name in group:
+
             counter += 1
             name     = pattern % counter
 
 
+        # Create the dataset and write the attributes to it
         ds = group.create_dataset(name, data = np.array([np.array(spectrum.getWavelengths()), np.array(spectrum.getCounts())]))
-
         self.writeAttributes(ds, spectrum)
 
         return ds
@@ -510,23 +528,21 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
             if isinstance(value, Instrument.AutoQuantity):
 
                 ds.attrs[key + ": Auto"]  = value.isAuto()
-                value = value.getValue()
+
                 key   = key + ": Value"
+                value = value.getValue()
         
 
-            if isinstance(value, Instrument.OptionalQuantity):
+            elif isinstance(value, Instrument.OptionalQuantity):
 
                 ds.attrs[key + ": Used"]  = value.isUsed()
-                value = value.getValue()
+
                 key   = key + ": Value"
+                value = value.getValue()
 
 
             if isinstance(value, ResultTable):
-
-                con = [[str(v) for v in r] for r in value.asStringArray()]
-                con = [[str(c.getTitle()) for c in value.getColumns()]] + con
-                ds.attrs[key] = con
-
+                ds.attrs[key] = [[str(c.getTitle()) for c in value.getColumns()]] + [[str(v) for v in r] for r in value.asStringArray()]
             else:
                 ds.attrs[key] = str(value)
 
@@ -541,8 +557,10 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
 
         os.makedirs(directory, exist_ok=True)
 
-        if r"%d" not in pattern and r"%s" not in pattern:
-            pattern = pattern + r" %d"
+        try:
+            pattern % counter
+        except:
+            pattern += r"_%d"
 
         pattern += ".png"
 
@@ -569,12 +587,33 @@ class FastSpectrometerPreviewGUI(QWidget, Generic[S]):
         self.setLayout(QVBoxLayout())
 
         plot = pg.plot(left="Counts", bottom="Wavelength [m]")
+        self.layout().addWidget(plot)
+        
         data = plot.plotItem.plot([], [])
 
+
+        self.buffer: Spectrum = None
+        self.bufferLock       = Lock()
+        
         def update(spectrum: Spectrum):
-            data.setData(spectrum.getWavelengths(), spectrum.getCounts())
 
-        self.drawSignal.connect(update)
-        spectrometer.addSpectrumListener(self.drawSignal.emit)
+            with self.bufferLock:
 
-        self.layout().addWidget(plot)
+                if self.buffer is None or self.buffer.size() != spectrum.size():
+                    self.buffer = spectrum.copy()
+                else:
+                    self.buffer.copyFrom(spectrum)
+
+                self.drawSignal.emit(self.buffer)
+
+            Util.sleep(10)
+
+
+        def draw(spectrum: Spectrum):
+            with self.bufferLock:
+                data.setData(spectrum.getWavelengths(), spectrum.getCounts())
+
+
+        self.drawSignal.connect(draw)
+        spectrometer.addSpectrumListener(update)
+

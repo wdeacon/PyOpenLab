@@ -27,7 +27,7 @@ class ScientificSpinBox(QWidget):
 
         self.mantissaSpin.setMaximum(+np.inf)
         self.mantissaSpin.setMinimum(-np.inf)
-        self.mantissaSpin.setDecimals(10)
+        self.mantissaSpin.setDecimals(5)
 
         # Layout: mantissa × 10 ^ exponent
         layout = QHBoxLayout(self)
