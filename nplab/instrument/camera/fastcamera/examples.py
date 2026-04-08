@@ -14,20 +14,18 @@ from nplab.utils.gui_generator import GuiGenerator
 
 try:
 
-    app = QApplication([])
-    cam  = Lumenera(1)
-    spec = OceanOptics(0)
+    app      = QApplication([])
+    cam      = FakeCamera()
+    spec     = CameraSpectrometer(cam, None)
     fastCam  = FastCamera(cam)
     fastSpec = FastSpectrometer(spec)
-    
-    lab = GuiGenerator({"spec": fastSpec, "cam": fastCam})
+    lab      = GuiGenerator({"spec": fastSpec, "cam": fastCam})
 
     lab.show()
-
     app.exec()
 
 except Exception as e:
-
+    del app
     from jisa.gui import GUI
     GUI.showException(e)
 

@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1115</width>
-    <height>1011</height>
+    <width>953</width>
+    <height>883</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -29,7 +29,7 @@
    <item row="1" column="2">
     <widget class="QGroupBox" name="configBox">
      <property name="sizePolicy">
-      <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+      <sizepolicy hsizetype="Minimum" vsizetype="Expanding">
        <horstretch>1</horstretch>
        <verstretch>0</verstretch>
       </sizepolicy>
@@ -43,7 +43,7 @@
    <item row="5" column="1">
     <widget class="QGroupBox" name="statusGroup">
      <property name="sizePolicy">
-      <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
+      <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
        <horstretch>1</horstretch>
        <verstretch>0</verstretch>
       </sizepolicy>
@@ -133,7 +133,7 @@
    <item row="4" column="1">
     <widget class="QGroupBox" name="groupBox_2">
      <property name="sizePolicy">
-      <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
+      <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
        <horstretch>1</horstretch>
        <verstretch>0</verstretch>
       </sizepolicy>
@@ -308,7 +308,7 @@
          </font>
         </property>
         <property name="text">
-         <string>Show Crosshair</string>
+         <string>Crosshair</string>
         </property>
         <property name="checkable">
          <bool>true</bool>
@@ -366,7 +366,7 @@
    <item row="4" column="2" rowspan="2">
     <widget class="QGroupBox" name="streamBox">
      <property name="sizePolicy">
-      <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
+      <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
        <horstretch>1</horstretch>
        <verstretch>0</verstretch>
       </sizepolicy>
@@ -553,7 +553,10 @@
             </font>
            </property>
            <property name="text">
-            <string>(Streams to disk while continuously acquiring only)</string>
+            <string>(while acquiring)</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
            </property>
           </widget>
          </item>
@@ -579,7 +582,7 @@
    <item row="8" column="1" colspan="2">
     <widget class="QGroupBox" name="capturedImages">
      <property name="sizePolicy">
-      <sizepolicy hsizetype="Expanding" vsizetype="MinimumExpanding">
+      <sizepolicy hsizetype="Minimum" vsizetype="MinimumExpanding">
        <horstretch>1</horstretch>
        <verstretch>0</verstretch>
       </sizepolicy>
@@ -699,7 +702,7 @@
    <item row="1" column="1">
     <widget class="QGroupBox" name="cameraGroup">
      <property name="sizePolicy">
-      <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+      <sizepolicy hsizetype="Minimum" vsizetype="Expanding">
        <horstretch>1</horstretch>
        <verstretch>1</verstretch>
       </sizepolicy>
