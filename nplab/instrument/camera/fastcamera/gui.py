@@ -22,18 +22,20 @@ from nplab.instrument.camera.fastcamera.datastream import DataStreamGUI
 from nplab.instrument.camera.fastcamera.widgets import *
 
 import nplab.datafile as df
+from nplab.ui.widgets.jisa import JISAConfigPanel
 
 
 C = TypeVar("C", bound=JCamera)
 
 class FastCameraGUI(QWidget, Generic[C]):
 
+    drawSignal            = Signal(QPixmap)
     frameCapturedSignal   = Signal(Frame)
+    progressSignal        = Signal(float)
     captureCompleteSignal = Signal()
     captureWritingSignal  = Signal()
     mp4Signal             = Signal()
     h5Signal              = Signal()
-    warningIcon           = QIcon.fromTheme("dialog-warning")
 
     def __init__(self, camera: C):
 
@@ -44,21 +46,18 @@ class FastCameraGUI(QWidget, Generic[C]):
 
         # Create buffers
         self.buffer                                  = None
-        self.frames     : List[Frame]                = []
         self.params     : List[Instrument.Parameter] = []
         self.stream     : FrameThread                = None
         self.lastWidth  : int                        = None
         self.lastHeight : int                        = None
 
         # Define types for automatically linked widgets
-        self.cameraParameters    : QVBoxLayout 
+        self.configBox           : QGroupBox
         self.numberOfFrames      : QSpinBox    
         self.delayTime           : QSpinBox
         self.captureButton       : QPushButton 
         self.liveViewButton      : QPushButton 
         self.cameraImage         : QLabel      
-        self.applyButton         : QPushButton
-        self.refreshButton       : QPushButton
         self.statusGroup         : QGroupBox
         self.streamBox           : QGroupBox
         self.temperatureLabel    : QLabel
@@ -86,6 +85,8 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.h5Group             : QLineEdit
         self.countLabel          : QLabel
         self.delayLabel          : QLabel
+        self.keepRatio           : QPushButton
+        self.progressBar         : QProgressBar
          
         # Load UI from file
         uic.loadUi((os.path.dirname(__file__) + '/resources/fcgui.ui'), self)
@@ -93,15 +94,34 @@ class FastCameraGUI(QWidget, Generic[C]):
         # Create other QT elements
         self.pool         = QThreadPool()
         self.errorMessage = QErrorMessage()
-        self.bufferLuck   = Lock()
+        self.bufferLock   = Lock()
+        self.drawLock     = Lock()
+        self.configPanel  = JISAConfigPanel(self.camera, self.prepareCamera, self.restoreCamera)
 
+        self.configBox.layout().addWidget(self.configPanel)
+        self.progressBar.setVisible(False)
 
         self.setupStatusMonitoring()
         self.setupStreamer()
         self.setupConnections()
-        self.setupParameters()
 
         self.camera.addFrameListener(self.drawFrame)
+        self.camera.addAcquisitionListener(self.updateAcquisition)
+
+
+    def prepareCamera(self, camera: C) -> bool:
+
+        if camera.isAcquiring():
+            camera.stopAcquisition()
+            return True
+        else:
+            return False
+        
+
+    def restoreCamera(self, camera: C, result: bool):
+
+        if result:
+            camera.startAcquisition()
 
 
     def setupStatusMonitoring(self):
@@ -131,60 +151,16 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.frameCapturedSignal.connect(self.drawFrame)
         self.captureWritingSignal.connect(lambda: self.captureButton.setText("Writing..."))
         self.captureCompleteSignal.connect(self.captureComplete)
-        self.applyButton.clicked.connect(self.applyParameters)
-        self.refreshButton.clicked.connect(self.refreshParameters)
         self.streamToDiskButton.clicked.connect(self.streamClick)
         self.streamBrowse.clicked.connect(self.browseForStream)
         self.crosshairButton.clicked.connect(self.crosshairClick)
         self.h5SaveButton.clicked.connect(self.updateSaveButtons)
         self.pngSaveButton.clicked.connect(self.updateSaveButtons)
         self.pngBrowse.clicked.connect(self.browsePNGDirectory)
+        self.drawSignal.connect(self.doDraw)
+        self.keepRatio.clicked.connect(self.redrawFrame)
+        self.progressSignal.connect(self.updateProgress)
 
-
-    def setupParameters(self):
-
-        forms = {"General": QFormLayout()}
-
-        for param in self.camera.getAllParameters():
-
-            group = param.getGroup() if param.isGrouped() else "General"
-
-            if group not in forms:
-                forms[group] = QFormLayout()
-
-            form = forms[group]
-
-            w, g, s = self.createParameterWidget(param.getDefaultValue(), param.getChoices())
-
-            if w is None:
-                continue
-
-            status = QPushButton()
-            status.setIcon(self.warningIcon)
-            status.setFixedSize(25, 25)
-            status.setVisible(False)
-
-            w.setContentsMargins(0, 0, 0, 0)
-            hbox = QHBoxLayout()
-            hbox.addWidget(w, 1)
-            setB = QPushButton("✓")
-            setB.setFixedWidth(25)
-            hbox.addWidget(setB, 0, Qt.AlignTop)
-            hbox.addWidget(status, 0, Qt.AlignTop)
-
-            form.addRow(param.getName(), hbox)
-
-            s(param.getCurrentValue())
-
-            setB.clicked.connect(lambda v, g=g, s=s, p=param, st=status: self.applyParameter(g, s, p, st, True))
-            self.params.append((w, g, s, param, status))
-
-        for name, form in forms.items():
-            box = QGroupBox(name)
-            box.setLayout(form)
-            self.cameraParameters.addWidget(box)
-
-    
     def setupStreamer(self):
 
         self.writingMP4.setVisible(False)
@@ -223,33 +199,33 @@ class FastCameraGUI(QWidget, Generic[C]):
             checked = False
 
             if self.mp4Button.isChecked():
-                self.mp4Button.setStyleSheet("background: teal;")
+                self.mp4Button.setStyleSheet("background: teal; color: white;")
                 checked = True
             else:
                 self.mp4Button.setStyleSheet("")
 
             if self.h5Button.isChecked():
-                self.h5Button.setStyleSheet("background: purple;")
+                self.h5Button.setStyleSheet("background: purple; color: white;")
                 checked = True
             else:
                 self.h5Button.setStyleSheet("")
 
             if self.gifButton.isChecked():
-                self.gifButton.setStyleSheet("background: navy;")
+                self.gifButton.setStyleSheet("background: navy; color: white;")
                 checked = True
             else:
                 self.gifButton.setStyleSheet("")
-
-            if self.deleteButton.isChecked():
-                self.deleteButton.setStyleSheet("background: brown;")
-            else:
-                self.deleteButton.setStyleSheet("")
 
             if checked:
                 self.deleteButton.setDisabled(False)
             else:
                 self.deleteButton.setChecked(False)
                 self.deleteButton.setDisabled(True)
+
+            if self.deleteButton.isChecked():
+                self.deleteButton.setStyleSheet("background: brown; color: white;")
+            else:
+                self.deleteButton.setStyleSheet("")
 
 
         self.mp4Signal.connect(doneMP4)
@@ -261,7 +237,10 @@ class FastCameraGUI(QWidget, Generic[C]):
 
 
     def resizeEvent(self, a0):
-        self.redrawFrame()
+
+        if not self.camera.isAcquiring():
+            self.redrawFrame()
+
         return super().resizeEvent(a0)
 
 
@@ -272,7 +251,7 @@ class FastCameraGUI(QWidget, Generic[C]):
     def updateSaveButtons(self):
 
         if self.h5SaveButton.isChecked():
-            self.h5SaveButton.setStyleSheet("background: purple;")
+            self.h5SaveButton.setStyleSheet("background: purple; color: white;")
             self.h5Group.setEnabled(True)
             self.h5Label.setEnabled(True)
         else:
@@ -282,7 +261,7 @@ class FastCameraGUI(QWidget, Generic[C]):
 
 
         if self.pngSaveButton.isChecked():
-            self.pngSaveButton.setStyleSheet("background: teal;")
+            self.pngSaveButton.setStyleSheet("background: teal; color: white;")
             self.pngLabel.setEnabled(True)
             self.pngDirectory.setEnabled(True)
             self.pngBrowse.setEnabled(True)
@@ -345,7 +324,7 @@ class FastCameraGUI(QWidget, Generic[C]):
             self.streamPath  = self.streamFile.text()
             self.stream      = self.camera.streamToFile(self.streamPath)
 
-            self.streamToDiskButton.setStyleSheet("background: brown;")
+            self.streamToDiskButton.setStyleSheet("background: brown; color: white;")
             self.streamToDiskButton.setText("Stop Streaming")
 
         else:
@@ -433,10 +412,6 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.errorMessage.showMessage(str(e))
 
 
-    def intTime(self):
-        self.camera.setIntegrationTime(self.exposureTime.value())
-
-
     def capture(self):
 
         # Lock down the GUI inputs
@@ -447,7 +422,11 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.delayLabel.setDisabled(True)
         self.delayTime.setDisabled(True)
         self.captureButton.setText("Capturing...")
-        self.captureButton.setStyleSheet("background: brown;")
+        self.captureButton.setStyleSheet("background: brown; color: white;")
+        self.progressBar.setValue(0.0)
+        self.progressBar.setVisible(True)
+        self.liveViewButton.setVisible(False)
+        self.configPanel.setDisabled(True)
 
         # Define what we want to happen
         def doCapture():
@@ -463,8 +442,10 @@ class FastCameraGUI(QWidget, Generic[C]):
                 frame = self.camera.getFrame()
                 frames.append(frame)
 
-                if output:
+                if output and not self.drawLock.locked():
                     self.frameCapturedSignal.emit(frame)
+                
+                self.progressSignal.emit((100.0 / (count)))
 
                 for i in range(count - 1):
 
@@ -473,9 +454,13 @@ class FastCameraGUI(QWidget, Generic[C]):
                     frame = self.camera.getFrame()
                     frames.append(frame)
 
-                    if output and not self.bufferLuck.locked():
+                    if output and not self.drawLock.locked():
                         self.frameCapturedSignal.emit(frame)
 
+                    self.progressSignal.emit((100.0 * (i + 1) / (count)))
+
+
+                self.progressSignal.emit(100.0)
 
                 if self.h5SaveButton.isChecked():
                     self.captureWritingSignal.emit()
@@ -494,6 +479,10 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.pool.start(doCapture)
 
 
+    def updateProgress(self, progress: float):
+        self.progressBar.setValue(progress)
+
+
     def captureComplete(self):
 
         self.captureButton.setDisabled(False)
@@ -504,26 +493,39 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.numberOfFrames.setDisabled(False)
         self.delayLabel.setDisabled(False)
         self.delayTime.setDisabled(False)
+        self.progressBar.setVisible(False)
+        self.liveViewButton.setVisible(True)
+        self.configPanel.setDisabled(False)
 
     
+    def updateAcquisition(self, acquiring: bool):
+
+        if acquiring:
+            self.liveViewButton.setStyleSheet("background: brown; color: white;")
+            self.liveViewButton.setText("Stop Continuous Acquisition")
+        else:
+            self.liveViewButton.setStyleSheet("")
+            self.liveViewButton.setText("Start Continuous Acquisition")
+
+
+
     def live(self):
 
         if self.camera.isAcquiring():
             self.camera.stopAcquisition()
-            self.liveViewButton.setStyleSheet("")
-            self.liveViewButton.setText("Start Continuous Acquisition")
         else:
             self.camera.startAcquisition()
-            self.liveViewButton.setStyleSheet("background: brown;")
-            self.liveViewButton.setText("Stop Continuous Acquisition")
 
 
     def drawFrame(self, frame: Frame):
 
-        # So that we don't have multiple threads trying to access the buffer at the same time
-        with self.bufferLuck:
+        if self.drawLock.locked():
+            Util.sleep(10)
+            return
 
-            try:
+        try:
+
+            with self.bufferLock:
 
                 # If the frame size has changed, then we need to recreate the buffer, otherwise we should reuse it
                 if self.buffer is None or len(self.buffer) != frame.size():
@@ -552,21 +554,19 @@ class FastCameraGUI(QWidget, Generic[C]):
 
 
                 # Display the pixmap, scaled to the size of the GUI element at this moment
-                self.cameraImage.setPixmap(pixmap.scaled(self.cameraImage.width(), self.cameraImage.height(), Qt.KeepAspectRatio))
-                self.cameraImage.update()
+                self.drawSignal.emit(pixmap)
 
-            except:
-                print("Exception when drawing frame")
+        except:
+            print("Exception when drawing frame")
 
-            finally:
-                # Limit display to 100 Hz. Anything more is just excessive.
-                Util.sleep(10)
+        finally:
+            # Limit display to 100 Hz. Anything more is just excessive.
+            Util.sleep(10)
 
 
     def redrawFrame(self):
 
-        # So that we don't have multiple threads trying to access the buffer at the same time
-        with self.bufferLuck:
+        with self.bufferLock:
 
             try:
 
@@ -591,8 +591,7 @@ class FastCameraGUI(QWidget, Generic[C]):
 
 
                 # Display the pixmap, scaled to the size of the GUI element at this moment
-                self.cameraImage.setPixmap(pixmap.scaled(self.cameraImage.width(), self.cameraImage.height(), Qt.KeepAspectRatio))   
-                self.cameraImage.update()
+                self.drawSignal.emit(pixmap)
 
             except:
                 print("Exception when redrawing frame")
@@ -600,198 +599,23 @@ class FastCameraGUI(QWidget, Generic[C]):
             finally:
                 # Limit display to 100 Hz. Anything more is just excessive.
                 Util.sleep(10)
+        
 
-
-    def applyParameters(self):
-        '''Applies all configuration parameters, then updates their displayed values'''
-
-        running = self.camera.isAcquiring()
-
-        if running:
-            self.camera.stopAcquisition()
-
-        for (w, g, s, p, st) in self.params:
-            self.applyParameter(g, s, p, st)
-
-        self.refreshParameters()
-
-        if running:
-            self.camera.startAcquisition()
-
-
-    def applyParameter(self, getter: Callable, setter: Callable, param: Instrument.Parameter, status: QPushButton, refresh = False):
-        '''Applies one single parameter, optionally can refresh all others afterwards if specified'''
-
-        running = self.camera.isAcquiring()
-
-        if running:
-            self.camera.stopAcquisition()
-
-        status.setVisible(False)
-
-        try:
-            status.clicked.disconnect()
-        except:
-            pass
-
-        try:
-            param.set(getter())
-        except Exception as e:
-            status.clicked.connect(lambda v, e=e: self.showException(e))
-            status.setVisible(True)
-
-        if refresh:
-            self.refreshParameters()
-
-        if running:
-            self.camera.startAcquisition()
-
-
-
-    def refreshParameters(self):
-
-        for (w, g, s, p, st) in self.params:
-
+    def doDraw(self, pixmap: QPixmap):
+        
+        with self.drawLock:
             try:
-                s(p.getCurrentValue())
-            except Exception as e:
-                print(e)
+                self.cameraImage.setPixmap(pixmap.scaled(self.cameraImage.width(), self.cameraImage.height(), Qt.KeepAspectRatio if self.keepRatio.isChecked() else Qt.IgnoreAspectRatio))      
+            except:
+                print("Exception occurred when drawing frame.")
 
-
-    def createParameterWidget(self, defaultValue, choices: List = []) -> Tuple[QWidget, Callable, Callable]:
-
-        if isinstance(defaultValue, Instrument.AutoQuantity):
-
-            checkBox = QCheckBox("Auto")
-            checkBox.setChecked(defaultValue.isAuto())
-
-            widget, getter, setter = self.createParameterWidget(defaultValue.getValue(), choices)
-
-            if widget is None:
-                return (None, None, None)
-
-            widget.setDisabled(checkBox.isChecked())
-
-            def updateCheckBox():
-                widget.setDisabled(checkBox.isChecked())
-
-            checkBox.stateChanged.connect(updateCheckBox)
-            
-            hbox = QHBoxLayout() if type(defaultValue.getValue()) not in [ResultList, ResultTable] else QVBoxLayout()
-            cont = QWidget()
-            cont.setLayout(hbox)
-            cont.setContentsMargins(0, 0, 0, 0)
-            hbox.setContentsMargins(0, 0, 0, 0)
-
-            hbox.addWidget(checkBox, 0)
-            hbox.addWidget(widget, 1)
-
-            def autoGetter():
-                return Instrument.AutoQuantity(checkBox.isChecked(), getter())
-            
-            def autoSetter(aq: Instrument.AutoQuantity):
-                checkBox.setChecked(aq.isAuto())
-                setter(aq.getValue())
-
-            return (cont, autoGetter, autoSetter)
-        
-        elif isinstance(defaultValue, Instrument.OptionalQuantity):
-
-            checkBox = QCheckBox("Enabled")
-            checkBox.setChecked(defaultValue.isUsed())
-            
-            widget, getter, setter = self.createParameterWidget(defaultValue.getValue(), choices)
-
-            if widget is None:
-                return (None, None, None)
-
-            widget.setDisabled(not checkBox.isChecked())
-
-            def updateCheckBox():
-                widget.setDisabled(not checkBox.isChecked())
-
-            checkBox.stateChanged.connect(updateCheckBox)
-            
-            hbox = QHBoxLayout() if type(defaultValue.getValue()) not in [ResultList, ResultTable] else QVBoxLayout()
-            cont = QWidget()
-            cont.setLayout(hbox)
-            cont.setContentsMargins(0, 0, 0, 0)
-            hbox.setContentsMargins(0, 0, 0, 0)
-
-            hbox.addWidget(checkBox, 0)
-            hbox.addWidget(widget, 1)
-
-            def autoGetter():
-                return Instrument.OptionalQuantity(checkBox.isChecked(), getter())
-            
-            def autoSetter(aq: Instrument.OptionalQuantity):
-                checkBox.setChecked(aq.isUsed())
-                setter(aq.getValue())
-
-            return (cont, autoGetter, autoSetter)
-        
-        elif len(choices) > 0:
-
-            choiceBox  = QComboBox()
-            choiceBox.addItems([str(c) for c in choices])
-
-            def getter(choices=choices, choiceBox=choiceBox):
-                return choices[choiceBox.currentIndex()]
-            
-            def setter(value):
-                choiceBox.setCurrentIndex(choices.index(value))
-
-            setter(defaultValue)
-
-            return (choiceBox, getter, setter)
-        
-        elif isinstance(defaultValue, (Double, float)):
-
-            doubleBox = ScientificSpinBox()
-            doubleBox.setValue(defaultValue)
-
-            return (doubleBox, doubleBox.value, doubleBox.setValue)
-
-        elif isinstance(defaultValue, (int, Integer)):
-
-            intBox = QSpinBox()
-            intBox.setMinimum(-2147483647)
-            intBox.setMaximum(2147483647)
-            intBox.setValue(defaultValue)
-
-            return (intBox, lambda: np.int32(intBox.value()), intBox.setValue)
-        
-        elif isinstance(defaultValue, (bool, Boolean)):
-
-            checkBox = QCheckBox()
-            checkBox.setChecked(defaultValue)
-            return (checkBox, checkBox.isChecked, checkBox.setChecked)
-        
-        elif isinstance(defaultValue, (str, String)):
-
-            textBox = QLineEdit()
-            textBox.setText(str(defaultValue))
-
-            return (textBox, textBox.text, textBox.setText)
-        
-        elif isinstance(defaultValue, ResultTable):
-
-            table = ResultTableWidget()
-            table.setResultTable(defaultValue)
-
-            return (table, table.getResultTable, table.setResultTable)
-
-        else:
-            
-            return (None, None, None)
-        
 
     def saveToH5(self, frames):
 
         try:
             file = df.current()
         except:
-            QErrorMessage.showMessage("No HDF5 data file currently open to save to.")
+            self.errorMessage.showMessage("No HDF5 data file currently open to save to.")
             return
 
         try:
@@ -907,4 +731,132 @@ class FastCameraGUI(QWidget, Generic[C]):
 
             counter += 1
 
+
+class FastCameraPreviewGUI(QWidget, Generic[C]):
+
+    drawSignal = Signal(QPixmap)
+
+    def __init__(self, camera: C):
+
+        super().__init__()
+
+        self.camera      = camera
+        self.vbox        = QVBoxLayout()
+        self.cameraImage = QLabel()
+        self.buffer      = None
+        self.bufferLock  = Lock()
+        self.drawLock    = Lock()
+        self.keepRatio   = QPushButton("Keep Aspect Ratio")
+        self.lastWidth   = None
+        self.lastHeight  = None
+
+        self.keepRatio.setCheckable(True)
+        self.keepRatio.setChecked(True)
+        self.cameraImage.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored))
+
+        self.setLayout(self.vbox)
+        self.vbox.addWidget(self.cameraImage)
+        self.vbox.addWidget(self.keepRatio)
+
+        self.camera.addFrameListener(self.drawFrame)
+
+        self.drawSignal.connect(self.doDraw)
+
+
+    def resizeEvent(self, a0):
+        self.redrawFrame()
+        return super().resizeEvent(a0)
+    
+
+    def drawFrame(self, frame: Frame):
+
+        if self.drawLock.locked():
+            Util.sleep(10)
+            return
+
+        try:
+
+            with self.bufferLock:
+
+                # If the frame size has changed, then we need to recreate the buffer, otherwise we should reuse it
+                if self.buffer is None or len(self.buffer) != frame.size():
+                    self.buffer = frame.getARGBData()
+                else:
+                    frame.readARGBData(self.buffer)
+
+                # Record dimensions incase we need to redraw before a new frame comes in
+                self.lastWidth  = frame.getWidth()
+                self.lastHeight = frame.getHeight()
+
+                # Convert the buffer into a pixmap
+                pixmap = QPixmap(QImage(self.buffer, self.lastWidth, self.lastHeight, QImage.Format.Format_ARGB32))
+
+                # # If crosshair is enabled, then paint one on top of the image in the pixmap
+                # if self.crosshairButton.isChecked():
+
+                #     painter = QPainter(pixmap)
+                #     midX    = int(self.lastWidth / 2)
+                #     midY    = int(self.lastHeight  / 2)
+
+                #     painter.setPen(QPen(Qt.white, self.crosshairPixels.value()))
+                #     painter.drawLine(midX, 0, midX, self.lastHeight - 1)
+                #     painter.drawLine(0, midY, self.lastWidth - 1, midY)
+                #     painter.end()
+
+
+                # Display the pixmap, scaled to the size of the GUI element at this moment
+                self.drawSignal.emit(pixmap)
+
+        except:
+            print("Exception when drawing frame")
+
+        finally:
+            # Limit display to 100 Hz. Anything more is just excessive.
+            Util.sleep(10)
+
+
+    def redrawFrame(self):
+
+        with self.bufferLock:
+
+            try:
+
+                # If these haven't been set, then we can't possibly redraw, so give up
+                if self.lastWidth is None or self.lastHeight is None:
+                    return
+
+                # Convert the buffer into a pixmap
+                pixmap = QPixmap(QImage(self.buffer, self.lastWidth, self.lastHeight, QImage.Format.Format_ARGB32))
+
+                # # If crosshair is enabled, then paint one on top of the image in the pixmap
+                # if self.crosshairButton.isChecked():
+
+                #     painter = QPainter(pixmap)
+                #     midX    = int(self.lastWidth / 2)
+                #     midY    = int(self.lastHeight  / 2)
+
+                #     painter.setPen(QPen(Qt.white, self.crosshairPixels.value()))
+                #     painter.drawLine(midX, 0, midX, self.lastHeight - 1)
+                #     painter.drawLine(0, midY, self.lastWidth - 1, midY)
+                #     painter.end()
+
+
+                # Display the pixmap, scaled to the size of the GUI element at this moment
+                self.drawSignal.emit(pixmap)
+
+            except:
+                print("Exception when redrawing frame")
+
+            finally:
+                # Limit display to 100 Hz. Anything more is just excessive.
+                Util.sleep(10)
         
+
+    def doDraw(self, pixmap: QPixmap):
+        
+        with self.drawLock:
+            try:
+                self.cameraImage.setPixmap(pixmap.scaled(self.cameraImage.width(), self.cameraImage.height(), Qt.KeepAspectRatio if self.keepRatio.isChecked() else Qt.IgnoreAspectRatio))      
+            except:
+                print("Exception occurred when drawing frame.")
+

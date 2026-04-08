@@ -1,11 +1,16 @@
 import pyjisa.autoload
 
 from jisa.devices.camera import FakeCamera, Andor2, Andor3
+from jisa.devices.spectrometer import CameraSpectrometer, FakeSpectrometer
 from qtpy import QtWidgets
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication
 
+from nplab.instrument.camera.camera_with_location import CameraWithLocation
 from nplab.instrument.camera.fastcamera import FastCamera
+from nplab.instrument.spectrometer.fastspectrometer import FastSpectrometer
+from nplab.instrument.spectrometer.fastspectrometer.csconfig import CSConfigGUI
+from nplab.instrument.stage import DummyStage
 from nplab.utils.gui_generator import GuiGenerator
 
 try:
@@ -14,12 +19,14 @@ try:
 
     camera     = FakeCamera(None)
     fastCamera = FastCamera(camera)
+    spec       = CameraSpectrometer(camera, None)
+    fastSpec   = FastSpectrometer(spec)
+    
 
-#    fastCamera.show_gui(blocking=True)
-
-    lab = GuiGenerator({"camera": fastCamera})
+    lab = GuiGenerator({"spec": fastSpec})
 
     lab.show()
+
     app.exec()
 
 except Exception as e:
