@@ -19,7 +19,7 @@ try:
     spec     = CameraSpectrometer(cam, None)
     fastCam  = FastCamera(cam)
     fastSpec = FastSpectrometer(spec)
-    lab      = GuiGenerator({"spec": fastSpec, "cam": fastCam})
+    lab      = GuiGenerator({"cam": fastCam})
 
     lab.show()
     app.exec()

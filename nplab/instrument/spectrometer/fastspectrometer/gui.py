@@ -33,6 +33,8 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
 
     spectrumSignal        = Signal(Spectrum)
     progressSignal        = Signal(float)
+    acquisitionSignal     = Signal(bool)
+    exceptionSignal       = Signal(Exception)
     captureCompleteSignal = Signal()
     captureWritingSignal  = Signal()
     mp4Signal             = Signal()
@@ -48,7 +50,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.fs           = fs
 
         # Create buffers
-        self.buffer     : Spectrum                   = None
+        self.wlBuffer     : Spectrum                   = None
         self.params     : List[Instrument.Parameter] = []
         self.stream     : SpectrumThread             = None
         self.lastWidth  : int                        = None
@@ -115,7 +117,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
 
         # Connect listeners
         self.spectrometer.addSpectrumListener(self.spectrumListener)
-        self.spectrometer.addAcquisitionListener(self.updateAcquisition)
+        self.spectrometer.addAcquisitionListener(lambda a: self.acquisitionSignal.emit(bool(a)))
 
     def prepareSpectrometer(self, spec: S) -> bool:
 
@@ -218,6 +220,8 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.streamBrowse.clicked.connect(self.browseStreamFile)
         self.h5SaveButton.clicked.connect(self.updateSaveButtons)
         self.progressSignal.connect(self.updateCaptureProgress)
+        self.acquisitionSignal.connect(self.updateAcquisition)
+        self.exceptionSignal.connect(self.showException)
 
 
     def updateFPS(self):
@@ -381,47 +385,59 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         # Define what we want to happen
         def _thread():
 
-            output = not self.spectrometer.isAcquiring()
 
             try:
+                
+                wasAcquiring = self.spectrometer.isAcquiring()
 
                 delay   = max(self.delayTime.value(), 0)
                 count   = max(self.numberOfFrames.value(), 1)
+                timeout = self.spectrometer.getAcquisitionTimeout()
                 spectra = []
 
-                spectrum = self.spectrometer.getSpectrum()
-                spectra.append(spectrum)
+                if count == 1:
+                    
+                    spectra.append(self.spectrometer.getSpectrum())
+                    self.progressSignal.emit(100.0)
+                    self.spectrumListener(spectra[0])
+                    self.fs.updateSpectrum(spectra[0])
 
-                if output and not self.bufferLock.locked():
-                    self.spectrumSignal.emit(spectrum)
-                    self.fs.updateSpectrum(spectrum)
+                else:
 
-                self.progressSignal.emit(100.0 / count)
+                    if not wasAcquiring:
+                        self.spectrometer.startAcquisition()
 
-                for i in range(count - 1):
+                    queue = self.spectrometer.openSpectrumQueue(1)
 
-                    Util.sleep(delay)
+                    for i in range(count - 1):
+                        Util.sleep(delay)
+                        spectra.append(queue.nextSpectrum(timeout))
+                        self.progressSignal.emit(100.0 * ((i + 1) / count))
 
-                    spectrum = self.spectrometer.getSpectrum()
-                    spectra.append(spectrum)
+                    spectra.append(queue.nextSpectrum(timeout))
+                    self.progressSignal.emit(100.0)
 
-                    if output and not self.bufferLock.locked():
-                        self.spectrumSignal.emit(spectrum)
-                        self.fs.updateSpectrum(spectrum)
+                    queue.close()
+                    queue.clear()
 
-                    self.progressSignal.emit(100.0 * (i + 1) / count)
+                    if not wasAcquiring:
+                        self.spectrometer.stopAcquisition() 
 
-
-                self.progressSignal.emit(100.0)
 
                 if self.h5SaveButton.isChecked():
                     self.captureWritingSignal.emit()
                     self.saveToH5(spectra)
 
+            except Exception as e:
+                self.exceptionSignal.emit(e)
 
             finally:
+
                 # When done, we need to signal the GUI to re-enable everything
                 self.captureCompleteSignal.emit()
+
+                if not wasAcquiring:
+                    self.spectrometer.stopAcquisition()
 
 
         # Give the method to our thread pool to execute in the background
@@ -469,15 +485,14 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
 
         with self.bufferLock:
 
-            if self.buffer is None or self.buffer.size() != spec.size():
-                self.buffer = spec.copy()
+            if self.wlBuffer is None or self.wlBuffer.size() != spec.size():
+                self.wlBuffer = spec.copy()
             else:
-                self.buffer.copyFrom(spec)
+                self.wlBuffer.copyFrom(spec)
 
-            self.spectrumSignal.emit(self.buffer)
+            self.spectrumSignal.emit(self.wlBuffer)
 
-        # Limit frame sampling to 100 Hz
-        Util.sleep(10)
+        Util.sleep(20)
 
         
     def drawSpectrum(self, spec: Spectrum):
@@ -485,7 +500,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         with self.bufferLock:
 
             try:
-                self.plotData.setData(spec.getWavelengths(), spec.getCounts())
+                self.plotData.setData(spec.listWavelengths(), spec.listCounts())
             except:
                 print("Exception when drawing spectrum")
 
@@ -585,7 +600,6 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
 
 
 
-
     def savePNGs(self, frames):
 
         counter   = 0
@@ -647,10 +661,10 @@ class FastSpectrometerPreviewGUI(QWidget, Generic[S]):
 
             self.drawSignal.emit(self.buffer)
 
-        Util.sleep(10)
+        Util.sleep(20)
 
 
     def draw(self, spectrum: Spectrum):
         with self.bufferLock:
-            self.data.setData(spectrum.getWavelengths(), spectrum.getCounts())
+            self.data.setData(spectrum.listWavelengths(), spectrum.listCounts())
 

@@ -34,19 +34,21 @@ class FastCameraGUI(QWidget, Generic[C]):
     drawSignal            = Signal(QPixmap)
     frameCapturedSignal   = Signal(Frame)
     progressSignal        = Signal(float)
+    acquisitionSignal     = Signal(bool)
+    exceptionSignal       = Signal(Exception)
     captureCompleteSignal = Signal()
     captureWritingSignal  = Signal()
     mp4Signal             = Signal()
     h5Signal              = Signal()
     gifSignal             = Signal()
 
-    def __init__(self, camera: C, fc):
+    def __init__(self, camera: C, fastCamera):
 
         super().__init__()
         
         # Hold onto camera
-        self.camera = camera
-        self.fc     = fc
+        self.camera     = camera
+        self.fastCamera = fastCamera
 
         # Create buffers
         self.buffer                                  = None
@@ -111,7 +113,7 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.setupConnections()
 
         self.camera.addFrameListener(self.frameListener)
-        self.camera.addAcquisitionListener(self.updateAcquisition)
+        self.camera.addAcquisitionListener(lambda a: self.acquisitionSignal.emit(bool(a)))
 
 
     def prepareCamera(self, camera: C) -> bool:
@@ -165,6 +167,9 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.drawSignal.connect(self.drawFrame)
         self.keepRatio.clicked.connect(self.redrawFrame)
         self.progressSignal.connect(self.updateProgress)
+        self.acquisitionSignal.connect(self.updateAcquisition)
+        self.exceptionSignal.connect(self.showException)
+
 
     def setupStreamer(self):
 
@@ -486,37 +491,42 @@ class FastCameraGUI(QWidget, Generic[C]):
         # Define what we want to happen
         def _thread():
 
-            output = not self.camera.isAcquiring()
-
             try:
 
-                delay  = max(self.delayTime.value(), 0)
-                count  = max(self.numberOfFrames.value(), 1)
-                frames = []
+                wasAcquiring = self.camera.isAcquiring()
 
-                frame = self.camera.getFrame()
-                frames.append(frame)
+                delay   = max(self.delayTime.value(), 0)
+                count   = max(self.numberOfFrames.value(), 1)
+                timeout = self.camera.getAcquisitionTimeout()
+                frames  = []
 
-                if output and not self.drawLock.locked():
-                    self.frameListener(frame)
-                
-                self.progressSignal.emit((100.0 / (count)))
+                if count == 1:
 
-                for i in range(count - 1):
+                    frames.append(self.camera.getFrame())
+                    self.progressSignal.emit(100.0)
+                    self.frameListener(frames[0])
+                    self.fastCamera.updateFrame(frames[0])
 
-                    Util.sleep(delay)
+                else:
 
-                    frame = self.camera.getFrame()
-                    frames.append(frame)
+                    if not wasAcquiring:
+                        self.camera.startAcquisition()
 
-                    if output and not self.drawLock.locked():
-                        self.frameListener(frame)
-                        self.fc.updateFrame(frame)
+                    queue = self.camera.openFrameQueue(1)
 
-                    self.progressSignal.emit((100.0 * (i + 1) / (count)))
-                
+                    for i in range(count - 1):
+                        Util.sleep(delay)
+                        frames.append(queue.nextFrame(timeout))
+                        self.progressSignal.emit(100.0 * ((i + 1) / count))
+                    
+                    frames.append(queue.nextFrame(timeout))
+                    self.progressSignal.emit(100.0)
 
-                self.progressSignal.emit(100.0)
+                    queue.close()
+                    queue.clear()
+
+                    if not wasAcquiring:
+                        self.camera.stopAcquisition()
                 
                 if self.h5SaveButton.isChecked():
                     self.captureWritingSignal.emit()
@@ -526,10 +536,15 @@ class FastCameraGUI(QWidget, Generic[C]):
                     self.captureWritingSignal.emit()
                     self.savePNGs(frames)
                     
+            except Exception as e:
+                self.exceptionSignal.emit(e)
 
             finally:
                 # When done, we need to signal the GUI to re-enable everything
                 self.captureCompleteSignal.emit()
+
+                if not wasAcquiring:
+                    self.camera.stopAcquisition()
 
 
         # Give the method to our thread pool to execute in the background
@@ -665,8 +680,8 @@ class FastCameraGUI(QWidget, Generic[C]):
         with self.drawLock:
             try:
                 self.cameraImage.setPixmap(pixmap.scaled(self.cameraImage.width(), self.cameraImage.height(), Qt.KeepAspectRatio if self.keepRatio.isChecked() else Qt.IgnoreAspectRatio))      
-            except:
-                print("Exception occurred when drawing frame.")
+            except Exception as e:
+                print("Exception occurred when drawing frame." + e)
 
 
     def saveToH5(self, frames):
@@ -720,11 +735,26 @@ class FastCameraGUI(QWidget, Generic[C]):
 
 
         if isinstance(frame, (Frame.ShortFrame, Frame.IntFrame, Frame.LongFrame)):
-            ds = group.create_dataset(name, data=frame.image())
-        elif isinstance(frame, (RGBFrame, U16RGBFrame)):
-            ds = group.create_dataset(name, data=frame.getRGBImage())
+            ds = group.create_dataset(name, data=np.array(frame.data()).reshape(frame.getHeight(), frame.getWidth()))
+
+        elif isinstance(frame, U16RGBFrame):
+
+            argb2d      = np.array(frame.getARGBData()).view(np.uint16).reshape(frame.getHeight(), frame.getWidth(), 4)
+            rgb         = np.empty((frame.getHeight(), frame.getWidth(), 3), dtype=np.uint16)
+            rgb[..., 0] = argb2d[..., 2]
+            rgb[..., 1] = argb2d[..., 1]
+            rgb[..., 2] = argb2d[..., 0]
+            ds          = group.create_dataset(name, data=rgb)
+
         else:
-            ds = group.create_dataset(name, data=frame.getARGBImage())
+
+            argb2d      = np.array(frame.getARGBData()).view(np.uint8).reshape(frame.getHeight(), frame.getWidth(), 4)
+            rgb         = np.empty((frame.getHeight(), frame.getWidth(), 3), dtype=np.uint8)
+            rgb[..., 0] = argb2d[..., 2]
+            rgb[..., 1] = argb2d[..., 1]
+            rgb[..., 2] = argb2d[..., 0]
+            ds          = group.create_dataset(name, data=rgb)
+
 
         self.writeAttributes(ds, frame)
 
@@ -819,7 +849,7 @@ class FastCameraPreviewGUI(QWidget, Generic[C]):
 
         self.camera.addFrameListener(self.drawFrame)
 
-        self.drawSignal.connect(self.doDraw)
+        self.drawSignal.connect(self.drawFrame)
 
 
     def resizeEvent(self, a0):
@@ -829,9 +859,9 @@ class FastCameraPreviewGUI(QWidget, Generic[C]):
 
     def drawFrame(self, frame: Frame):
 
-        if self.drawLock.locked():
-            Util.sleep(10)
-            return
+        # if self.drawLock.locked():
+        #     Util.sleep(10)
+        #     return
 
         try:
 
@@ -851,16 +881,16 @@ class FastCameraPreviewGUI(QWidget, Generic[C]):
                 pixmap = QPixmap(QImage(self.buffer, self.lastWidth, self.lastHeight, QImage.Format.Format_ARGB32))
 
                 # # If crosshair is enabled, then paint one on top of the image in the pixmap
-                # if self.crosshairButton.isChecked():
+                if self.crosshairButton.isChecked():
 
-                #     painter = QPainter(pixmap)
-                #     midX    = int(self.lastWidth / 2)
-                #     midY    = int(self.lastHeight  / 2)
+                    painter = QPainter(pixmap)
+                    midX    = int(self.lastWidth / 2)
+                    midY    = int(self.lastHeight  / 2)
 
-                #     painter.setPen(QPen(Qt.white, self.crosshairPixels.value()))
-                #     painter.drawLine(midX, 0, midX, self.lastHeight - 1)
-                #     painter.drawLine(0, midY, self.lastWidth - 1, midY)
-                #     painter.end()
+                    painter.setPen(QPen(Qt.white, self.crosshairPixels.value()))
+                    painter.drawLine(midX, 0, midX, self.lastHeight - 1)
+                    painter.drawLine(0, midY, self.lastWidth - 1, midY)
+                    painter.end()
 
 
                 # Display the pixmap, scaled to the size of the GUI element at this moment
@@ -868,10 +898,6 @@ class FastCameraPreviewGUI(QWidget, Generic[C]):
 
         except:
             print("Exception when drawing frame")
-
-        finally:
-            # Limit display to 100 Hz. Anything more is just excessive.
-            Util.sleep(10)
 
 
     def redrawFrame(self):
@@ -888,16 +914,16 @@ class FastCameraPreviewGUI(QWidget, Generic[C]):
                 pixmap = QPixmap(QImage(self.buffer, self.lastWidth, self.lastHeight, QImage.Format.Format_ARGB32))
 
                 # # If crosshair is enabled, then paint one on top of the image in the pixmap
-                # if self.crosshairButton.isChecked():
+                if self.crosshairButton.isChecked():
 
-                #     painter = QPainter(pixmap)
-                #     midX    = int(self.lastWidth / 2)
-                #     midY    = int(self.lastHeight  / 2)
+                    painter = QPainter(pixmap)
+                    midX    = int(self.lastWidth / 2)
+                    midY    = int(self.lastHeight  / 2)
 
-                #     painter.setPen(QPen(Qt.white, self.crosshairPixels.value()))
-                #     painter.drawLine(midX, 0, midX, self.lastHeight - 1)
-                #     painter.drawLine(0, midY, self.lastWidth - 1, midY)
-                #     painter.end()
+                    painter.setPen(QPen(Qt.white, self.crosshairPixels.value()))
+                    painter.drawLine(midX, 0, midX, self.lastHeight - 1)
+                    painter.drawLine(0, midY, self.lastWidth - 1, midY)
+                    painter.end()
 
 
                 # Display the pixmap, scaled to the size of the GUI element at this moment
@@ -905,13 +931,9 @@ class FastCameraPreviewGUI(QWidget, Generic[C]):
 
             except:
                 print("Exception when redrawing frame")
-
-            finally:
-                # Limit display to 100 Hz. Anything more is just excessive.
-                Util.sleep(10)
         
 
-    def doDraw(self, pixmap: QPixmap):
+    def drawFrame(self, pixmap: QPixmap):
         
         with self.drawLock:
             try:
