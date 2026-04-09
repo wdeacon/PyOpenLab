@@ -385,9 +385,8 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         # Define what we want to happen
         def _thread():
 
-
             try:
-                
+
                 wasAcquiring = self.spectrometer.isAcquiring()
 
                 delay   = max(self.delayTime.value(), 0)

@@ -19,7 +19,7 @@ try:
     spec     = CameraSpectrometer(cam, None)
     fastCam  = FastCamera(cam)
     fastSpec = FastSpectrometer(spec)
-    lab      = GuiGenerator({"cam": fastCam})
+    lab      = GuiGenerator({"cam": fastCam, "spec": fastSpec})
 
     lab.show()
     app.exec()
@@ -28,9 +28,4 @@ except Exception as e:
     del app
     from jisa.gui import GUI
     GUI.showException(e)
-
-finally:
-
-    from java.lang import System # type: ignore
-    System.exit(0)
 
