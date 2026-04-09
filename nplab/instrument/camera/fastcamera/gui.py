@@ -182,7 +182,12 @@ class FastCameraGUI(QWidget, Generic[C]):
             if not (self.writingMP4.isVisible() or self.writingH5.isVisible() or self.writingGIF.isVisible()):
 
                 if self.deleteButton.isChecked():
-                    os.remove(self.streamPath)
+
+                    try:
+                        os.remove(self.streamPath)
+                    except:
+                        pass
+
 
                 self.streamFile.setDisabled(False)
                 self.streamBrowse.setDisabled(False)
@@ -450,7 +455,12 @@ class FastCameraGUI(QWidget, Generic[C]):
             if not (self.writingMP4.isVisible() or self.writingH5.isVisible() or self.writingGIF.isVisible()):
 
                 if self.deleteButton.isChecked():
-                    os.remove(self.streamPath)
+                    
+                    try:
+                        os.remove(self.streamPath)
+                    except:
+                        pass
+
 
                 self.streamFile.setDisabled(False)
                 self.streamBrowse.setDisabled(False)
@@ -739,7 +749,7 @@ class FastCameraGUI(QWidget, Generic[C]):
 
         elif isinstance(frame, U16RGBFrame):
 
-            argb2d      = np.array(frame.getARGBData()).view(np.uint16).reshape(frame.getHeight(), frame.getWidth(), 4)
+            argb2d      = np.array(frame.getLongARGBData()).view(np.uint16).reshape(frame.getHeight(), frame.getWidth(), 4)
             rgb         = np.empty((frame.getHeight(), frame.getWidth(), 3), dtype=np.uint16)
             rgb[..., 0] = argb2d[..., 2]
             rgb[..., 1] = argb2d[..., 1]

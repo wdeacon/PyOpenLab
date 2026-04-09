@@ -15,8 +15,8 @@ from nplab.utils.gui_generator import GuiGenerator
 try:
 
     app      = QApplication([])
-    cam      = FakeCamera()
-    spec     = CameraSpectrometer(cam, None)
+    cam      = Lumenera(1)
+    spec     = OceanOptics(0)
     fastCam  = FastCamera(cam)
     fastSpec = FastSpectrometer(spec)
     lab      = GuiGenerator({"cam": fastCam, "spec": fastSpec})
