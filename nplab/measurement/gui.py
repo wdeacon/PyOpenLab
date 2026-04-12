@@ -2,12 +2,15 @@ from math import inf
 from typing import Generic, List, Tuple, TypeVar, Callable, Optional
 import sys
 
-from PyQt5.QtWidgets import *
+from qtpy.QtWidgets import *
+from qtpy.QtCore    import Signal
 
-from nplab.measurement import Action, PValue, Parameter, Type
+from nplab.measurement.action import Action, Message, PValue, Parameter, Status, Type
 
 import sys
 from PyQt5.QtCore import Qt, pyqtSignal
+
+from nplab.measurement.queue import ActionQueue
 
 
 A = TypeVar("A", bound=Action)
@@ -139,6 +142,87 @@ class Setup(Generic[A], QWidget):
 
         self.close()
     
+
+Q = TypeVar("Q", bound=ActionQueue)
+
+class ActionQueueSetup(Generic[Q], QWidget):
+
+    def __init__(self, queue: Q):
+
+        super().__init__()
+        self._queue = queue
+        self._vbox  = QVBoxLayout()
+        self.setLayout(self._vbox)
+        self.drawActions(queue.actions)
+
+
+    def drawActions(self, actions: List[Action]):
+
+        for i in reversed(range(self._vbox.count())): 
+            self._vbox.itemAt(i).widget().deleteLater()
+
+        for action in actions:
+            widget = ActionWidget(action)
+            self._vbox.addWidget(widget)
+
+        
+class ActionWidget(Generic[A], QWidget):
+
+    statusSignal  = Signal(Status)
+    messageSignal = Signal(Message)
+
+    def __init__(self, action: A):
+
+        super().__init__()
+
+        self._action  = action
+        self._vbox    = QVBoxLayout()
+        self._hbox    = QHBoxLayout()
+        self._box     = QLabel()
+        self._title   = QLabel("%s (%s)" % (action.name, action.description))
+        self._status  = QLabel(action.status.name)
+        self._message = QLabel("")
+
+        self._box.setFixedSize(25, 25)
+        self._box.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed))
+        self._title.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
+        self._status.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum))
+
+        self._hbox.addWidget(self._box)
+        self._hbox.addWidget(self._title)
+        self._hbox.addWidget(self._status)
+        self._vbox.addLayout(self._hbox)
+        self._vbox.addWidget(self._message)
+
+        action.addStatusListener(self.statusSignal.emit)
+        action.addMessageListener(self.messageSignal.emit)
+
+    
+    def setupConnections(self):
+
+        self.statusSignal.connect(self.updateStatus)
+        self.messageSignal.connect(self.updateMessage)
+
+    
+    def updateStatus(self, status: Status):
+
+        self._status.setText(status.name)
+
+        if status == Status.QUEUED:
+            self._box.setStyle("background: black;")
+        elif status == Status.RUNNING:
+            self._box.setStyle("background: orange;")
+        elif status == Status.SUCCESS:
+            self._box.setStyle("background: teal;")
+        elif status == Status.INTERRUPTED:
+            self._box.setStyle("background: purple;")
+        elif status == Status.ERROR:
+            self._box.setStyle("background: brown;")
+
+
+    def updateMessage(self, message: Message):
+        self._message.setText(message.message)
+
 
 T = TypeVar("T")
 
