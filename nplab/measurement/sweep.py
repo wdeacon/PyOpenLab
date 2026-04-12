@@ -2,8 +2,9 @@ from abc import abstractmethod
 from typing import Generic, List, TypeVar
 from h5py import Group
 
-from nplab.measurement import R, Action, InterruptedException, MessageType, Result, Status
+from nplab.measurement.action import Action, InterruptedException, MessageType, Result, Status
 
+R = TypeVar("R")
 D = TypeVar("D")
 
 class Sweep(Action[R], Generic[R, D]):

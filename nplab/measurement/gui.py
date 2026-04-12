@@ -165,8 +165,10 @@ class ActionQueueSetup(Generic[Q], QWidget):
             widget = ActionWidget(action)
             self._vbox.addWidget(widget)
 
+        self._vbox.addSpacerItem(QSpacerItem(0, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding))
+
         
-class ActionWidget(Generic[A], QWidget):
+class ActionWidget(Generic[A], QGroupBox):
 
     statusSignal  = Signal(Status)
     messageSignal = Signal(Message)
@@ -197,6 +199,12 @@ class ActionWidget(Generic[A], QWidget):
         action.addStatusListener(self.statusSignal.emit)
         action.addMessageListener(self.messageSignal.emit)
 
+        self.setupConnections()
+
+        self.setLayout(self._vbox)
+        self.updateStatus(action.status)
+        self.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
+
     
     def setupConnections(self):
 
@@ -209,15 +217,15 @@ class ActionWidget(Generic[A], QWidget):
         self._status.setText(status.name)
 
         if status == Status.QUEUED:
-            self._box.setStyle("background: black;")
+            self._box.setStyleSheet("background: black;")
         elif status == Status.RUNNING:
-            self._box.setStyle("background: orange;")
+            self._box.setStyleSheet("background: orange;")
         elif status == Status.SUCCESS:
-            self._box.setStyle("background: teal;")
+            self._box.setStyleSheet("background: teal;")
         elif status == Status.INTERRUPTED:
-            self._box.setStyle("background: purple;")
+            self._box.setStyleSheet("background: purple;")
         elif status == Status.ERROR:
-            self._box.setStyle("background: brown;")
+            self._box.setStyleSheet("background: brown;")
 
 
     def updateMessage(self, message: Message):

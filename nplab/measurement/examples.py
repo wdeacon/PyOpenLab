@@ -6,10 +6,11 @@ from PyQt5.QtWidgets import QApplication
 import pyqtgraph
 from qtpy.QtGui import QWindow
 from qtpy.QtWidgets import QVBoxLayout
-from nplab.measurement import *
+from nplab.measurement.action import *
 from h5py import Group, File
 
-from nplab.measurement.gui import Setup
+from nplab.measurement.gui import ActionQueueSetup, Setup
+from nplab.measurement.queue import H5ActionQueue
 from nplab.measurement.sweep import H5Sweep
 
 from jisa.devices.spectrometer import Spectrometer, FakeSpectrometer
@@ -217,6 +218,10 @@ sweep.source   = k1234.getSMU(1)
 sweep.addMessageListener(lambda m: print("[%s] %s" % (m.pathString, m.message)))
 
 
-data   = File("/home/william/Desktop/test.h5", mode="w")
-result = sweep.run(data)
-data.close()
+queue = H5ActionQueue()
+queue.addActions(spec, iv)
+
+gui = ActionQueueSetup(queue)
+gui.show()
+
+app.exec()
