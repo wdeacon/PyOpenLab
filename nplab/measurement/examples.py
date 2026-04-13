@@ -82,7 +82,9 @@ class IVCurve(H5Action):
     def __init__(self, description): 
 
         super().__init__("IV Curve", description)
-        self.plot = pyqtgraph.PlotWidget()
+
+        self.plot     = pyqtgraph.PlotWidget()
+        self.plotData = self.plot.plotItem.plot([], [])
 
 
     def main(self, data: Group):
@@ -107,13 +109,9 @@ class IVCurve(H5Action):
 
             sweep[i, 0] = voltage
             sweep[i, 1] = self.imeter.getCurrent()
+            sweep[i, 2] = self.tmeter.getTemperature() if self.tmeter is not None else np.nan
 
-            self.plot.addItem([sweep[i,0], sweep[i,1]])
-
-            if self.tmeter is not None:
-                sweep[i, 2] = self.tmeter.getTemperature()
-            else:
-                sweep[i, 2] = np.nan
+            self.plotData.setData(sweep[:,0], sweep[:, 1])
 
 
         data.create_dataset("Sweep", data=sweep)
@@ -215,13 +213,11 @@ repeat.repeats = 4
 sweep.voltages = [0.0, 0.5, 1.0, 1.5, 2.0]
 sweep.source   = k1234.getSMU(1)
 
-sweep.addMessageListener(lambda m: print("[%s] %s" % (m.pathString, m.message)))
-
 
 queue = H5ActionQueue()
 queue.addActions(spec, iv)
 
-gui = ActionQueueSetup(queue)
+gui = ActionQueueSetup(queue, [TakeSpectra, IVCurve, RepeatSweep, VoltageSweep], [spec.spectrometer, spec.camera, k1234.getSMU(0)], File("test.h5", "w"))
 gui.show()
 
 app.exec()

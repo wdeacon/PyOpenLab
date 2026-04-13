@@ -1,10 +1,13 @@
 from abc import ABC, abstractmethod
-from threading import Thread
+from threading import Lock, Thread
+import threading
 from typing import Callable, Generic, List, TypeVar, Union
 
 import h5py
+import jpype
+from qtpy.QtCore import QThread, QThreadPool
 
-from nplab.measurement.action import Action, Message, MessageType, Result, Status
+from nplab.measurement.action import Action, Message, MessageType, PathPart, Result, Status
 
 R = TypeVar("R")
 
@@ -12,13 +15,18 @@ class ActionQueue(Generic[R], ABC):
 
     def __init__(self):
         
-        self._actions  : List[Action[Union[R,None]]] = []
-        self._messages : List[Message]               = []
-        self._running  : bool                        = False
-        self._thread   : Thread                      = None
+        self._actions     : List[Action[Union[R,None]]] = []
+        self._messages    : List[Message]               = []
+        self._running     : bool                        = False
+        self._thread      : Thread                      = None
+        self._interrupted : bool                        = False
+        self._current     : Action                      = None
+        self._result      : Result                      = None
+        self._lock        : Lock                        = Lock()
 
         self._messageListeners : List[Callable[[Message], None]]      = []
         self._actionListeners  : List[Callable[[List[Action]], None]] = []
+        self._finishListeners  : List[Callable[[Result], None]]       = []
 
 
     @abstractmethod
@@ -26,14 +34,12 @@ class ActionQueue(Generic[R], ABC):
         pass
 
 
-    def run(self, data: R):
+    def _main(self, data: R):
+        
+        jpype.attachThreadToJVM()
+        self.message(Message(MessageType.INFO, "Queue started.", []))
 
-        if self._running:
-            return
-
-        self._running = True
-        self.message(Message(MessageType.INFO, "Queue started."))
-
+        # Prepare our data object for use
         data     = self.prepareData(data)
         errors   = []
         messages = []
@@ -43,6 +49,13 @@ class ActionQueue(Generic[R], ABC):
 
             for action in self._actions:
 
+                if self._interrupted:
+                    status = Status.INTERRUPTED
+                    break
+
+                self._current = action
+
+                # Attach a message listener just while we're running this action
                 listener = action.addMessageListener(self.message)
                 result   = action.run(data)
                 
@@ -51,6 +64,7 @@ class ActionQueue(Generic[R], ABC):
                 errors   += result.errors
                 messages += result.messages
 
+                # If the action was interrupted, then the whole queue should stop
                 if result.type == Status.INTERRUPTED:
                     status = Status.INTERRUPTED
                     break
@@ -58,18 +72,76 @@ class ActionQueue(Generic[R], ABC):
                 elif result.type == Status.ERROR:
                     status = Status.ERROR
 
-
-            return Result(status, errors, messages)
-
         finally:
+
+            self._result = Result(status, errors, messages)
             
-            self.message(Message(MessageType.INFO, "Queue finished (%s)." % status))
+            self.message(Message(MessageType.INFO, "Queue finished (%s)." % status.name, []))
             self._running = False
+
+            for listener in self._finishListeners:
+                listener(self._result)
+
+
+    def start(self, data: R):
+
+        with self._lock:
+
+            # If we're already running, ignore the call
+            if self._running:
+                return
+
+            self._running     = True
+            self._interrupted = False
+            self._result      = None
+            self._thread      = Thread(None, lambda: self._main(data))
             
+            for action in self._actions:
+                action.reset()
+
+            self._thread.start()
+
+
+    def awaitResult(self) -> Result:
+
+        with self._lock:
+            if not self._running:
+                return self._result
+        
+        self._thread.join()
+        return self._result
+        
+
+    def run(self, data: R) -> Result:
+
+        # If we're already running, ignore the call
+        with self._lock:
+            if self._running:
+                return
+
+        self.start(data)
+        return self.awaitResult()
+
+
+    def interrupt(self):
+
+        with self._lock:
+            if not self._running:
+                return
+
+        self._interrupted = True
+        self._current.interrupt()
+
 
     @property
     def actions(self) -> List[Action[Union[R,None]]]:
         return list(self._actions)
+
+
+    @property
+    def isRunning(self) -> bool:
+        with self._lock:
+            return self._running
 
     
     def notifyActionListeners(self):
@@ -86,8 +158,9 @@ class ActionQueue(Generic[R], ABC):
 
 
     def checkIsRunning(self):
-        if self._running:
-            raise Exception("Cannot modify an ActionQueue that is currently running.")
+        with self._lock:
+            if self._running:
+                raise Exception("Cannot modify an ActionQueue that is currently running.")
         
 
     def addAction(self, action: Action):
@@ -141,6 +214,20 @@ class ActionQueue(Generic[R], ABC):
 
         self.notifyActionListeners()
 
+
+    def addActionListener(self, listener: Callable[[List[Action]], None]) -> Callable[[List[Action]], None]:
+        self._actionListeners.append(listener)
+        return listener
+    
+
+    def addMessageListener(self, listener: Callable[[Message], None]) -> Callable[[Message], None]:
+        self._messageListeners.append(listener)
+        return listener
+
+    def addFinishListener(self, listener: Callable[[Result], None]) -> Callable[[Result], None]:
+        self._finishListeners.append(listener)
+        return listener
+
     
 class H5ActionQueue(ActionQueue[h5py.Group]):
 
@@ -170,8 +257,8 @@ class H5ActionQueue(ActionQueue[h5py.Group]):
         name    = self._namePattern % counter
 
         while name in data:
-            count += 1
-            name   = self._namePattern % counter
+            counter += 1
+            name     = self._namePattern % counter
 
         return data.create_group(name)
     

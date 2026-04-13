@@ -1,16 +1,21 @@
 from math import inf
+import os
+from threading import Lock
 from typing import Generic, List, Tuple, TypeVar, Callable, Optional
 import sys
+import typing
 
+from qtpy import uic
 from qtpy.QtWidgets import *
 from qtpy.QtCore    import Signal
 
-from nplab.measurement.action import Action, Message, PValue, Parameter, Status, Type
+from nplab.measurement.action import Action, Message, PValue, Parameter, Result, Status, Type
 
 import sys
 from PyQt5.QtCore import Qt, pyqtSignal
 
 from nplab.measurement.queue import ActionQueue
+import nplab.datafile as df
 
 
 A = TypeVar("A", bound=Action)
@@ -41,7 +46,6 @@ class Setup(Generic[A], QWidget):
         for parameter in action.getParameters():
             self.form.addRow(parameter.name, self.generateField(parameter))
             
-
 
         for instrument in action.getInstruments():
 
@@ -121,7 +125,6 @@ class Setup(Generic[A], QWidget):
                 widget.setValues(parameter.value)
                 self._callbacks.append(lambda: parameter.set(widget.getValues()))
 
-
         elif parameter.type == Type.TIME and tp is int:
             widget = TimeIntervalWidget(self)
             widget.setValue(parameter.value)
@@ -143,32 +146,154 @@ class Setup(Generic[A], QWidget):
         self.close()
     
 
-Q = TypeVar("Q", bound=ActionQueue)
+R = TypeVar("R")
+Q = TypeVar("Q", bound=ActionQueue[R])
 
 class ActionQueueSetup(Generic[Q], QWidget):
 
-    def __init__(self, queue: Q):
+    actionsChangedSignal = Signal(list)
+    messageSignal        = Signal(Message)
+    finishedSignal       = Signal(Result)
+    widgetSignal         = Signal(Action)
+
+    def __init__(self, queue: Q, classes: List[typing.Type[Action]], equipment: List, data: R):
 
         super().__init__()
-        self._queue = queue
-        self._vbox  = QVBoxLayout()
-        self.setLayout(self._vbox)
+
+        self._queue     = queue
+        self._classes   = classes
+        self._equipment = equipment
+        self._data      = data
+        self._tableLock = Lock()
+
+        self.actionList : QListWidget
+        self.addButton  : QToolButton
+        self.remButton  : QToolButton
+        self.upButton   : QToolButton
+        self.dnButton   : QToolButton
+        self.runButton  : QPushButton
+        self.messages   : QTableWidget
+
+        uic.loadUi(os.path.dirname(__file__) + "/resources/queue.ui", self)
+
         self.drawActions(queue.actions)
+
+        self.setupConnections()
+        self.setupTable()
+        self.setupMenu()
+
+    
+    def setupConnections(self):
+
+        self._queue.addActionListener(self.actionsChangedSignal.emit)
+        self._queue.addMessageListener(self.messageSignal.emit)
+        self._queue.addFinishListener(self.finishedSignal.emit)
+
+        self.runButton.clicked.connect(self.runClick)
+        self.actionsChangedSignal.connect(self.drawActions)
+        self.messageSignal.connect(self.addMessage)
+        self.finishedSignal.connect(self.runFinished)
+        self.actionList.itemDoubleClicked.connect(self.doubleClick)
+        self.widgetSignal.connect(self.doubleClickWidget)
+
+
+    def setupTable(self):
+
+        self.messages.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.messages.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.messages.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.messages.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+
+
+    def setupMenu(self):
+
+        menu = QMenu("Actions")
+
+        for actionType in self._classes:
+            ex   = actionType("")
+            item = menu.addAction(ex.name)
+            item.triggered.connect(lambda v, s=actionType: self.createAction(s))
+
+        self.addButton.setMenu(menu)
+
+
+    def createAction(self, clss: typing.Type[Action]):
+
+        text, ok = QInputDialog.getText(self, "Name", "Please enter a name for this action")
+
+        if not ok:
+            return None
+        
+        action = clss(text)
+        
+        self._queue.addAction(action)
 
 
     def drawActions(self, actions: List[Action]):
 
-        for i in reversed(range(self._vbox.count())): 
-            self._vbox.itemAt(i).widget().deleteLater()
+        for item in self.actionList.items(None):
+            widget = self.actionList.itemWidget(item)
+            self.actionList.removeItemWidget(item)
+            del widget
+
+        self.actionList.clear()
 
         for action in actions:
+            item   = QListWidgetItem()
             widget = ActionWidget(action)
-            self._vbox.addWidget(widget)
+            item.setSizeHint(widget.sizeHint())
+            self.actionList.addItem(item)
+            self.actionList.setItemWidget(item, widget)
+            
 
-        self._vbox.addSpacerItem(QSpacerItem(0, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding))
+    def doubleClick(self, item: QListWidgetItem):
 
+        widget = self.actionList.itemWidget(item)
+
+        if isinstance(widget, ActionWidget):
+            setup = widget.getSetupWidget(self._equipment)
+            setup.show()
+
+
+    def addMessage(self, message: Message):
+
+        with self._tableLock:
+
+            index = self.messages.rowCount()
+
+            self.messages.setRowCount(index + 1)
+            self.messages.setItem(index, 0, QTableWidgetItem(str(message.timestamp)))
+            self.messages.setItem(index, 1, QTableWidgetItem(message.pathString))
+            self.messages.setItem(index, 2, QTableWidgetItem(str(message.type.name)))
+            self.messages.setItem(index, 3, QTableWidgetItem(message.message))
+
+
+    def runClick(self):
+
+        if self._queue.isRunning:
+
+            self.runButton.setDisabled(True)
+            self.runButton.setStyleSheet("background: purple; color: white;")
+            self.runButton.setText("Interrupting...")
+            self._queue.interrupt()
+
+        else:
+
+            self.runButton.setDisabled(True)
+            self.runButton.setText("Starting...")
+            self._queue.start(self._data)
+            self.runButton.setText("Stop Queue")
+            self.runButton.setDisabled(False)
+            self.runButton.setStyleSheet("background: brown; color: white;")
+
+
+    def runFinished(self, result: Result):
+        self.runButton.setText("Run Queue")
+        self.runButton.setDisabled(False)
+        self.runButton.setStyleSheet("")
+    
         
-class ActionWidget(Generic[A], QGroupBox):
+class ActionWidget(Generic[A], QWidget):
 
     statusSignal  = Signal(Status)
     messageSignal = Signal(Message)
@@ -184,6 +309,7 @@ class ActionWidget(Generic[A], QGroupBox):
         self._title   = QLabel("%s (%s)" % (action.name, action.description))
         self._status  = QLabel(action.status.name)
         self._message = QLabel("")
+        self._setup   = None
 
         self._box.setFixedSize(25, 25)
         self._box.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed))
@@ -196,20 +322,34 @@ class ActionWidget(Generic[A], QGroupBox):
         self._vbox.addLayout(self._hbox)
         self._vbox.addWidget(self._message)
 
-        action.addStatusListener(self.statusSignal.emit)
-        action.addMessageListener(self.messageSignal.emit)
-
         self.setupConnections()
 
         self.setLayout(self._vbox)
         self.updateStatus(action.status)
-        self.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
-
+        self.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred))
+        self.setMinimumHeight(75)
     
+
+    def getSetupWidget(self, equipment = []) -> Setup:
+
+        if self._setup is None:
+            self._setup = Setup(self._action, equipment)
+
+        return self._setup
+    
+
     def setupConnections(self):
+
+        self._statusListener  = self._action.addStatusListener(self.statusSignal.emit)
+        self._messageListener = self._action.addMessageListener(self.messageSignal.emit)
 
         self.statusSignal.connect(self.updateStatus)
         self.messageSignal.connect(self.updateMessage)
+
+    def __del__(self):
+
+        self._action.removeStatusListener(self._statusListener)
+        self._action.removeMessageListener(self._messageListener)
 
     
     def updateStatus(self, status: Status):
@@ -218,6 +358,7 @@ class ActionWidget(Generic[A], QGroupBox):
 
         if status == Status.QUEUED:
             self._box.setStyleSheet("background: black;")
+            self._message.setText("")
         elif status == Status.RUNNING:
             self._box.setStyleSheet("background: orange;")
         elif status == Status.SUCCESS:

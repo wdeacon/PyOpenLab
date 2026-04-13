@@ -15,6 +15,7 @@ class Sweep(Action[R], Generic[R, D]):
 
         self._tag     = tag
         self._actions = actions
+        self._current = None
 
 
     def addAction(self, action: Action[R]):
@@ -68,7 +69,12 @@ class Sweep(Action[R], Generic[R, D]):
 
             for action in actions:
 
-                listener = action.addMessageListener(lambda msg: self.pass_message(msg.propagate(self, value, "%s = %s" % (self._tag, self.valueToString(value)))))
+                if self._interrupted:
+                    raise InterruptedException()
+
+                self._current = action
+
+                listener = action.addMessageListener(lambda msg: self.passMessage(msg.propagate(self, value, "%s = %s" % (self._tag, self.valueToString(value)))))
                 result   = action.run(preppedData)
 
                 action.removeMessageListener(listener)
@@ -82,6 +88,22 @@ class Sweep(Action[R], Generic[R, D]):
 
         if len(self._errors) > 0:
             raise Exception("Errors were encountered during the sweep.")
+
+
+    def interrupt(self):
+        
+        super().interrupt()
+
+        if self._current is not None:
+            self._current.interrupt()
+
+
+    def reset(self):
+
+        super().reset()
+
+        for action in self._actions:
+            action.reset()
 
 
     def finish(self, data: R = None):

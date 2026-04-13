@@ -90,7 +90,7 @@ class Instrument(Generic[I]):
         self._values[obj] = value
 
 
-    def __get__(self, obj, type=None) -> Union[I, Self]:
+    def __get__(self, obj, type=None) -> Union[I, None, Self]:
 
         if (obj is None):
             return self
@@ -99,6 +99,7 @@ class Instrument(Generic[I]):
             return self._values[obj]
         else:
             return None
+        
         
 class PathPart:
 
@@ -170,7 +171,6 @@ class IValue(Generic[I]):
         self._getter     = getter
         self._setter     = setter
 
-
         self.name     = instrument._name
         self.type     = instrument._type
         self.required = instrument._required
@@ -202,7 +202,6 @@ class Action(ABC, Generic[R]):
     '''Base class to represent individual actions.'''
 
     def __init__(self, name: str, description: str):
-        
         
         self.name        : str    = name
         self.description : str    = description
@@ -259,6 +258,15 @@ class Action(ABC, Generic[R]):
         prepared = self.prepareData(self.name, self.description, data)
 
         try:
+
+            missing = []
+            for ival in self.getInstruments():
+                if ival.required and ival.get() is None:
+                    missing.append(ival.name)
+
+            if len(missing) > 0:
+                raise Exception("Missing required instrument(s): %s" % ", ".join(missing))
+
             self.main(prepared)
 
             if self._interrupted:
@@ -307,10 +315,10 @@ class Action(ABC, Generic[R]):
     def message(self, type: MessageType, message: str):
 
         msg = Message(type, message, [PathPart(self)])
-        self.pass_message(msg)
+        self.passMessage(msg)
 
 
-    def pass_message(self, msg: Message):
+    def passMessage(self, msg: Message):
         for listener in self._messageListeners:
             listener(msg)
 
@@ -396,6 +404,12 @@ class Action(ABC, Generic[R]):
     def loadParametersFromJSON(self, data: str):
         import json
         self.loadParametersFromMap(json.loads(data))
+
+
+    def reset(self):
+        self.status = Status.QUEUED
+        self._errors.clear()
+        self._interrupted = False
         
 
     @abstractmethod
