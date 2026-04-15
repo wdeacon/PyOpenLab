@@ -9,7 +9,7 @@ from java.lang    import Short, Integer, Long, Double, String, Boolean
 
 from qtpy.QtCore import Qt
 from qtpy.QtGui import QIcon
-from qtpy.QtWidgets import QCheckBox, QComboBox, QErrorMessage, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QLineEdit, QPushButton, QScrollArea, QSpinBox, QVBoxLayout, QWidget
+from qtpy.QtWidgets import QCheckBox, QComboBox, QErrorMessage, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QLineEdit, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QVBoxLayout, QWidget
 
 from nplab.ui.widgets.jisa.widgets import ResultTableWidget, ScientificSpinBox
 
@@ -57,6 +57,7 @@ class JISAConfigPanel(QWidget, Generic[I]):
         self.scrollWidget.setContentsMargins(0,0,0,0)
         self.scrollLayout.setContentsMargins(0,0,0,0)
         self.scrollArea.setFrameShape(QFrame.NoFrame)
+        self.scrollArea.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Ignored))
         self.setupParameters()
         self.setupConnections()
 
@@ -87,16 +88,17 @@ class JISAConfigPanel(QWidget, Generic[I]):
             if widget is None:
                 continue
 
-            status = QPushButton()
-            status.setIcon(self.warningIcon)
+            status = QPushButton("!")
             status.setFixedSize(25, 25)
             status.setVisible(False)
+            status.setStyleSheet("background: brown; color: white;")
 
             widget.setContentsMargins(0, 0, 0, 0)
             hbox = QHBoxLayout()
             hbox.addWidget(widget, 1)
             setB = QPushButton("✓")
             setB.setFixedWidth(25)
+            hbox.addWidget(setB, 0, Qt.AlignTop)
             hbox.addWidget(status, 0, Qt.AlignTop)
 
             form.addRow(param.getName(), hbox)
@@ -106,8 +108,9 @@ class JISAConfigPanel(QWidget, Generic[I]):
             except:
                 pass
 
-            setB.clicked.connect(lambda v, getter=getter, setter=setter, param=param, status=status: self.applyParameter(getter, setter, param, status, True))
+            setB.clicked.connect(lambda v, getter=getter, setter=setter, param=param, status=status: self.applyParameter(getter, setter, param, status))
             self.params.append((widget, getter, setter, param, status))
+            
 
         for name, form in forms.items():
             box = QGroupBox(name)
@@ -262,7 +265,7 @@ class JISAConfigPanel(QWidget, Generic[I]):
             result = False
 
         for (w, g, s, p, st) in self.params:
-            self.applyParameter(g, s, p, st)
+            self.applyParameter(g, s, p, st, False, False)
 
         for panel in JISAConfigPanel.all:
             panel.refreshParameters()
@@ -271,12 +274,12 @@ class JISAConfigPanel(QWidget, Generic[I]):
             self.restore(self.instrument, result)
 
 
-    def applyParameter(self, getter: Callable, setter: Callable, param: Instrument.Parameter, status: QPushButton, refresh = False):
+    def applyParameter(self, getter: Callable, setter: Callable, param: Instrument.Parameter, status: QPushButton, refresh=True, prepare=True):
         '''Applies one single parameter, optionally can refresh all others afterwards if specified'''
 
         status.setVisible(False)
 
-        if self.prepare is not None:
+        if prepare and self.prepare is not None:
             result = self.prepare(self.instrument)
         else:
             result = False
@@ -292,10 +295,10 @@ class JISAConfigPanel(QWidget, Generic[I]):
             status.clicked.connect(lambda v, e=e: self.showException(e))
             status.setVisible(True)
 
-        if refresh:
-            self.refreshParameters()
+        for panel in JISAConfigPanel.all:
+            panel.refreshParameters()
 
-        if self.restore is not None:
+        if prepare and self.restore is not None:
             self.restore(self.instrument, result)
 
 

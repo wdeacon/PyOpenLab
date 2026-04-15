@@ -188,10 +188,10 @@ class CSConfigGUI(QWidget, Generic[S, C]):
 
                 # If the frame size has changed, then we need to recreate the buffer, otherwise we should reuse it
                 if self.buffer is None or len(self.buffer) != frame.size():
-                    self.buffer = frame.getARGBData()
+                    self.buffer = frame.getScaledARGBData()
                     self.arr    = np.array(self.buffer)
                 else:
-                    frame.readARGBData(self.buffer)
+                    frame.readScaledARGBData(self.buffer)
                     np.copyto(self.arr, self.buffer)
 
                 # Record dimensions incase we need to redraw before a new frame comes in

@@ -526,10 +526,10 @@ class FastCameraGUI(QWidget, Generic[C]):
 
                     for i in range(count - 1):
                         Util.sleep(delay)
-                        frames.append(queue.nextFrame(timeout))
+                        frames.append(queue.nextFrame(timeout) if timeout > 0 else queue.nextFrame())
                         self.progressSignal.emit(100.0 * ((i + 1) / count))
                     
-                    frames.append(queue.nextFrame(timeout))
+                    frames.append(queue.nextFrame(timeout) if timeout > 0 else queue.nextFrame())
                     self.progressSignal.emit(100.0)
 
                     queue.close()

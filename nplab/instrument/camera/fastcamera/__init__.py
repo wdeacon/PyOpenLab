@@ -29,12 +29,13 @@ class FastCamera(Camera, Generic[C]):
         self._parameters = list(camera.getAllParameters())
         super().__init__()
         
-        self.camera = NPAdapter(camera)
+        self.camera = camera
         self.buffer = None
         self.arr    = None
         self.pool   = QThreadPool()
+        self.queue  = camera.openFrameQueue(1)
 
-        self.camera.getCamera().addFrameListener(self.updateFrame)
+        self.camera.addFrameListener(self.updateFrame)
 
 
     def updateFrame(self, frame: Frame):
@@ -67,30 +68,46 @@ class FastCamera(Camera, Generic[C]):
             Util.sleep(10)
 
 
-    def raw_snapshot(self):
-        return True, np.array(self.camera.raw_snapshot())
+    def raw_snapshot(self) -> Tuple[bool, np.ndarray]:
+
+        frame: Frame = self.camera.getFrame()
+
+        height = frame.getHeight()
+        width  = frame.getWidth()
+        rgb    = np.empty((height, width, 3), dtype=np.uint8)
+        argb2d = np.array(frame.getARGBData()).view(np.uint8).reshape(height, width, 4)
+
+        rgb[..., 0] = argb2d[..., 2]
+        rgb[..., 1] = argb2d[..., 1]
+        rgb[..., 2] = argb2d[..., 0]
+
+        return True, rgb
 
     
-    def get_next_frame(self, timeout=60, discard_frames=0, assert_live_view=True, raw=True) -> np.array:
-        return np.array(self.camera.get_next_frame(timeout, discard_frames, assert_live_view, raw))
+    def get_next_frame(self, timeout=60, discard_frames=0, assert_live_view=True, raw=True) -> np.ndarray:
+        return self.raw_snapshot()[1]
     
 
     @NotifiedProperty
     def live_view(self) -> bool:
-        return self.camera.live_view()
+        return self.camera.isAcquiring()
     
 
     @live_view.setter
     def live_view(self, live: bool):
-        self.camera.live_view(live)
+        
+        if live:
+            self.camera.startAcquisition()
+        else:
+            self.camera.stopAcquisition()
 
 
     def exposure(self) -> float:
-        return self.camera.getCamera().getIntegrationTime()
+        return self.camera.getIntegrationTime()
 
 
     def setExposure(self, time: float):
-        self.camera.getCamera().setIntegrationTime(time)
+        self.camera.setIntegrationTime(time)
 
 
     exposure = property(exposure, setExposure)
@@ -104,7 +121,7 @@ class FastCamera(Camera, Generic[C]):
     gain = property(gain, setGain)
 
     def getCamera(self) -> C:
-        return self.camera.getCamera()
+        return self.camera
     
 
     def camera_parameter_names(self):
@@ -123,7 +140,7 @@ class FastCamera(Camera, Generic[C]):
 
 
     def get_qt_ui(self, control_only=False, parameters_only=False):
-        return FastCameraGUI(self.camera.getCamera(), self)    
+        return FastCameraGUI(self.camera, self)    
 
     def get_control_widget(self):
         return self.get_qt_ui()

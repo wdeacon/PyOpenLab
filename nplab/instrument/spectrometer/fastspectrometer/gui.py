@@ -410,10 +410,10 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
 
                     for i in range(count - 1):
                         Util.sleep(delay)
-                        spectra.append(queue.nextSpectrum(timeout))
+                        spectra.append(queue.nextSpectrum(timeout) if timeout > 0 else queue.nextSpectrum())
                         self.progressSignal.emit(100.0 * ((i + 1) / count))
 
-                    spectra.append(queue.nextSpectrum(timeout))
+                    spectra.append(queue.nextSpectrum(timeout) if timeout > 0 else queue.nextSpectrum())
                     self.progressSignal.emit(100.0)
 
                     queue.close()
