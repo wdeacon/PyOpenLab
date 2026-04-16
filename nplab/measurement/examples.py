@@ -103,6 +103,8 @@ class IVCurve(H5Action):
 
         for (i, voltage) in enumerate(self.voltages):
 
+            self.infoMessage("Sourcing %.02g V" % voltage)
+
             self.vsource.setVoltage(voltage)
 
             self.sleep(self.delay)
@@ -215,9 +217,11 @@ sweep.source   = k1234.getSMU(1)
 
 
 queue = H5ActionQueue()
-queue.addActions(spec, iv)
+queue.addActions(sweep)
 
 gui = ActionQueueSetup(queue, [TakeSpectra, IVCurve, RepeatSweep, VoltageSweep], [spec.spectrometer, spec.camera, k1234.getSMU(0)], File("test.h5", "w"))
 gui.show()
 
 app.exec()
+
+exit()

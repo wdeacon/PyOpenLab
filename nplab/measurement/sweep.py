@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Generic, List, TypeVar
+from typing import Callable, Generic, List, TypeVar
 from h5py import Group
 
 from nplab.measurement.action import Action, InterruptedException, MessageType, Result, Status
@@ -11,12 +11,21 @@ class Sweep(Action[R], Generic[R, D]):
 
     def __init__(self, name: str, tag: str, actions: List[Action] = []):
 
-        super().__init__(name, "")
+        super().__init__(name, tag)
 
         self._tag     = tag
         self._actions = actions
         self._current = None
 
+        self._listeners: List[Callable[[List[Action]], None]] = []
+
+
+    def addActionListener(self, listener: Callable[[List[Action]], None]) -> Callable[[List[Action]], None]:
+        self._listeners.append(listener)
+        return listener
+
+    def removeActionListener(self, listener: Callable[[List[Action]], None]):
+        self._listeners.remove(listener)
 
     def addAction(self, action: Action[R]):
         self._actions.append(action)
@@ -25,6 +34,8 @@ class Sweep(Action[R], Generic[R, D]):
     def removeAction(self, action: Action[R]):
         self._actions.remove(action)
 
+    def getActions(self) -> List[Action]:
+        return self._actions.copy()
     
     @abstractmethod
     def generate(self, value: D, actions: list) -> list:
@@ -64,6 +75,9 @@ class Sweep(Action[R], Generic[R, D]):
 
             actions     = self.generate(value, self._actions)
             preppedData = self.prepareDataForIteration(self._tag, value, data)
+
+            for listener in self._listeners:
+                listener(actions)
 
             self.message(MessageType.INFO, "%s = %s." % (self._tag, self.valueToString(value)))
 

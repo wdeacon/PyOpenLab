@@ -34,6 +34,11 @@ class ActionQueue(Generic[R], ABC):
         pass
 
 
+    @abstractmethod
+    def finaliseData(self, data: R, result: Result):
+        pass
+
+
     def _main(self, data: R):
         
         jpype.attachThreadToJVM()
@@ -74,7 +79,9 @@ class ActionQueue(Generic[R], ABC):
 
         finally:
 
-            self._result = Result(status, errors, messages)
+            self._result = Result(status, errors, messages, data)
+
+            self.finaliseData(data, self._result)
             
             self.message(Message(MessageType.INFO, "Queue finished (%s)." % status.name, []))
             self._running = False
@@ -262,3 +269,6 @@ class H5ActionQueue(ActionQueue[h5py.Group]):
 
         return data.create_group(name)
     
+    def finaliseData(self, data, result):
+        from datetime import datetime
+        data.create_dataset("Messages", data=[[datetime.fromtimestamp(m.timestamp).strftime(r'%Y-%m-%d %H:%M:%S'), m.pathString, m.type.name, m.message] for m in result.messages])

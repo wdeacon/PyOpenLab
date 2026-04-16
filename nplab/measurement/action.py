@@ -318,6 +318,18 @@ class Action(ABC, Generic[R]):
         self.passMessage(msg)
 
 
+    def infoMessage(self, message: str):
+        self.message(MessageType.INFO, message)
+
+
+    def warningMessage(self, message: str):
+        self.message(MessageType.WARNING, message)
+
+
+    def errorMEssage(self, message: str):
+        self.message(MessageType.ERROR, message)
+
+
     def passMessage(self, msg: Message):
         for listener in self._messageListeners:
             listener(msg)

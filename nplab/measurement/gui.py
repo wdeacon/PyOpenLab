@@ -1,3 +1,4 @@
+from datetime import datetime
 from math import inf
 import os
 from threading import Lock
@@ -16,6 +17,7 @@ from PyQt5.QtCore import Qt, pyqtSignal
 
 from nplab.measurement.queue import ActionQueue
 import nplab.datafile as df
+from nplab.measurement.sweep import Sweep
 
 
 A = TypeVar("A", bound=Action)
@@ -149,7 +151,7 @@ class Setup(Generic[A], QWidget):
 R = TypeVar("R")
 Q = TypeVar("Q", bound=ActionQueue[R])
 
-class ActionQueueSetup(Generic[Q], QWidget):
+class ActionQueueSetup(Generic[Q, R], QWidget):
 
     actionsChangedSignal = Signal(list)
     messageSignal        = Signal(Message)
@@ -194,7 +196,7 @@ class ActionQueueSetup(Generic[Q], QWidget):
         self.messageSignal.connect(self.addMessage)
         self.finishedSignal.connect(self.runFinished)
         self.actionList.itemDoubleClicked.connect(self.doubleClick)
-        self.widgetSignal.connect(self.doubleClickWidget)
+        self.widgetSignal.connect(self.doubleClick)
 
 
     def setupTable(self):
@@ -262,7 +264,7 @@ class ActionQueueSetup(Generic[Q], QWidget):
             index = self.messages.rowCount()
 
             self.messages.setRowCount(index + 1)
-            self.messages.setItem(index, 0, QTableWidgetItem(str(message.timestamp)))
+            self.messages.setItem(index, 0, QTableWidgetItem(datetime.fromtimestamp(message.timestamp).strftime(r'%Y-%m-%d %H:%M:%S')))
             self.messages.setItem(index, 1, QTableWidgetItem(message.pathString))
             self.messages.setItem(index, 2, QTableWidgetItem(str(message.type.name)))
             self.messages.setItem(index, 3, QTableWidgetItem(message.message))
@@ -291,12 +293,13 @@ class ActionQueueSetup(Generic[Q], QWidget):
         self.runButton.setText("Run Queue")
         self.runButton.setDisabled(False)
         self.runButton.setStyleSheet("")
-    
-        
+
+
 class ActionWidget(Generic[A], QWidget):
 
     statusSignal  = Signal(Status)
     messageSignal = Signal(Message)
+    actionSignal  = Signal(list)
 
     def __init__(self, action: A):
 
@@ -328,6 +331,31 @@ class ActionWidget(Generic[A], QWidget):
         self.updateStatus(action.status)
         self.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred))
         self.setMinimumHeight(75)
+
+        if isinstance(action, Sweep):
+
+            line = QFrame()
+            line.setFrameShape(QFrame.Shape.HLine)
+            self._vbox.addWidget(line)
+
+            for subAction in action.getActions():
+                widget = ActionWidget(subAction)
+                label  = QLabel()
+                label.setMinimumWidth(15)
+                label.setStyleSheet("background: gray;")
+                row = QHBoxLayout()
+                row.addWidget(label)
+                row.addWidget(widget)
+                row.setContentsMargins(0,0,0,0)
+                widget.setContentsMargins(0,0,0,0)
+                widget.layout().setContentsMargins(0,0,0,0)
+                rowW = QWidget()
+                rowW.setLayout(row)
+                self._vbox.addWidget(rowW)
+                line = QFrame()
+                line.setFrameShape(QFrame.Shape.HLine)
+                self._vbox.addWidget(line)
+
     
 
     def getSetupWidget(self, equipment = []) -> Setup:
@@ -346,6 +374,7 @@ class ActionWidget(Generic[A], QWidget):
         self.statusSignal.connect(self.updateStatus)
         self.messageSignal.connect(self.updateMessage)
 
+
     def __del__(self):
 
         self._action.removeStatusListener(self._statusListener)
@@ -357,7 +386,7 @@ class ActionWidget(Generic[A], QWidget):
         self._status.setText(status.name)
 
         if status == Status.QUEUED:
-            self._box.setStyleSheet("background: black;")
+            self._box.setStyleSheet("background: gray;")
             self._message.setText("")
         elif status == Status.RUNNING:
             self._box.setStyleSheet("background: orange;")
@@ -370,7 +399,9 @@ class ActionWidget(Generic[A], QWidget):
 
 
     def updateMessage(self, message: Message):
-        self._message.setText(message.message)
+
+        if message.path[-1].part == self._action:
+            self._message.setText(message.message)
 
 
 T = TypeVar("T")
