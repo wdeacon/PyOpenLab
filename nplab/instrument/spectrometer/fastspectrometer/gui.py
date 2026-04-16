@@ -95,7 +95,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.bufferLock   = Lock()
         self.plot         = pg.plot(title="Spectrum", left="Counts", bottom="Wavelength [m]")
         self.plotData     = self.plot.plotItem.plot([],[])
-        self.configPanel  = JISAConfigPanel(self.spectrometer, self.prepareSpectrometer, self.restoreSpectrometer)
+        self.configPanel  = JISAConfigPanel(self.spectrometer)
 
         # Add custom GUI elements to the overall layout
         self.configBox.layout().addWidget(self.configPanel)
@@ -118,20 +118,6 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         # Connect listeners
         self.spectrometer.addSpectrumListener(self.spectrumListener)
         self.spectrometer.addAcquisitionListener(lambda a: self.acquisitionSignal.emit(bool(a)))
-
-    def prepareSpectrometer(self, spec: S) -> bool:
-
-        if spec.isAcquiring():
-            spec.stopAcquisition()
-            return True
-        else:
-            return False
-        
-
-    def restoreSpectrometer(self, spec: S, actioned: bool):
-
-        if actioned:
-            spec.startAcquisition()
 
 
     def setupStatusMonitoring(self):

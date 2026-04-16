@@ -20,18 +20,16 @@ class JISAConfigPanel(QWidget, Generic[I]):
     warningIcon = QIcon.fromTheme("dialog-warning")
     all         = []
 
-    def __init__(self, instrument: I, prepare: Callable[[I], bool] = None, restore: Callable[[I, bool], None] = None):
+    def __init__(self, instrument: I):
 
         super().__init__()
         
         self.instrument = instrument
-        self.prepare    = prepare
-        self.restore    = restore
         self.params     = []
 
         self.scrollArea    = QScrollArea()
         self.buttons       = QHBoxLayout()
-        self.applyButton   = QPushButton("Apply")
+        self.applyButton   = QPushButton("Apply All")
         self.refreshButton = QPushButton("Refresh")
         self.errorMessage  = QErrorMessage()
         self.scrollWidget  = QWidget()
@@ -259,10 +257,7 @@ class JISAConfigPanel(QWidget, Generic[I]):
     def applyParameters(self):
         '''Applies all configuration parameters, then updates their displayed values'''
 
-        if self.prepare is not None:
-            result = self.prepare(self.instrument)
-        else:
-            result = False
+        result = self.instrument.beforeApplyParameters()
 
         for (w, g, s, p, st) in self.params:
             self.applyParameter(g, s, p, st, False, False)
@@ -270,8 +265,7 @@ class JISAConfigPanel(QWidget, Generic[I]):
         for panel in JISAConfigPanel.all:
             panel.refreshParameters()
 
-        if self.restore is not None:
-            self.restore(self.instrument, result)
+        self.instrument.afterApplyParameters(result)
 
 
     def applyParameter(self, getter: Callable, setter: Callable, param: Instrument.Parameter, status: QPushButton, refresh=True, prepare=True):
@@ -279,8 +273,8 @@ class JISAConfigPanel(QWidget, Generic[I]):
 
         status.setVisible(False)
 
-        if prepare and self.prepare is not None:
-            result = self.prepare(self.instrument)
+        if prepare:
+            result = self.instrument.beforeApplyParameters()
         else:
             result = False
 
@@ -298,8 +292,8 @@ class JISAConfigPanel(QWidget, Generic[I]):
         for panel in JISAConfigPanel.all:
             panel.refreshParameters()
 
-        if prepare and self.restore is not None:
-            self.restore(self.instrument, result)
+        if prepare:
+            self.instrument.afterApplyParameters(result)
 
 
     def showException(self, e: Exception):

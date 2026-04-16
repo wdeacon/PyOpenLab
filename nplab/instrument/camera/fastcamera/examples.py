@@ -13,6 +13,8 @@ from nplab.instrument.spectrometer.fastspectrometer.csconfig import CSConfigGUI
 from nplab.instrument.stage import DummyStage
 from nplab.utils.gui_generator import GuiGenerator
 
+from java.lang import Throwable, Exception as JException
+
 try:
 
     app      = QApplication([])
@@ -21,7 +23,7 @@ try:
     fastCam  = FastCamera(cam)
     cwl      = CameraWithLocation(fastCam, DummyStage())
     fastSpec = FastSpectrometer(spec)
-    lab      = GuiGenerator({"cam": fastCam, "cwl": cwl}, dock_settings_path="/home/william/settings.npy")
+    lab      = GuiGenerator({"spec": fastSpec}, dock_settings_path="/home/william/settings.npy")
 
     lab.show()
     app.exec()
@@ -29,5 +31,9 @@ try:
 except Exception as e:
     del app
     from jisa.gui import GUI
-    GUI.showException(e)
+
+    if isinstance(e, Throwable):
+        GUI.showException(e)
+    else:
+        GUI.showException(JException(str(type(e)) + ": " + str(e)))
 

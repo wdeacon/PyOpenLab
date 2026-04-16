@@ -68,7 +68,7 @@ class CSConfigGUI(QWidget, Generic[S, C]):
         self.cameraLock     = Lock()
         self.cameraDrawLock = Lock()
         self.spectrumLock   = Lock()
-        self.configPanel    = JISAConfigPanel(self.camera, self.prepareCamera, self.restoreCamera)
+        self.configPanel    = JISAConfigPanel(self.camera)
         self.plot           = pg.plot(left="Counts")
         self.plotData       = self.plot.plotItem.plot([], [])
         self.table          = ResultTableWidget()
@@ -128,21 +128,6 @@ class CSConfigGUI(QWidget, Generic[S, C]):
             self.spectrometer.stopAcquisition()
         else:
             self.spectrometer.startAcquisition()
-
-
-    def prepareCamera(self, camera: C) -> bool:
-
-        if camera.isAcquiring():
-            camera.stopAcquisition()
-            return True
-        else:
-            return False
-        
-
-    def restoreCamera(self, camera: C, result: bool):
-
-        if result:
-            camera.startAcquisition()
 
 
     def setConverter(self):

@@ -94,6 +94,7 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.delayLabel          : QLabel
         self.keepRatio           : QPushButton
         self.progressBar         : QProgressBar
+        self.normaliseButton     : QPushButton
          
         # Load UI from file
         uic.loadUi((os.path.dirname(__file__) + '/resources/fcgui.ui'), self)
@@ -103,7 +104,7 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.errorMessage = QErrorMessage()
         self.bufferLock   = Lock()
         self.drawLock     = Lock()
-        self.configPanel  = JISAConfigPanel(self.camera, self.prepareCamera, self.restoreCamera)
+        self.configPanel  = JISAConfigPanel(self.camera)
 
         self.configBox.layout().addWidget(self.configPanel)
         self.progressBar.setVisible(False)
@@ -114,21 +115,6 @@ class FastCameraGUI(QWidget, Generic[C]):
 
         self.camera.addFrameListener(self.frameListener)
         self.camera.addAcquisitionListener(lambda a: self.acquisitionSignal.emit(bool(a)))
-
-
-    def prepareCamera(self, camera: C) -> bool:
-
-        if camera.isAcquiring():
-            camera.stopAcquisition()
-            return True
-        else:
-            return False
-        
-
-    def restoreCamera(self, camera: C, result: bool):
-
-        if result:
-            camera.startAcquisition()
 
 
     def setupStatusMonitoring(self):
@@ -209,10 +195,12 @@ class FastCameraGUI(QWidget, Generic[C]):
             self.writingH5.setVisible(False)
             _reenable()
 
+
         def _doneGIF():
             self.writingGIF.setVisible(False)
             _reenable()
         
+
         def _checkDelete():
 
             checked = False
@@ -404,6 +392,7 @@ class FastCameraGUI(QWidget, Generic[C]):
                             i += 1
 
                     finally:
+                        reader.close()
                         self.h5Signal.emit()
 
 
@@ -611,10 +600,10 @@ class FastCameraGUI(QWidget, Generic[C]):
 
                 # If the frame size has changed, then we need to recreate the buffer, otherwise we should reuse it
                 if self.buffer is None or len(self.buffer) != frame.size():
-                    self.buffer = frame.getARGBData()
+                    self.buffer = frame.getScaledARGBData() if self.normaliseButton.isChecked() else frame.getARGBData()
                     self.arr    = np.array(self.buffer)
                 else:
-                    frame.readARGBData(self.buffer)
+                    frame.readScaledARGBData(self.buffer) if self.normaliseButton.isChecked() else frame.readARGBData(self.buffer)
                     np.copyto(self.arr, self.buffer)
 
                 # Record dimensions incase we need to redraw before a new frame comes in
@@ -740,11 +729,13 @@ class FastCameraGUI(QWidget, Generic[C]):
         name = pattern % counter
 
         while name in group:
+
             counter += 1
             name     = pattern % counter
 
 
         if isinstance(frame, (Frame.ShortFrame, Frame.IntFrame, Frame.LongFrame)):
+
             ds = group.create_dataset(name, data=np.array(frame.data()).reshape(frame.getHeight(), frame.getWidth()))
 
         elif isinstance(frame, U16RGBFrame):
@@ -774,8 +765,10 @@ class FastCameraGUI(QWidget, Generic[C]):
     def writeAttributes(self, ds: h5py.HLObject, data: Union[Dict[str, object], Frame]):
 
         if isinstance(data, Frame):
+
             ds.attrs["Timestamp"] = data.getTimestamp()
             data = data.getAttributes()
+
 
         for key, value in data.items():
             
@@ -801,8 +794,6 @@ class FastCameraGUI(QWidget, Generic[C]):
 
             else:
                 ds.attrs[key] = str(value)
-
-
 
 
     def savePNGs(self, frames):
@@ -857,7 +848,7 @@ class FastCameraPreviewGUI(QWidget, Generic[C]):
         self.vbox.addWidget(self.cameraImage)
         self.vbox.addWidget(self.keepRatio)
 
-        self.camera.addFrameListener(self.drawFrame)
+        self.camera.addFrameListener(self.frameListener)
 
         self.drawSignal.connect(self.drawFrame)
 
@@ -867,11 +858,7 @@ class FastCameraPreviewGUI(QWidget, Generic[C]):
         return super().resizeEvent(a0)
     
 
-    def drawFrame(self, frame: Frame):
-
-        # if self.drawLock.locked():
-        #     Util.sleep(10)
-        #     return
+    def frameListener(self, frame: Frame):
 
         try:
 

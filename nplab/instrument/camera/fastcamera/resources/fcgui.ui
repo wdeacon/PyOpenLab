@@ -742,17 +742,31 @@
        </widget>
       </item>
       <item>
-       <widget class="QPushButton" name="keepRatio">
-        <property name="text">
-         <string>Keep Aspect Ratio</string>
-        </property>
-        <property name="checkable">
-         <bool>true</bool>
-        </property>
-        <property name="checked">
-         <bool>true</bool>
-        </property>
-       </widget>
+       <layout class="QHBoxLayout" name="horizontalLayout_4">
+        <item>
+         <widget class="QPushButton" name="keepRatio">
+          <property name="text">
+           <string>Keep Aspect Ratio</string>
+          </property>
+          <property name="checkable">
+           <bool>true</bool>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="normaliseButton">
+          <property name="text">
+           <string>Normalise Image</string>
+          </property>
+          <property name="checkable">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
      </layout>
     </widget>
