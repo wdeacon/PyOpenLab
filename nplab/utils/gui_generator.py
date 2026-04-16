@@ -1,3 +1,7 @@
+from nplab.instrument.camera.fastcamera import FastCamera
+from nplab.instrument.spectrometer.fastspectrometer import FastSpectrometer
+from nplab.measurement.gui import QueueInstrument
+from nplab.measurement.actionqueue import H5ActionQueue
 from nplab.utils.gui import QtWidgets, uic, QtCore, get_qt_app
 from nplab.ui.ui_tools import UiTools
 import nplab.datafile as df
@@ -25,7 +29,7 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
 
     def __init__(self, instrument_dict, parent=None, dock_settings_path=None,
                  scripts_path=None, working_directory=None, file_path=None,
-                 terminal=False, dark=False):  
+                 terminal=False, dark=False, actions=[]):  
         """Args:
             instrument_dict(dict) :     This is a dictionary containing the
                                         instruments objects where the key is the 
@@ -49,6 +53,7 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
         super(GuiGenerator, self).__init__(parent)
         self._logger = LOGGER
         self.instr_dict = instrument_dict
+
         if working_directory is None:
             self.working_directory = os.path.join(os.getcwd())
         else:
@@ -65,6 +70,30 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
         if dark:
             app = get_qt_app()
             app.setStyleSheet(qdarkstyle.load_stylesheet())
+
+
+        keys = list(self.instr_dict.keys())
+
+        for instr in keys:
+
+            i = self.instr_dict[instr]
+
+            if str(type(i)).startswith("<java class"):
+
+                import pyjisa.autoload
+                from jisa.devices.camera import Camera
+                from jisa.devices.spectrometer import Spectrometer
+
+                if isinstance(i, Camera):
+                    self.instr_dict["fast_" + instr] = FastCamera(i)
+                elif isinstance(i, Spectrometer):
+                    self.instr_dict["fast_" + instr] = FastSpectrometer(i)
+
+        if len(actions) > 0:
+            queue = H5ActionQueue()
+            qinst = QueueInstrument(queue, actions, self.instr_dict.values(), self.data_file)
+            self.instr_dict["Action Queue"] = qinst
+
         self.instr_dict["HDF5"] = self.data_file
         self.setDockNestingEnabled(1)
 

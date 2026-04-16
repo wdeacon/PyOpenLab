@@ -6,16 +6,19 @@ from typing import Generic, List, Tuple, TypeVar, Callable, Optional
 import sys
 import typing
 
+import numpy as np
 from qtpy import uic
 from qtpy.QtWidgets import *
 from qtpy.QtCore    import Signal
 
+from nplab.instrument import Instrument
+from nplab.instrument.camera.fastcamera.widgets import ScientificSpinBox
 from nplab.measurement.action import Action, Message, PValue, Parameter, Result, Status, Type
 
 import sys
 from PyQt5.QtCore import Qt, pyqtSignal
 
-from nplab.measurement.queue import ActionQueue
+from nplab.measurement.actionqueue import ActionQueue
 import nplab.datafile as df
 from nplab.measurement.sweep import Sweep
 
@@ -44,15 +47,12 @@ class Setup(Generic[A], QWidget):
         self.vbox.addLayout(self.hbox)
 
         self.setLayout(self.vbox)
-
-        for parameter in action.getParameters():
-            self.form.addRow(parameter.name, self.generateField(parameter))
             
 
         for instrument in action.getInstruments():
 
             names    = []
-            filtered = [e for e in equipment if isinstance(e, instrument.type)]
+            filtered = [None] + [e for e in equipment if isinstance(e, instrument.type)]
 
             for eq in filtered:
 
@@ -73,8 +73,14 @@ class Setup(Generic[A], QWidget):
                 widget.setCurrentIndex(filtered.index(instrument.value))
 
             self.form.addRow(instrument.name, widget)
-            self._callbacks.append(lambda: instrument.set(filtered[widget.currentIndex()]))
+            self._callbacks.append(lambda i=instrument, f=filtered, w=widget: i.set(f[w.currentIndex()]))
 
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        self.form.addRow("", line)
+
+        for parameter in action.getParameters():
+            self.form.addRow(parameter.name, self.generateField(parameter))
         
         self.okBtn.clicked.connect(self.okay)
         self.cnBtn.clicked.connect(self.close)
@@ -83,59 +89,64 @@ class Setup(Generic[A], QWidget):
     def generateField(self, parameter: PValue[T]) -> QWidget:
 
         widget = None
-        tp     = type(parameter.value)
+        val    = parameter.value
 
         # We need to determine what type of field to create based on the details in the supplied parameter
         if parameter.type == Type.AUTO:
 
-            if tp is float:
+            if isinstance(val, float):
                 widget = QDoubleSpinBox()
-                widget.setValue(parameter.value)
+                widget.setValue(val)
                 widget.setMinimum(parameter.range[0] if parameter.range[0] is not None else -inf)
                 widget.setMaximum(parameter.range[1] if parameter.range[1] is not None else +inf)
                 self._callbacks.append(lambda: parameter.set(widget.value()))
 
-            elif tp is int:
+            elif isinstance(val, int):
                 widget = QSpinBox()
-                widget.setValue(parameter.value)
+                widget.setValue(val)
                 widget.setMinimum(parameter.range[0] if parameter.range[0] is not None else -2147483648)
                 widget.setMaximum(parameter.range[1] if parameter.range[1] is not None else +2147483647)
                 self._callbacks.append(lambda: parameter.set(widget.value()))
 
-            elif tp is bool:
+            elif isinstance(val, bool):
                 widget = QCheckBox()
-                widget.setChecked(parameter.value)
+                widget.setChecked(val)
                 self._callbacks.append(lambda: parameter.set(widget.isChecked()))
 
-            elif tp is str:
+            elif isinstance(val, str):
                 widget = QLineEdit()
-                widget.setText(parameter.value)
+                widget.setText(val)
                 self._callbacks.append(lambda: parameter.set(widget.text()))
 
-            elif tp is list and type(parameter.value[0]) is float:
+            elif isinstance(val, (list, np.ndarray)) and isinstance(val[0], float):
                 widget = ListWidget[float](lambda v : str(v), QInputDialog.getDouble, 0.0)
-                widget.setValues(parameter.value)
+                widget.setValues(val)
                 self._callbacks.append(lambda: parameter.set(widget.getValues()))
 
-            elif tp is list and type(parameter.value[0]) is int:
+            elif isinstance(val, (list, np.ndarray)) and isinstance(val[0], int):
                 widget = ListWidget[int](lambda v : str(v), QInputDialog.getInt, 0)
-                widget.setValues(parameter.value)
+                widget.setValues(val)
                 self._callbacks.append(lambda: parameter.set(widget.getValues()))
 
-            elif tp is list and type(parameter.value[0]) is str:
+            elif isinstance(val, (list, np.ndarray)) and isinstance(val[0], str):
                 widget = ListWidget[str](lambda v : v, QInputDialog.getText, "")
-                widget.setValues(parameter.value)
+                widget.setValues(val)
                 self._callbacks.append(lambda: parameter.set(widget.getValues()))
 
-        elif parameter.type == Type.TIME and tp is int:
+        elif parameter.type == Type.TIME and isinstance(val, int):
             widget = TimeIntervalWidget(self)
-            widget.setValue(parameter.value)
+            widget.setValue(val)
             self._callbacks.append(lambda: parameter.set(widget.value()))
 
-        elif parameter.type == Type.TIME and tp is float:
+        elif parameter.type == Type.TIME and isinstance(val, float):
             widget = TimeIntervalWidget(self)
-            widget.setValue(int(parameter.value * 1e3))
+            widget.setValue(int(val * 1e3))
             self._callbacks.append(lambda: parameter.set(float(widget.value()) / 1e3))
+
+        elif parameter.type == Type.SCIENTIFIC and isinstance(val, float):
+            widget = ScientificSpinBox()
+            widget.setValue(val)
+            self._callbacks.append(lambda: parameter.set(widget.value()))
 
         return widget
     
@@ -197,6 +208,7 @@ class ActionQueueSetup(Generic[Q, R], QWidget):
         self.finishedSignal.connect(self.runFinished)
         self.actionList.itemDoubleClicked.connect(self.doubleClick)
         self.widgetSignal.connect(self.doubleClick)
+        self.remButton.clicked.connect(self.removeSelected)
 
 
     def setupTable(self):
@@ -229,6 +241,14 @@ class ActionQueueSetup(Generic[Q, R], QWidget):
         action = clss(text)
         
         self._queue.addAction(action)
+
+    def removeSelected(self):
+
+        widget = self.actionList.itemWidget(self.actionList.currentItem())
+
+        if isinstance(widget, ActionWidget):
+            action = widget.getAction()
+            self._queue.removeAction(action)
 
 
     def drawActions(self, actions: List[Action]):
@@ -330,7 +350,6 @@ class ActionWidget(Generic[A], QWidget):
         self.setLayout(self._vbox)
         self.updateStatus(action.status)
         self.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred))
-        self.setMinimumHeight(75)
 
         if isinstance(action, Sweep):
 
@@ -356,6 +375,8 @@ class ActionWidget(Generic[A], QWidget):
                 line.setFrameShape(QFrame.Shape.HLine)
                 self._vbox.addWidget(line)
 
+    def getAction(self) -> A:
+        return self._action
     
 
     def getSetupWidget(self, equipment = []) -> Setup:
@@ -607,3 +628,17 @@ class TimeIntervalWidget(QWidget):
         self.minutes.setValue(minutes)
         self.seconds.setValue(seconds)
         self.milliseconds.setValue(milliseconds)
+
+
+class QueueInstrument(Instrument):
+
+    def __init__(self, queue: ActionQueue, actions = [], equipment = [], data = None):
+        super().__init__()
+        
+        self.queue     = queue
+        self.actions   = actions
+        self.equipment = equipment
+        self.data      = data
+
+    def get_qt_ui(self):
+        return ActionQueueSetup(self.queue, self.actions, self.equipment, self.data)

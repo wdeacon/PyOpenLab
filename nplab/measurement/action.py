@@ -253,13 +253,14 @@ class Action(ABC, Generic[R]):
         listener = self.addMessageListener(lambda message: messages.append(message))
 
         self.status = Status.RUNNING
-        self.message(MessageType.INFO, "Started.")
+        self.infoMessage("Started.")
 
         prepared = self.prepareData(self.name, self.description, data)
 
         try:
 
             missing = []
+            
             for ival in self.getInstruments():
                 if ival.required and ival.get() is None:
                     missing.append(ival.name)
@@ -276,19 +277,24 @@ class Action(ABC, Generic[R]):
 
         except InterruptedException as e:
             self.status = Status.INTERRUPTED
-            self.message(MessageType.WARNING, "Interrupted.")
+            self.warningMessage("Interrupted.")
             self.interrupted(prepared)
 
         except Exception as e:
             self.status = Status.ERROR
             self._errors.append(e)
-            self.message(MessageType.ERROR, str(e))
+            self.errorMessage(str(e))
             self.error(self._errors, prepared)
 
         finally:
-            self.finish(prepared)
-            self.message(MessageType.INFO, "Finished.")
-            self.removeMessageListener(listener)
+
+            try:
+                self.finish(prepared)
+            except Exception as e:
+                self.errorMessage("Finisher failed: " + str(e))
+            finally:
+                self.infoMessage("Finished.")
+                self.removeMessageListener(listener)
 
 
         return Result(self.status, self._errors, messages, prepared)
@@ -326,7 +332,7 @@ class Action(ABC, Generic[R]):
         self.message(MessageType.WARNING, message)
 
 
-    def errorMEssage(self, message: str):
+    def errorMessage(self, message: str):
         self.message(MessageType.ERROR, message)
 
 

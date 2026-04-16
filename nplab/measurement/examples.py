@@ -10,7 +10,7 @@ from nplab.measurement.action import *
 from h5py import Group, File
 
 from nplab.measurement.gui import ActionQueueSetup, Setup
-from nplab.measurement.queue import H5ActionQueue
+from nplab.measurement.actionqueue import H5ActionQueue
 from nplab.measurement.sweep import H5Sweep
 
 from jisa.devices.spectrometer import Spectrometer, FakeSpectrometer
@@ -18,6 +18,8 @@ from jisa.devices.camera       import Camera, FakeCamera
 from jisa.devices.meter        import IMeter, TMeter
 from jisa.devices.source       import VSource
 from jisa.devices.smu          import K1234
+
+from nplab.utils.gui_generator import GuiGenerator
 
 
 class TakeSpectra(H5Action):
@@ -91,7 +93,6 @@ class IVCurve(H5Action):
 
         self.plot.getPlotItem().clear()
             
-
         self.vsource.setVoltage(self.voltages[0])
         self.vsource.turnOn()
         self.imeter.turnOn()
@@ -215,13 +216,7 @@ repeat.repeats = 4
 sweep.voltages = [0.0, 0.5, 1.0, 1.5, 2.0]
 sweep.source   = k1234.getSMU(1)
 
-
-queue = H5ActionQueue()
-queue.addActions(sweep)
-
-gui = ActionQueueSetup(queue, [TakeSpectra, IVCurve, RepeatSweep, VoltageSweep], [spec.spectrometer, spec.camera, k1234.getSMU(0)], File("test.h5", "w"))
+gui = GuiGenerator({"spec": spec.spectrometer, "cam": spec.camera, "smu": k1234.getSMU(0)}, actions=[TakeSpectra, IVCurve, RepeatSweep, VoltageSweep])
 gui.show()
 
 app.exec()
-
-exit()
