@@ -90,9 +90,10 @@ class ActionWidget(Generic[A], QWidget):
 
             for sub in actions:
                 widget = ActionWidget(sub)
+                widget.layout().setContentsMargins(0,0,0,0)
                 self._subActions.addWidget(widget)
 
-            self.update()
+
             self.resized.emit()
             
 

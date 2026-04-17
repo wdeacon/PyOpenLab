@@ -94,7 +94,7 @@ class ActionSetupGUI(Generic[A], QDialog):
             if (instrument.value in filtered):
                 widget.setCurrentIndex(filtered.index(instrument.value))
 
-            self.form.addRow(instrument.name, widget)
+            self.form.addRow(instrument.name + ("\n(Required)" if instrument.required else "\n(Optional)"), widget)
             self.callbacks.append(lambda i=instrument, f=filtered, w=widget: i.set(f[w.currentIndex()]))
 
 
@@ -380,6 +380,7 @@ class ActionQueueGUI(Generic[Q, R], QWidget):
             self.actionList.setItemWidget(item, widget)
 
             def _resized(i=item, w=widget):
+                QApplication.processEvents()
                 i.setSizeHint(w.sizeHint())
 
             widget.resized.connect(_resized)
@@ -420,7 +421,6 @@ class ActionQueueGUI(Generic[Q, R], QWidget):
             
             self.nameRow.setDisabled(True)
             self.actionList.selectionModel().clear()
-            self.actionList.setDisabled(True)
             self.buttonBar.setDisabled(True)
             self.runButton.setText("Starting...")
 
@@ -428,7 +428,7 @@ class ActionQueueGUI(Generic[Q, R], QWidget):
                 self._queue.namePattern = self.h5Name.text()
 
             self._queue.start(self._data)
-            
+
             self.runButton.setText("Stop Queue")
             self.runButton.setDisabled(False)
             self.runButton.setStyleSheet("background-color: brown; color: white;")
@@ -439,7 +439,6 @@ class ActionQueueGUI(Generic[Q, R], QWidget):
         self.runButton.setText("Run Queue")
         self.buttonBar.setDisabled(False)
         self.runButton.setDisabled(False)
-        self.actionList.setDisabled(False)
         self.runButton.setStyleSheet("")
         self.nameRow.setDisabled(False)
 
