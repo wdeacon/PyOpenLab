@@ -11,6 +11,7 @@ from h5py import Group, File
 
 from nplab.measurement.gui import ActionQueueGUI, ActionSetupGUI
 from nplab.measurement.actionqueue import H5ActionQueue
+from nplab.measurement.standard.images import TakeImages
 from nplab.measurement.standard.iv import IVCurve
 from nplab.measurement.standard.repeat import RepeatSweep
 from nplab.measurement.standard.spectra import TakeSpectra
@@ -53,7 +54,7 @@ sweep.source   = k1234.getSMU(1)
 
 gui = GuiGenerator(
     instrument_dict    = {"spec": spec.spectrometer, "cam": spec.camera, "smu": k1234.getSMU(0)}, 
-    actions            = [TakeSpectra, IVCurve, RepeatSweep, VoltageSweep], 
+    actions            = [TakeImages, TakeSpectra, IVCurve, RepeatSweep, VoltageSweep], 
     dock_settings_path = "/home/william/settings.npy"
 )
 

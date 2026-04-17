@@ -1,3 +1,10 @@
+import numpy as np
+import pyjisa.autoload
+from jisa.devices import Instrument as JInstrument
+from jisa.devices.camera.frame import Frame
+from jisa.devices.spectrometer.spectrum import Spectrum
+from jisa.results import ResultTable
+
 from abc import ABC, abstractmethod
 from enum import Enum
 from threading import Lock, Thread
@@ -515,3 +522,49 @@ class H5Action(Action[h5py.Group]):
             i += 1
 
         return data.create_group(nm)
+    
+
+    def writeFrame(self, frame: Frame, group: h5py.Group, name: str) -> h5py.Dataset:
+        
+        ds = group.create_dataset(name = name, data = np.array(frame.getNPArray()))
+        ds.attrs["Timestamp"] = frame.getTimestamp()
+        self.writeAttributes(frame.getAttributes(), ds)
+
+        return ds
+    
+
+    def writeSpectrum(self, spectrum: Spectrum, group: h5py.Group, name: str) -> h5py.Dataset:
+
+        ds = group.create_dataset(name = name, data = np.array([np.array(spectrum.getWavelengths()), np.array(spectrum.getCounts())]))
+        ds.attrs["Timestamp"] = spectrum.getTimestamp()
+        self.writeAttributes(spectrum.getAttributes(), ds)
+
+        return ds
+
+
+    def writeAttributes(self, attributes: Dict, ds: h5py.HLObject):
+
+        for key, value in attributes.items():
+            
+            if isinstance(value, JInstrument.AutoQuantity):
+
+                ds.attrs[key + ": Auto"]  = value.isAuto()
+                value = value.getValue()
+                key   = key + ": Value"
+        
+
+            if isinstance(value, JInstrument.OptionalQuantity):
+
+                ds.attrs[key + ": Used"]  = value.isUsed()
+                value = value.getValue()
+                key   = key + ": Value"
+
+
+            if isinstance(value, ResultTable):
+
+                con = [[str(v) for v in r] for r in value.asStringArray()]
+                con = [[str(c.getTitle()) for c in value.getColumns()]] + con
+                ds.attrs[key] = con
+
+            else:
+                ds.attrs[key] = str(value)

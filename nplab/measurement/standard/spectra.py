@@ -27,33 +27,30 @@ class TakeSpectra(H5Action):
 
         self.spectrometer.setIntegrationTime(self.integration)
 
+        if self.spectrometer.isAcquiring():
+            self.triggered = False
+        else:
+            self.triggered = True
+            self.spectrometer.startAcquisition()
+
         spectra = data.create_group("Spectra")
 
         if self.camera is not None:
             snapshots = data.create_group("Snapshots")
 
+        message = r"Taking spectrum %d." if self.camera is None else r"Taking spectrum and snapshot %d"
+
         for i in range(self.count):
 
-            self.message(type = MessageType.INFO, message = "Taking spectrum %d." % i)
+            self.message(type = MessageType.INFO, message = message % i)
 
             spectrum = self.spectrometer.getSpectrum()
-            ds       = spectra.create_dataset(name = "Spectrum %d" % i, data = spectrum.listCounts())
+            ds       = self.writeSpectrum(spectrum, spectra, "Spectrum %d" % i)
 
-            ds.attrs["Wavelengths [m]"]      = spectrum.listWavelengths()
             ds.attrs["Integration Time [s]"] = self.integration
 
             if self.camera is not None:
-
-                self.message(type = MessageType.INFO, message = "Taking camera snapshot %d." % i)
-
-                frame = self.camera.getFrame()
-                img   = snapshots.create_dataset(
-                    name = "Snapshot %d" % i, 
-                    data = np.array(frame.getRGBBytes()).reshape(frame.getHeight(), frame.getWidth(), 3)
-                )
-
-                img.attrs["Timestamp"]            = frame.getTimestamp()
-                img.attrs["Integration Time [s]"] = self.camera.getIntegrationTime()
+                self.writeFrame(self.camera.getFrame(), snapshots, "Snapshot %d" % i)
 
 
             self.sleep(self.delay)
@@ -61,4 +58,5 @@ class TakeSpectra(H5Action):
 
     # =====[ On Finish ]============================================================================
     def finish(self, data: Group = None):
-        pass
+        if self.triggered:
+            self.spectrometer.stopAcquisition()
