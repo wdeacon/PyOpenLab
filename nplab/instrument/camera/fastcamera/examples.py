@@ -2,6 +2,7 @@ import pyjisa.autoload
 
 from jisa.devices.camera import FakeCamera, Andor2, Andor3, Lumenera
 from jisa.devices.spectrometer import CameraSpectrometer, FakeSpectrometer, OceanOptics
+from jisa.devices.smu import K1234
 from qtpy import QtWidgets
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication
@@ -20,10 +21,8 @@ try:
     app      = QApplication([])
     cam      = FakeCamera()
     spec     = CameraSpectrometer(cam, None)
-    fastCam  = FastCamera(cam)
-    cwl      = CameraWithLocation(fastCam, DummyStage())
-    fastSpec = FastSpectrometer(spec)
-    lab      = GuiGenerator({"spec": fastSpec}, dock_settings_path="/home/william/settings.npy")
+    smu      = K1234(None)
+    lab      = GuiGenerator({"spec": spec, "smu": smu}, dock_settings_path="/home/william/settings.npy")
 
     lab.show()
     app.exec()

@@ -203,6 +203,12 @@ class JISAConfigPanel(QWidget, Generic[I]):
 
             return (choiceBox, getter, setter)
         
+        elif isinstance(defaultValue, (bool, Boolean)):
+
+            checkBox = QCheckBox()
+            checkBox.setChecked(defaultValue)
+            return (checkBox, checkBox.isChecked, checkBox.setChecked)
+        
         elif isinstance(defaultValue, (Double, float)):
 
             doubleBox = ScientificSpinBox()
@@ -218,12 +224,6 @@ class JISAConfigPanel(QWidget, Generic[I]):
             intBox.setValue(defaultValue)
 
             return (intBox, lambda: np.int32(intBox.value()), intBox.setValue)
-        
-        elif isinstance(defaultValue, (bool, Boolean)):
-
-            checkBox = QCheckBox()
-            checkBox.setChecked(defaultValue)
-            return (checkBox, checkBox.isChecked, checkBox.setChecked)
         
         elif isinstance(defaultValue, (str, String)):
 

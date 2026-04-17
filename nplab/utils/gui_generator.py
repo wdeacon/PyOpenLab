@@ -1,3 +1,6 @@
+from nplab.instrument.camera.fastcamera import FastCamera
+from nplab.instrument.jinstrument import JInstrument
+from nplab.instrument.spectrometer.fastspectrometer import FastSpectrometer
 from nplab.utils.gui import QtWidgets, uic, QtCore, get_qt_app
 from nplab.ui.ui_tools import UiTools
 import nplab.datafile as df
@@ -48,6 +51,26 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
                                 """
         super(GuiGenerator, self).__init__(parent)
         self._logger = LOGGER
+
+        keys = list(instrument_dict.keys())
+
+        for key in keys:
+
+            instrument = instrument_dict[key]
+
+            if str(type(instrument)).startswith("<java class"):
+
+                from jisa.devices.camera import Camera
+                from jisa.devices.spectrometer import Spectrometer
+
+                if isinstance(instrument, Camera):
+                    instrument_dict["fast_%s" % key] = FastCamera(instrument)
+                elif isinstance(instrument, Spectrometer):
+                    instrument_dict["fast_%s" % key] = FastSpectrometer(instrument)
+                else:
+                    instrument_dict["j_%s" % key] = JInstrument(instrument)
+
+
         self.instr_dict = instrument_dict
         if working_directory is None:
             self.working_directory = os.path.join(os.getcwd())
