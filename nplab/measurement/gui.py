@@ -113,6 +113,7 @@ class ActionSetupGUI(Generic[A], QDialog):
             self.subDisplay = ActionQueueGUI(self.subQueue, self.classes, self.equipment, None)
             self.subDisplay.runButton.setVisible(False)
             self.subDisplay.logTab.setVisible(False)
+            self.subDisplay.separator.setVisible(False)
             self.subDisplay.layout().setContentsMargins(0,0,0,0)
 
             self.cols.addWidget(self.subDisplay)
@@ -220,6 +221,9 @@ class ActionQueueGUI(Generic[Q, R], QWidget):
         self.saveLog    : QPushButton
         self.mainTab    : QWidget
         self.logTab     : QWidget
+        self.separator  : QWidget
+        self.nameRow    : QWidget
+        self.h5Name     : QLineEdit
 
         uic.loadUi(os.path.dirname(__file__) + "/resources/queue.ui", self)
 
@@ -231,6 +235,9 @@ class ActionQueueGUI(Generic[Q, R], QWidget):
         self.setupConnections()
         self.setupTable()
         self.setupMenu()
+
+        if not hasattr(queue, "namePattern"):
+            self.nameRow.setVisible(False)
 
     
     def setupConnections(self):
@@ -411,22 +418,30 @@ class ActionQueueGUI(Generic[Q, R], QWidget):
 
         else:
             
+            self.nameRow.setDisabled(True)
             self.actionList.selectionModel().clear()
             self.actionList.setDisabled(True)
             self.buttonBar.setDisabled(True)
             self.runButton.setText("Starting...")
+
+            if hasattr(self._queue, "namePattern"):
+                self._queue.namePattern = self.h5Name.text()
+
             self._queue.start(self._data)
+            
             self.runButton.setText("Stop Queue")
             self.runButton.setDisabled(False)
             self.runButton.setStyleSheet("background-color: brown; color: white;")
 
 
     def runFinished(self, result: Result):
+
         self.runButton.setText("Run Queue")
         self.buttonBar.setDisabled(False)
         self.runButton.setDisabled(False)
         self.actionList.setDisabled(False)
         self.runButton.setStyleSheet("")
+        self.nameRow.setDisabled(False)
 
 
 class QueueInstrument(Instrument):

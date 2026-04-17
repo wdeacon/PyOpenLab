@@ -42,12 +42,17 @@ class TakeSpectra(H5Action):
 
         self.spectrometer.setIntegrationTime(self.integration)
 
+        spectra = data.create_group("Spectra")
+
+        if self.camera is not None:
+            snapshots = data.create_group("Snapshots")
+
         for i in range(self.count):
 
             self.message(type = MessageType.INFO, message = "Taking spectrum %d." % i)
 
             spectrum = self.spectrometer.getSpectrum()
-            ds       = data.create_dataset(name = "Spectrum %d" % i, data = spectrum.listCounts())
+            ds       = spectra.create_dataset(name = "Spectrum %d" % i, data = spectrum.listCounts())
 
             ds.attrs["Wavelengths [m]"]      = spectrum.listWavelengths()
             ds.attrs["Integration Time [s]"] = self.integration
@@ -57,7 +62,10 @@ class TakeSpectra(H5Action):
                 self.message(type = MessageType.INFO, message = "Taking camera snapshot %d." % i)
 
                 frame = self.camera.getFrame()
-                img   = data.create_dataset(name = "Snapshot %d" % i, data = frame.getARGBImage())
+                img   = snapshots.create_dataset(
+                    name = "Snapshot %d" % i, 
+                    data = np.array(frame.getRGBBytes()).reshape(frame.getHeight(), frame.getWidth(), 3)
+                )
 
                 img.attrs["Timestamp"]            = frame.getTimestamp()
                 img.attrs["Integration Time [s]"] = self.camera.getIntegrationTime()

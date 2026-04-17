@@ -249,7 +249,7 @@ class H5ActionQueue(ActionQueue[h5py.Group]):
 
 
     @namePattern.setter
-    def setNamePattern(self, pattern: str):
+    def namePattern(self, pattern: str):
         self._namePattern = pattern
 
 

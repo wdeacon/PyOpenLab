@@ -23,7 +23,33 @@
       <attribute name="title">
        <string>Queue</string>
       </attribute>
-      <layout class="QVBoxLayout" name="verticalLayout_3" stretch="0,0">
+      <layout class="QVBoxLayout" name="verticalLayout_3" stretch="0,0,0">
+       <item>
+        <widget class="QWidget" name="nameRow" native="true">
+         <layout class="QHBoxLayout" name="horizontalLayout_4">
+          <item>
+           <widget class="QLabel" name="label">
+            <property name="text">
+             <string>Name Pattern</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="h5Name">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>1</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="text">
+             <string>queue_run_%d</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout">
          <property name="spacing">
@@ -109,7 +135,7 @@
           </widget>
          </item>
          <item>
-          <widget class="Line" name="line">
+          <widget class="Line" name="separator">
            <property name="orientation">
             <enum>Qt::Vertical</enum>
            </property>
