@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from threading import Thread
+from threading import Lock, Thread
 import threading
 from typing import Callable, Dict, Generic, List, Tuple, TypeVar, Union, Type as Tpe
 import h5py
@@ -211,9 +211,11 @@ class Action(ABC, Generic[R]):
         self._statusListeners  : List[Callable[[Status], None]]  = []
         self._messageListeners : List[Callable[[Message], None]] = []
 
-        self._thread      : Thread = None
-        self._interrupted : bool   = False
-        self._errors      : list   = []
+        self._thread      : Thread  = None
+        self._interrupted : bool    = False
+        self._errors      : list    = []
+        self._lastMessage : Message = None
+        self._lLock       : Lock    = Lock()
 
 
     def start(self, data: R = None):
@@ -234,8 +236,14 @@ class Action(ABC, Generic[R]):
 
         self._status = status
         
-        for listener in self._statusListeners:
-            listener(status)
+        with self._lLock:
+
+            for listener in self._statusListeners:
+                
+                try:
+                    listener(status)
+                except:
+                    pass
 
 
     status = property(getStatus, setStatus)
@@ -301,28 +309,47 @@ class Action(ABC, Generic[R]):
     
 
     def addStatusListener(self, listener: Callable[[Status], None]) -> Callable[[Status], None]:
-        self._statusListeners.append(listener)
-        return listener
+        with self._lLock:
+            self._statusListeners.append(listener)
+            return listener
     
 
     def removeStatusListener(self, listener: Callable[[Status], None]):
-        self._statusListeners.remove(listener)
+        
+        with self._lLock:
+
+            try:
+                self._statusListeners.remove(listener)
+            except:
+                pass
 
 
     def addMessageListener(self, listener: Callable[[Message], None]) -> Callable[[Message], None]:
-        self._messageListeners.append(listener)
-        return listener
+        with self._lLock:
+            self._messageListeners.append(listener)
+            return listener
 
 
     def removeMessageListener(self, listener: Callable[[Message], None]):
-        self._messageListeners.remove(listener)
+
+        with self._lLock:
+
+            try:
+                self._messageListeners.remove(listener)
+            except:
+                pass
 
 
     def message(self, type: MessageType, message: str):
 
         msg = Message(type, message, [PathPart(self)])
+        self._lastMessage = msg
         self.passMessage(msg)
 
+
+    def getLastMessage(self) -> Message:
+        return self._lastMessage
+    
 
     def infoMessage(self, message: str):
         self.message(MessageType.INFO, message)
@@ -337,8 +364,12 @@ class Action(ABC, Generic[R]):
 
 
     def passMessage(self, msg: Message):
-        for listener in self._messageListeners:
-            listener(msg)
+        with self._lLock:
+            for listener in self._messageListeners:
+                try:
+                    listener(msg)
+                except:
+                    pass
 
 
     def checkpoint(self):

@@ -115,7 +115,7 @@ class CSConfigGUI(QWidget, Generic[S, C]):
     def updateAcquisition(self, acquiring: bool):
 
         if acquiring:
-            self.liveViewButton.setStyleSheet("background: brown; color: white;")
+            self.liveViewButton.setStyleSheet("background-color: brown; color: white;")
             self.liveViewButton.setText("Stop Continuous Acquisition")
         else:
             self.liveViewButton.setStyleSheet("")

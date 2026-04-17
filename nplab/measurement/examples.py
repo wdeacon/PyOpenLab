@@ -9,7 +9,7 @@ from qtpy.QtWidgets import QVBoxLayout
 from nplab.measurement.action import *
 from h5py import Group, File
 
-from nplab.measurement.gui import ActionQueueSetup, Setup
+from nplab.measurement.gui import ActionQueueGUI, ActionSetupGUI
 from nplab.measurement.actionqueue import H5ActionQueue
 from nplab.measurement.sweep import H5Sweep
 
@@ -146,7 +146,7 @@ class RepeatSweep(H5Sweep[int]):
         return list(range(self.repeats))
 
     def generate(self, value: int, actions: List[Action]) -> List[Action]:
-        return actions
+        return list(actions)
     
     def valueToString(self, value: int) -> str:
         return "%d" % value
@@ -216,7 +216,12 @@ repeat.repeats = 4
 sweep.voltages = [0.0, 0.5, 1.0, 1.5, 2.0]
 sweep.source   = k1234.getSMU(1)
 
-gui = GuiGenerator({"spec": spec.spectrometer, "cam": spec.camera, "smu": k1234.getSMU(0)}, actions=[TakeSpectra, IVCurve, RepeatSweep, VoltageSweep])
+gui = GuiGenerator(
+    instrument_dict    = {"spec": spec.spectrometer, "cam": spec.camera, "smu": k1234.getSMU(0)}, 
+    actions            = [TakeSpectra, IVCurve, RepeatSweep, VoltageSweep], 
+    dock_settings_path = "/home/william/settings.npy"
+)
+
 gui.show()
 
 app.exec()

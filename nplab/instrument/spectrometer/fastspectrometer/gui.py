@@ -173,7 +173,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
             checked = False
 
             if self.h5Button.isChecked():
-                self.h5Button.setStyleSheet("background: purple; color: white;")
+                self.h5Button.setStyleSheet("background-color: purple; color: white;")
                 checked = True
             else:
                 self.h5Button.setStyleSheet("")
@@ -185,7 +185,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
                 self.deleteButton.setDisabled(True)
 
             if self.deleteButton.isChecked():
-                self.deleteButton.setStyleSheet("background: brown; color: white;")
+                self.deleteButton.setStyleSheet("background-color: brown; color: white;")
             else:
                 self.deleteButton.setStyleSheet("")
 
@@ -217,7 +217,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
     def updateSaveButtons(self):
 
         if self.h5SaveButton.isChecked():
-            self.h5SaveButton.setStyleSheet("background: purple; color: white;")
+            self.h5SaveButton.setStyleSheet("background-color: purple; color: white;")
             self.h5Group.setEnabled(True)
             self.h5Label.setEnabled(True)
         else:
@@ -268,7 +268,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
             self.streamPath  = self.streamFile.text()
             self.stream      = self.spectrometer.streamToFile(self.streamPath)
 
-            self.streamToDiskButton.setStyleSheet("background: brown; color: white;")
+            self.streamToDiskButton.setStyleSheet("background-color: brown; color: white;")
             self.streamToDiskButton.setText("Stop Streaming")
 
         else:
@@ -363,7 +363,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.delayLabel.setDisabled(True)
         self.delayTime.setDisabled(True)
         self.captureButton.setText("Capturing...")
-        self.captureButton.setStyleSheet("background: brown; color: white;")
+        self.captureButton.setStyleSheet("background-color: brown; color: white;")
         self.progressBar.setValue(0)
         self.progressBar.setVisible(True)
         self.configPanel.setDisabled(True)
@@ -459,7 +459,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
     def updateAcquisition(self, acquiring: bool):
 
         if acquiring:
-            self.liveViewButton.setStyleSheet("background: brown; color: white;")
+            self.liveViewButton.setStyleSheet("background-color: brown; color: white;")
             self.liveViewButton.setText("Stop Continuous Acquisition")
         else:
             self.liveViewButton.setStyleSheet("")

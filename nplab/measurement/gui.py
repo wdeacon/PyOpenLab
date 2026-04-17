@@ -9,7 +9,7 @@ import typing
 import numpy as np
 from qtpy import uic
 from qtpy.QtWidgets import *
-from qtpy.QtCore    import Signal
+from qtpy.QtCore    import QModelIndex, Signal
 
 from nplab.instrument import Instrument
 from nplab.instrument.camera.fastcamera.widgets import ScientificSpinBox
@@ -18,41 +18,63 @@ from nplab.measurement.action import Action, Message, PValue, Parameter, Result,
 import sys
 from PyQt5.QtCore import Qt, pyqtSignal
 
-from nplab.measurement.actionqueue import ActionQueue
+from nplab.measurement.actionqueue import ActionQueue, AnyActionQueue
 import nplab.datafile as df
 from nplab.measurement.sweep import Sweep
+from nplab.measurement.widgets import ActionWidget, ListWidget, TimeIntervalWidget
 
 
 A = TypeVar("A", bound=Action)
 T = TypeVar("T")
 
-class Setup(Generic[A], QWidget):
+class ActionSetupGUI(Generic[A], QDialog):
 
-    def __init__(self, action: A, equipment: List):
+    def __init__(self, action: A, classes: List[typing.Type[Action]] = [], equipment: List = []):
 
         super().__init__()
 
-        self._callbacks: List[Callable] = []
+        self.buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
 
-        self.vbox  = QVBoxLayout(self)
-        self.hbox  = QHBoxLayout()
-        self.form  = QFormLayout()
-        self.okBtn = QPushButton("OK")
-        self.cnBtn = QPushButton("Cancel")
+        self.buttonBox.accepted.connect(self.accept)
+        self.buttonBox.rejected.connect(self.reject)
 
-        self.hbox.addWidget(self.okBtn)
-        self.hbox.addWidget(self.cnBtn)
+        self.action    = action
+        self.classes   = classes
+        self.equipment = equipment
+
+        self.callbacks: List[Callable] = []
+
+        self.overall = QVBoxLayout()
+        self.cols   = QHBoxLayout()
+        self.vbox   = QVBoxLayout()
+        self.form   = QFormLayout()
 
         self.vbox.addLayout(self.form)
-        self.vbox.addLayout(self.hbox)
+        self.cols.addLayout(self.vbox)
+        self.overall.addLayout(self.cols)
+        self.overall.addWidget(self.buttonBox)
 
-        self.setLayout(self.vbox)
-            
+        self.setLayout(self.overall)
 
-        for instrument in action.getInstruments():
+        self.createInstrumentFields()
+        self.createParameterFields()
+        self.createSweepQueue()
+
+        
+    def accept(self):
+
+        for callback in self.callbacks:
+            callback()
+
+        super().accept()
+        
+
+    def createInstrumentFields(self):
+
+        for instrument in self.action.getInstruments():
 
             names    = []
-            filtered = [None] + [e for e in equipment if isinstance(e, instrument.type)]
+            filtered = [None] + [e for e in self.equipment if isinstance(e, instrument.type)]
 
             for eq in filtered:
 
@@ -73,18 +95,33 @@ class Setup(Generic[A], QWidget):
                 widget.setCurrentIndex(filtered.index(instrument.value))
 
             self.form.addRow(instrument.name, widget)
-            self._callbacks.append(lambda i=instrument, f=filtered, w=widget: i.set(f[w.currentIndex()]))
+            self.callbacks.append(lambda i=instrument, f=filtered, w=widget: i.set(f[w.currentIndex()]))
 
-        line = QFrame()
-        line.setFrameShape(QFrame.Shape.HLine)
-        self.form.addRow("", line)
 
-        for parameter in action.getParameters():
+    def createParameterFields(self):
+        for parameter in self.action.getParameters():
             self.form.addRow(parameter.name, self.generateField(parameter))
-        
-        self.okBtn.clicked.connect(self.okay)
-        self.cnBtn.clicked.connect(self.close)
-        
+
+
+    def createSweepQueue(self):
+
+        if isinstance(self.action, Sweep):
+
+            self.subQueue = AnyActionQueue()
+            self.subQueue.addActions(*self.action.getActions())
+
+            self.subDisplay = ActionQueueGUI(self.subQueue, self.classes, self.equipment, None)
+            self.subDisplay.runButton.setVisible(False)
+            self.subDisplay.logTab.setVisible(False)
+            self.subDisplay.layout().setContentsMargins(0,0,0,0)
+
+            self.cols.addWidget(self.subDisplay)
+            self.callbacks.append(lambda: self.action.setActions(*self.subQueue.actions))
+
+
+    def createAction(self, clss: typing.Type[Action]):
+        pass
+
 
     def generateField(self, parameter: PValue[T]) -> QWidget:
 
@@ -99,70 +136,62 @@ class Setup(Generic[A], QWidget):
                 widget.setValue(val)
                 widget.setMinimum(parameter.range[0] if parameter.range[0] is not None else -inf)
                 widget.setMaximum(parameter.range[1] if parameter.range[1] is not None else +inf)
-                self._callbacks.append(lambda: parameter.set(widget.value()))
+                self.callbacks.append(lambda: parameter.set(widget.value()))
+
+            elif isinstance(val, bool):
+                widget = QCheckBox()
+                widget.setChecked(val)
+                self.callbacks.append(lambda: parameter.set(widget.isChecked()))
 
             elif isinstance(val, int):
                 widget = QSpinBox()
                 widget.setValue(val)
                 widget.setMinimum(parameter.range[0] if parameter.range[0] is not None else -2147483648)
                 widget.setMaximum(parameter.range[1] if parameter.range[1] is not None else +2147483647)
-                self._callbacks.append(lambda: parameter.set(widget.value()))
-
-            elif isinstance(val, bool):
-                widget = QCheckBox()
-                widget.setChecked(val)
-                self._callbacks.append(lambda: parameter.set(widget.isChecked()))
+                self.callbacks.append(lambda: parameter.set(widget.value()))
 
             elif isinstance(val, str):
                 widget = QLineEdit()
                 widget.setText(val)
-                self._callbacks.append(lambda: parameter.set(widget.text()))
+                self.callbacks.append(lambda: parameter.set(widget.text()))
 
             elif isinstance(val, (list, np.ndarray)) and isinstance(val[0], float):
                 widget = ListWidget[float](lambda v : str(v), QInputDialog.getDouble, 0.0)
                 widget.setValues(val)
-                self._callbacks.append(lambda: parameter.set(widget.getValues()))
+                self.callbacks.append(lambda: parameter.set(widget.getValues()))
 
             elif isinstance(val, (list, np.ndarray)) and isinstance(val[0], int):
                 widget = ListWidget[int](lambda v : str(v), QInputDialog.getInt, 0)
                 widget.setValues(val)
-                self._callbacks.append(lambda: parameter.set(widget.getValues()))
+                self.callbacks.append(lambda: parameter.set(widget.getValues()))
 
             elif isinstance(val, (list, np.ndarray)) and isinstance(val[0], str):
                 widget = ListWidget[str](lambda v : v, QInputDialog.getText, "")
                 widget.setValues(val)
-                self._callbacks.append(lambda: parameter.set(widget.getValues()))
+                self.callbacks.append(lambda: parameter.set(widget.getValues()))
 
         elif parameter.type == Type.TIME and isinstance(val, int):
             widget = TimeIntervalWidget(self)
             widget.setValue(val)
-            self._callbacks.append(lambda: parameter.set(widget.value()))
+            self.callbacks.append(lambda: parameter.set(widget.value()))
 
         elif parameter.type == Type.TIME and isinstance(val, float):
             widget = TimeIntervalWidget(self)
             widget.setValue(int(val * 1e3))
-            self._callbacks.append(lambda: parameter.set(float(widget.value()) / 1e3))
+            self.callbacks.append(lambda: parameter.set(float(widget.value()) / 1e3))
 
         elif parameter.type == Type.SCIENTIFIC and isinstance(val, float):
             widget = ScientificSpinBox()
             widget.setValue(val)
-            self._callbacks.append(lambda: parameter.set(widget.value()))
+            self.callbacks.append(lambda: parameter.set(widget.value()))
 
         return widget
-    
-
-    def okay(self):
-
-        for callback in self._callbacks:
-            callback()
-
-        self.close()
     
 
 R = TypeVar("R")
 Q = TypeVar("Q", bound=ActionQueue[R])
 
-class ActionQueueSetup(Generic[Q, R], QWidget):
+class ActionQueueGUI(Generic[Q, R], QWidget):
 
     actionsChangedSignal = Signal(list)
     messageSignal        = Signal(Message)
@@ -180,16 +209,24 @@ class ActionQueueSetup(Generic[Q, R], QWidget):
         self._tableLock = Lock()
 
         self.actionList : QListWidget
+        self.buttonBar  : QWidget
         self.addButton  : QToolButton
         self.remButton  : QToolButton
         self.upButton   : QToolButton
         self.dnButton   : QToolButton
         self.runButton  : QPushButton
         self.messages   : QTableWidget
+        self.clearLog   : QPushButton
+        self.saveLog    : QPushButton
+        self.mainTab    : QWidget
+        self.logTab     : QWidget
 
         uic.loadUi(os.path.dirname(__file__) + "/resources/queue.ui", self)
 
         self.drawActions(queue.actions)
+
+        self.actionList.setVerticalScrollMode(QListView.ScrollMode.ScrollPerPixel)
+        self.actionList.setResizeMode(QListView.ResizeMode.Adjust)
 
         self.setupConnections()
         self.setupTable()
@@ -209,6 +246,10 @@ class ActionQueueSetup(Generic[Q, R], QWidget):
         self.actionList.itemDoubleClicked.connect(self.doubleClick)
         self.widgetSignal.connect(self.doubleClick)
         self.remButton.clicked.connect(self.removeSelected)
+        self.upButton.clicked.connect(self.moveSelectedUp)
+        self.dnButton.clicked.connect(self.moveSelectedDown)
+        self.clearLog.clicked.connect(self.clearLogClick)
+        self.saveLog.clicked.connect(self.saveLogClick)
 
 
     def setupTable(self):
@@ -231,6 +272,36 @@ class ActionQueueSetup(Generic[Q, R], QWidget):
         self.addButton.setMenu(menu)
 
 
+    def clearLogClick(self):
+
+        with self._tableLock:
+
+            self._queue._messages.clear()
+            self.messages.model().removeRows(0, self.messages.rowCount())
+            self.messages.setRowCount(0)
+
+
+    def saveLogClick(self):
+
+        import pandas as pd
+
+        file, ok = QFileDialog.getSaveFileName()
+
+        if not ok:
+            return
+        
+        data = np.empty(shape=(len(self._queue._messages), 4), dtype='<U2048')
+
+        for i, message in enumerate(self._queue._messages):
+            data[i, 0] = datetime.fromtimestamp(message.timestamp).strftime(r'%Y-%m-%d %H:%M:%S')
+            data[i, 1] = message.type.name
+            data[i, 2] = message.pathString
+            data[i, 3] = message.message
+
+        df = pd.DataFrame(data)
+        df.to_csv(file, header=["Timestamp", "Source", "Type", "Message"], index=False)
+
+
     def createAction(self, clss: typing.Type[Action]):
 
         text, ok = QInputDialog.getText(self, "Name", "Please enter a name for this action")
@@ -239,8 +310,13 @@ class ActionQueueSetup(Generic[Q, R], QWidget):
             return None
         
         action = clss(text)
+
+        setup  = ActionSetupGUI(action, self._classes, self._equipment)
+        result = setup.exec()
         
-        self._queue.addAction(action)
+        if result:
+            self._queue.addAction(action)
+
 
     def removeSelected(self):
 
@@ -251,11 +327,40 @@ class ActionQueueSetup(Generic[Q, R], QWidget):
             self._queue.removeAction(action)
 
 
+    def moveSelectedUp(self):
+
+        index = self.actionList.selectedIndexes()[0].row()
+
+        if index <= 0:
+            return
+
+        itemA = self.actionList.itemWidget(self.actionList.item(index)).getAction()
+        itemB = self.actionList.itemWidget(self.actionList.item(index - 1)).getAction()
+
+        self._queue.swapActions(itemA, itemB)
+        
+
+    def moveSelectedDown(self):
+
+        index = self.actionList.selectedIndexes()[0].row()
+
+        if index >= self.actionList.count() - 1:
+            return
+
+        itemA = self.actionList.itemWidget(self.actionList.item(index)).getAction()
+        itemB = self.actionList.itemWidget(self.actionList.item(index + 1)).getAction()
+
+        self._queue.swapActions(itemA, itemB)
+
+
     def drawActions(self, actions: List[Action]):
 
-        for item in self.actionList.items(None):
-            widget = self.actionList.itemWidget(item)
-            self.actionList.removeItemWidget(item)
+        widgets = [self.actionList.itemWidget(self.actionList.item(i)) for i in range(self.actionList.count())]
+
+        for i in reversed(range(self.actionList.count())):
+            self.actionList.takeItem(i)
+
+        for widget in widgets:
             del widget
 
         self.actionList.clear()
@@ -266,6 +371,11 @@ class ActionQueueSetup(Generic[Q, R], QWidget):
             item.setSizeHint(widget.sizeHint())
             self.actionList.addItem(item)
             self.actionList.setItemWidget(item, widget)
+
+            def _resized(i=item, w=widget):
+                i.setSizeHint(w.sizeHint())
+
+            widget.resized.connect(_resized)
             
 
     def doubleClick(self, item: QListWidgetItem):
@@ -273,8 +383,8 @@ class ActionQueueSetup(Generic[Q, R], QWidget):
         widget = self.actionList.itemWidget(item)
 
         if isinstance(widget, ActionWidget):
-            setup = widget.getSetupWidget(self._equipment)
-            setup.show()
+            setup: ActionSetupGUI = widget.getSetupWidget(self._classes, self._equipment)
+            setup.exec()
 
 
     def addMessage(self, message: Message):
@@ -285,8 +395,8 @@ class ActionQueueSetup(Generic[Q, R], QWidget):
 
             self.messages.setRowCount(index + 1)
             self.messages.setItem(index, 0, QTableWidgetItem(datetime.fromtimestamp(message.timestamp).strftime(r'%Y-%m-%d %H:%M:%S')))
-            self.messages.setItem(index, 1, QTableWidgetItem(message.pathString))
-            self.messages.setItem(index, 2, QTableWidgetItem(str(message.type.name)))
+            self.messages.setItem(index, 1, QTableWidgetItem(str(message.type.name)))
+            self.messages.setItem(index, 2, QTableWidgetItem(message.pathString))
             self.messages.setItem(index, 3, QTableWidgetItem(message.message))
 
 
@@ -295,339 +405,28 @@ class ActionQueueSetup(Generic[Q, R], QWidget):
         if self._queue.isRunning:
 
             self.runButton.setDisabled(True)
-            self.runButton.setStyleSheet("background: purple; color: white;")
+            self.runButton.setStyleSheet("background-color: purple; color: white;")
             self.runButton.setText("Interrupting...")
             self._queue.interrupt()
 
         else:
-
-            self.runButton.setDisabled(True)
+            
+            self.actionList.selectionModel().clear()
+            self.actionList.setDisabled(True)
+            self.buttonBar.setDisabled(True)
             self.runButton.setText("Starting...")
             self._queue.start(self._data)
             self.runButton.setText("Stop Queue")
             self.runButton.setDisabled(False)
-            self.runButton.setStyleSheet("background: brown; color: white;")
+            self.runButton.setStyleSheet("background-color: brown; color: white;")
 
 
     def runFinished(self, result: Result):
         self.runButton.setText("Run Queue")
+        self.buttonBar.setDisabled(False)
         self.runButton.setDisabled(False)
+        self.actionList.setDisabled(False)
         self.runButton.setStyleSheet("")
-
-
-class ActionWidget(Generic[A], QWidget):
-
-    statusSignal  = Signal(Status)
-    messageSignal = Signal(Message)
-    actionSignal  = Signal(list)
-
-    def __init__(self, action: A):
-
-        super().__init__()
-
-        self._action  = action
-        self._vbox    = QVBoxLayout()
-        self._hbox    = QHBoxLayout()
-        self._box     = QLabel()
-        self._title   = QLabel("%s (%s)" % (action.name, action.description))
-        self._status  = QLabel(action.status.name)
-        self._message = QLabel("")
-        self._setup   = None
-
-        self._box.setFixedSize(25, 25)
-        self._box.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed))
-        self._title.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
-        self._status.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum))
-
-        self._hbox.addWidget(self._box)
-        self._hbox.addWidget(self._title)
-        self._hbox.addWidget(self._status)
-        self._vbox.addLayout(self._hbox)
-        self._vbox.addWidget(self._message)
-
-        self.setupConnections()
-
-        self.setLayout(self._vbox)
-        self.updateStatus(action.status)
-        self.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred))
-
-        if isinstance(action, Sweep):
-
-            line = QFrame()
-            line.setFrameShape(QFrame.Shape.HLine)
-            self._vbox.addWidget(line)
-
-            for subAction in action.getActions():
-                widget = ActionWidget(subAction)
-                label  = QLabel()
-                label.setMinimumWidth(15)
-                label.setStyleSheet("background: gray;")
-                row = QHBoxLayout()
-                row.addWidget(label)
-                row.addWidget(widget)
-                row.setContentsMargins(0,0,0,0)
-                widget.setContentsMargins(0,0,0,0)
-                widget.layout().setContentsMargins(0,0,0,0)
-                rowW = QWidget()
-                rowW.setLayout(row)
-                self._vbox.addWidget(rowW)
-                line = QFrame()
-                line.setFrameShape(QFrame.Shape.HLine)
-                self._vbox.addWidget(line)
-
-    def getAction(self) -> A:
-        return self._action
-    
-
-    def getSetupWidget(self, equipment = []) -> Setup:
-
-        if self._setup is None:
-            self._setup = Setup(self._action, equipment)
-
-        return self._setup
-    
-
-    def setupConnections(self):
-
-        self._statusListener  = self._action.addStatusListener(self.statusSignal.emit)
-        self._messageListener = self._action.addMessageListener(self.messageSignal.emit)
-
-        self.statusSignal.connect(self.updateStatus)
-        self.messageSignal.connect(self.updateMessage)
-
-
-    def __del__(self):
-
-        self._action.removeStatusListener(self._statusListener)
-        self._action.removeMessageListener(self._messageListener)
-
-    
-    def updateStatus(self, status: Status):
-
-        self._status.setText(status.name)
-
-        if status == Status.QUEUED:
-            self._box.setStyleSheet("background: gray;")
-            self._message.setText("")
-        elif status == Status.RUNNING:
-            self._box.setStyleSheet("background: orange;")
-        elif status == Status.SUCCESS:
-            self._box.setStyleSheet("background: teal;")
-        elif status == Status.INTERRUPTED:
-            self._box.setStyleSheet("background: purple;")
-        elif status == Status.ERROR:
-            self._box.setStyleSheet("background: brown;")
-
-
-    def updateMessage(self, message: Message):
-
-        if message.path[-1].part == self._action:
-            self._message.setText(message.message)
-
-
-T = TypeVar("T")
-
-class ListWidget(QWidget, Generic[T]):
-
-    def __init__(self, display: Callable[[T], str], dialog: Callable[[QWidget, str, str, T], Tuple[T, bool]], defValue: T):
-
-        super().__init__()
-
-        self.display          = display
-        self.dialog           = dialog
-        self.defValue         = defValue
-        self._values: List[T] = []
-
-        self.layout     = QVBoxLayout(self)
-        self.listWidget = QListWidget()
-        buttonLayout    = QHBoxLayout()
-
-        self.addBtn  = QPushButton("Add")
-        self.editBtn = QPushButton("Edit")
-        self.remBtn  = QPushButton("Remove")
-        self.upBtn   = QPushButton("Move Up")
-        self.downBtn = QPushButton("Move Down")
-
-        buttonLayout.addWidget(self.addBtn)
-        buttonLayout.addWidget(self.editBtn)
-        buttonLayout.addWidget(self.remBtn)
-        buttonLayout.addWidget(self.upBtn)
-        buttonLayout.addWidget(self.downBtn)
-
-        self.layout.addLayout(buttonLayout)
-        self.layout.addWidget(self.listWidget)
-
-        # Connect signals
-        self.addBtn.clicked.connect(self.addItem)
-        self.editBtn.clicked.connect(self.editItem)
-        self.remBtn.clicked.connect(self.removeItem)
-        self.upBtn.clicked.connect(self.moveUp)
-        self.downBtn.clicked.connect(self.moveDown)
-
-
-    def add(self, value: T):
-        """Add value of type T."""
-        self.listWidget.addItem(self.display(value))
-        self._values.append(value)
-
-
-    def addItem(self):
-
-        value, ok = self.dialog(self, "Add Item", "Enter Value...", self.defValue)
-
-        if ok:
-            self.add(value)
-
-
-    def editItem(self):
-
-        row = self.listWidget.currentRow()
-
-        if row < 0:
-            QMessageBox.warning(self, "No Selection", "Select an item to edit.")
-            return
-
-        item  = self.listWidget.item(row)
-        value = self._values[row]
-
-        value, ok = self.dialog(self, "Edit Item", "Enter Value...", value)
-
-        if ok:
-            item.setText(self.display(value))
-            self._values[row] = value
-
-
-    def removeItem(self):
-
-        row = self.listWidget.currentRow()
-
-        if row >= 0:
-            self.listWidget.takeItem(row)
-            self._values.pop(row)
-
-
-    def moveUp(self):
-
-        row = self.listWidget.currentRow()
-
-        if row > 0:
-
-            item = self.listWidget.takeItem(row)
-            self.listWidget.insertItem(row - 1, item)
-            self.listWidget.setCurrentRow(row - 1)
-
-            self._values[row], self._values[row - 1] = (self._values[row - 1], self._values[row])
-
-
-    def moveDown(self):
-
-        row = self.listWidget.currentRow()
-
-        if 0 <= row < self.listWidget.count() - 1:
-
-            item = self.listWidget.takeItem(row)
-
-            self.listWidget.insertItem(row + 1, item)
-            self.listWidget.setCurrentRow(row + 1)
-
-            self._values[row], self._values[row + 1] = (
-                self._values[row + 1],
-                self._values[row],
-            )
-
-
-    def getValues(self) -> List[T]:
-        """Return list contents preserving original type."""
-        return list(self._values)
-    
-    def setValues(self, values: List[T]):
-
-        self._values.clear()
-        self.listWidget.clear()
-
-        for value in values:
-            self.add(value)
-
-
-class TimeIntervalWidget(QWidget):
-    valueChanged = pyqtSignal(int)  # milliseconds
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
-        layout = QHBoxLayout(self)
-        layout.setSpacing(2)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        self.hours = QSpinBox()
-        self.hours.setRange(0, 9999)
-        self.hours.setButtonSymbols(QSpinBox.NoButtons)
-        self.hours.setMinimumWidth(60)
-        self.hours.setAlignment(Qt.AlignRight)
-        self.hours.setSuffix(" h")
-
-        self.minutes = QSpinBox()
-        self.minutes.setRange(0, 59)
-        self.minutes.setButtonSymbols(QSpinBox.NoButtons)
-        self.minutes.setFixedWidth(40)
-        self.minutes.setAlignment(Qt.AlignRight)
-        self.minutes.setSuffix(" m")
-
-        self.seconds = QSpinBox()
-        self.seconds.setRange(0, 59)
-        self.seconds.setButtonSymbols(QSpinBox.NoButtons)
-        self.seconds.setFixedWidth(40)
-        self.seconds.setAlignment(Qt.AlignRight)
-        self.seconds.setSuffix(" s")
-
-        self.milliseconds = QSpinBox()
-        self.milliseconds.setRange(0, 999)
-        self.milliseconds.setButtonSymbols(QSpinBox.NoButtons)
-        self.milliseconds.setFixedWidth(60)
-        self.milliseconds.setAlignment(Qt.AlignRight)
-        self.milliseconds.setSuffix(" ms")
-
-        layout.addWidget(self.hours)
-        layout.addWidget(QLabel(":"))
-        layout.addWidget(self.minutes)
-        layout.addWidget(QLabel(":"))
-        layout.addWidget(self.seconds)
-        layout.addWidget(QLabel(":"))
-        layout.addWidget(self.milliseconds)
-
-        for spin in (self.hours, self.minutes, self.seconds, self.milliseconds):
-            spin.valueChanged.connect(self._valueChanged)
-
-    def _valueChanged(self):
-        self.valueChanged.emit(self.value())
-
-    def value(self) -> int:
-        """Return interval in milliseconds"""
-        return (
-            self.hours.value() * 3600000
-            + self.minutes.value() * 60000
-            + self.seconds.value() * 1000
-            + self.milliseconds.value()
-        )
-
-    def setValue(self, ms: int):
-        """Set interval from milliseconds"""
-
-        hours = ms // 3600000
-        ms %= 3600000
-
-        minutes = ms // 60000
-        ms %= 60000
-
-        seconds = ms // 1000
-        ms %= 1000
-
-        milliseconds = ms
-
-        self.hours.setValue(hours)
-        self.minutes.setValue(minutes)
-        self.seconds.setValue(seconds)
-        self.milliseconds.setValue(milliseconds)
 
 
 class QueueInstrument(Instrument):
@@ -641,4 +440,4 @@ class QueueInstrument(Instrument):
         self.data      = data
 
     def get_qt_ui(self):
-        return ActionQueueSetup(self.queue, self.actions, self.equipment, self.data)
+        return ActionQueueGUI(self.queue, self.actions, self.equipment, self.data)

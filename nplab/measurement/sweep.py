@@ -1,4 +1,5 @@
 from abc import abstractmethod
+from threading import Lock
 from typing import Callable, Generic, List, TypeVar
 from h5py import Group
 
@@ -16,23 +17,67 @@ class Sweep(Action[R], Generic[R, D]):
         self._tag     = tag
         self._actions = actions
         self._current = None
+        self._lLock   = Lock()
 
         self._listeners: List[Callable[[List[Action]], None]] = []
 
 
     def addActionListener(self, listener: Callable[[List[Action]], None]) -> Callable[[List[Action]], None]:
-        self._listeners.append(listener)
-        return listener
+        with self._lLock:
+            self._listeners.append(listener)
+            return listener
+
 
     def removeActionListener(self, listener: Callable[[List[Action]], None]):
-        self._listeners.remove(listener)
+        
+        with self._lLock:
+
+            try:
+                self._listeners.remove(listener)
+            except:
+                pass
+
+
 
     def addAction(self, action: Action[R]):
         self._actions.append(action)
+        self.notifyActionListeners()
 
-    
+
+    def addActions(self, *actions: Action[R]):
+        self._actions += actions
+
+
     def removeAction(self, action: Action[R]):
         self._actions.remove(action)
+        self.notifyActionListeners()
+
+
+    def clearActions(self):
+        self._actions.clear()
+        self.notifyActionListeners()
+
+
+    def setActions(self, *actions: Action[R]):
+        self._actions.clear()
+        self._actions += actions
+        self.notifyActionListeners()
+
+
+    def notifyActionListeners(self):
+
+        values  = self.getValues()
+        actions = self.generate(values[0] if len(values) > 0 else None, self._actions)
+
+        with self._lLock:
+            
+            for listener in self._listeners:
+                
+                try:
+                    listener(actions)
+                except:
+                    pass
+
 
     def getActions(self) -> List[Action]:
         return self._actions.copy()
@@ -76,8 +121,12 @@ class Sweep(Action[R], Generic[R, D]):
             actions     = self.generate(value, self._actions)
             preppedData = self.prepareDataForIteration(self._tag, value, data)
 
-            for listener in self._listeners:
-                listener(actions)
+            with self._lLock:
+                for listener in self._listeners:
+                    try:
+                        listener(actions)
+                    except:
+                        pass
 
             self.message(MessageType.INFO, "%s = %s." % (self._tag, self.valueToString(value)))
 

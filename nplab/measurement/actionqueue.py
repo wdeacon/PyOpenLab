@@ -272,3 +272,18 @@ class H5ActionQueue(ActionQueue[h5py.Group]):
     def finaliseData(self, data, result):
         from datetime import datetime
         data.create_dataset("Messages", data=[[datetime.fromtimestamp(m.timestamp).strftime(r'%Y-%m-%d %H:%M:%S'), m.pathString, m.type.name, m.message] for m in result.messages])
+
+
+class AnyActionQueue(ActionQueue[object]):
+
+    def __init(self):
+        super().__init__()
+
+    def prepareData(self, data):
+        return data
+
+    def finaliseData(self, data, result):
+        pass
+
+
+    
