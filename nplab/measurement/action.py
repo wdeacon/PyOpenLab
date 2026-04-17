@@ -526,7 +526,7 @@ class H5Action(Action[h5py.Group]):
 
     def writeFrame(self, frame: Frame, group: h5py.Group, name: str) -> h5py.Dataset:
         
-        ds = group.create_dataset(name = name, data = np.array(frame.getNPArray()))
+        ds = group.create_dataset(name = name, data = np.array(frame.getNPArray()).view(np.uint8))
         ds.attrs["Timestamp"] = frame.getTimestamp()
         self.writeAttributes(frame.getAttributes(), ds)
 
