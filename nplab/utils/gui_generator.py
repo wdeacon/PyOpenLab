@@ -1,6 +1,11 @@
+import datetime
+
 from nplab.instrument.camera.fastcamera import FastCamera
-from nplab.instrument.jinstrument import JInstrument
 from nplab.instrument.spectrometer.fastspectrometer import FastSpectrometer
+from nplab.measurement.action import Message
+from nplab.measurement.gui import QueueInstrument
+from nplab.measurement.actionqueue import H5ActionQueue
+from nplab.instrument.jinstrument import JInstrument
 from nplab.utils.gui import QtWidgets, uic, QtCore, get_qt_app
 from nplab.ui.ui_tools import UiTools
 import nplab.datafile as df
@@ -28,7 +33,7 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
 
     def __init__(self, instrument_dict, parent=None, dock_settings_path=None,
                  scripts_path=None, working_directory=None, file_path=None,
-                 terminal=False, dark=False):  
+                 terminal=False, dark=False, actions=[], logFile=None):  
         """Args:
             instrument_dict(dict) :     This is a dictionary containing the
                                         instruments objects where the key is the 
@@ -68,10 +73,11 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
                 elif isinstance(instrument, Spectrometer):
                     instrument_dict["fast_%s" % key] = FastSpectrometer(instrument)
                 else:
-                    instrument_dict["j_%s" % key] = JInstrument(instrument)
+                    instrument_dict["jisa_%s" % key] = JInstrument(instrument)
 
 
         self.instr_dict = instrument_dict
+
         if working_directory is None:
             self.working_directory = os.path.join(os.getcwd())
         else:
@@ -88,6 +94,37 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
         if dark:
             app = get_qt_app()
             app.setStyleSheet(qdarkstyle.load_stylesheet())
+
+
+        if len(actions) > 0:
+
+            queue = H5ActionQueue()
+            qinst = QueueInstrument(queue, actions, self.instr_dict.values(), self.data_file)
+            self.instr_dict["Action Queue"] = qinst
+
+            if logFile is None:
+                from pathlib import Path
+                home    = Path.home()
+                logFile = Path.joinpath(home, "nplab-queue.log")
+
+            f = open(logFile, "a")
+            f.write("### LOG BEGIN - %s ###\r\n" % str(datetime.datetime.now()))
+            f.write("Timestamp\tType\tSource\tMessage\r\n")
+            f.flush()
+
+            def _write(m: Message):
+                f.write("%s\t%s\t%s\t%s\r\n" % (str(datetime.datetime.fromtimestamp(m.timestamp)), m.type.name, m.pathString, m.message))
+                f.flush()
+
+            queue.addMessageListener(_write)
+
+            def _end():
+                f.write("### LOG END - %s ###\r\n" % str(datetime.datetime.now()))
+                f.close()
+
+            self.destroyed.connect(_end)
+
+
         self.instr_dict["HDF5"] = self.data_file
         self.setDockNestingEnabled(1)
 
