@@ -134,9 +134,9 @@ class ActionSetupGUI(Generic[A], QDialog):
 
             if isinstance(val, float):
                 widget = QDoubleSpinBox()
-                widget.setValue(val)
                 widget.setMinimum(parameter.range[0] if parameter.range[0] is not None else -inf)
                 widget.setMaximum(parameter.range[1] if parameter.range[1] is not None else +inf)
+                widget.setValue(val)
                 self.callbacks.append(lambda: parameter.set(widget.value()))
 
             elif isinstance(val, bool):
@@ -146,9 +146,9 @@ class ActionSetupGUI(Generic[A], QDialog):
 
             elif isinstance(val, int):
                 widget = QSpinBox()
-                widget.setValue(val)
                 widget.setMinimum(parameter.range[0] if parameter.range[0] is not None else -2147483648)
                 widget.setMaximum(parameter.range[1] if parameter.range[1] is not None else +2147483647)
+                widget.setValue(val)
                 self.callbacks.append(lambda: parameter.set(widget.value()))
 
             elif isinstance(val, str):
