@@ -602,7 +602,7 @@
         <item>
          <widget class="QPushButton" name="h5SaveButton">
           <property name="styleSheet">
-           <string notr="true">background: purple; color: white;</string>
+           <string notr="true">color: purple;</string>
           </property>
           <property name="text">
            <string>Save to H5</string>

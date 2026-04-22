@@ -89,7 +89,7 @@ class JISAConfigPanel(QWidget, Generic[I]):
             status = QPushButton("!")
             status.setFixedSize(25, 25)
             status.setVisible(False)
-            status.setStyleSheet("background-color: brown; color: white;")
+            status.setStyleSheet("color: brown;")
 
             widget.setContentsMargins(0, 0, 0, 0)
             hbox = QHBoxLayout()

@@ -18,11 +18,13 @@ from nplab.measurement.standard.spectra import TakeSpectra
 from nplab.measurement.standard.voltagesweep import VoltageSweep
 from nplab.measurement.sweep import H5Sweep
 
-from jisa.devices.spectrometer import Spectrometer, FakeSpectrometer
-from jisa.devices.camera       import Camera, FakeCamera
+from jisa.devices.spectrometer import CameraSpectrometer, Kymera, Spectrometer, FakeSpectrometer
+from jisa.devices.camera       import Andor3, Camera, FakeCamera
 from jisa.devices.meter        import IMeter, TMeter
 from jisa.devices.source       import VSource
 from jisa.devices.smu          import K1234
+
+from pathlib import Path
 
 from nplab.utils.gui_generator import GuiGenerator
 
@@ -31,31 +33,14 @@ from nplab.utils.gui_generator import GuiGenerator
 
 app = QApplication([])
 
-spec   = TakeSpectra("William")
-iv     = IVCurve("Conductivity")
-repeat = RepeatSweep("N", [spec, iv])
-sweep  = VoltageSweep("V", [repeat])
-k1234  = K1234(None)
-
-spec.count        = 5
-spec.delay        = 100
-spec.spectrometer = FakeSpectrometer(None)
-spec.camera       = FakeCamera(None)
-
-iv.vsource = k1234.getSMU(0)
-iv.imeter  = k1234.getSMU(0)
-
-iv.voltages = list(np.arange(0, 60, 1))
-
-repeat.repeats = 4
-
-sweep.voltages = [0.0, 0.5, 1.0, 1.5, 2.0]
-sweep.source   = k1234.getSMU(1)
+camera = FakeCamera()
+spec   = CameraSpectrometer(camera)
+smu    = K1234(None)
 
 gui = GuiGenerator(
-    instrument_dict    = {"spec": spec.spectrometer, "cam": spec.camera, "smu": k1234.getSMU(0)}, 
+    instrument_dict    = {"spec": spec, "cam": camera, "smu": smu.getSMU(0)}, 
     actions            = [TakeImages, TakeSpectra, IVCurve, RepeatSweep, VoltageSweep], 
-    dock_settings_path = "/home/william/settings.npy"
+    dock_settings_path = str(Path.home().joinpath("settings.npy"))
 )
 
 gui.show()

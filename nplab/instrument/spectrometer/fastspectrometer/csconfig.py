@@ -115,7 +115,7 @@ class CSConfigGUI(QWidget, Generic[S, C]):
     def updateAcquisition(self, acquiring: bool):
 
         if acquiring:
-            self.liveViewButton.setStyleSheet("background-color: brown; color: white;")
+            self.liveViewButton.setStyleSheet("color: brown;")
             self.liveViewButton.setText("Stop Continuous Acquisition")
         else:
             self.liveViewButton.setStyleSheet("")
@@ -222,7 +222,7 @@ class CSConfigGUI(QWidget, Generic[S, C]):
     def drawFrame(self, pixmap: QPixmap):
 
         try:
-            self.cameraImage.setPixmap(pixmap.scaled(self.cameraImage.width(), self.cameraImage.height(), Qt.KeepAspectRatio))
+            self.cameraImage.setPixmap(pixmap.scaled(self.cameraImage.width(), self.cameraImage.height(), Qt.AspectRatioMode.IgnoreAspectRatio))
         except Exception as e:
             print("Exception occurred when drawing frame. " + str(e))
 

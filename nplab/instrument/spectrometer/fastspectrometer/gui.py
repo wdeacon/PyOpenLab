@@ -51,10 +51,11 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
 
         # Create buffers
         self.wlBuffer     : Spectrum                   = None
-        self.params     : List[Instrument.Parameter] = []
-        self.stream     : SpectrumThread             = None
-        self.lastWidth  : int                        = None
-        self.lastHeight : int                        = None
+        self.params       : List[Instrument.Parameter] = []
+        self.stream       : SpectrumThread             = None
+        self.lastWidth    : int                        = None
+        self.lastHeight   : int                        = None
+        self.lastSpectra : Spectrum                   = None
 
         # Define types for automatically linked widgets
         self.cameraParameters   : QVBoxLayout 
@@ -85,6 +86,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.delayLabel         : QLabel
         self.configBox          : QGroupBox
         self.progressBar        : QProgressBar
+        self.saveLastButton     : QPushButton
          
         # Load UI from file
         uic.loadUi((os.path.dirname(__file__) + '/resources/fsgui.ui'), self)
@@ -173,7 +175,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
             checked = False
 
             if self.h5Button.isChecked():
-                self.h5Button.setStyleSheet("background-color: purple; color: white;")
+                self.h5Button.setStyleSheet("color: purple;")
                 checked = True
             else:
                 self.h5Button.setStyleSheet("")
@@ -185,7 +187,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
                 self.deleteButton.setDisabled(True)
 
             if self.deleteButton.isChecked():
-                self.deleteButton.setStyleSheet("background-color: brown; color: white;")
+                self.deleteButton.setStyleSheet("color: brown;")
             else:
                 self.deleteButton.setStyleSheet("")
 
@@ -208,6 +210,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.progressSignal.connect(self.updateCaptureProgress)
         self.acquisitionSignal.connect(self.updateAcquisition)
         self.exceptionSignal.connect(self.showException)
+        self.saveLastButton.clicked.connect(self.saveLastSpectrum)
 
 
     def updateFPS(self):
@@ -217,13 +220,9 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
     def updateSaveButtons(self):
 
         if self.h5SaveButton.isChecked():
-            self.h5SaveButton.setStyleSheet("background-color: purple; color: white;")
-            self.h5Group.setEnabled(True)
-            self.h5Label.setEnabled(True)
+            self.h5SaveButton.setStyleSheet("color: purple;")
         else:
             self.h5SaveButton.setStyleSheet("")
-            self.h5Group.setEnabled(False)
-            self.h5Label.setEnabled(False)
 
 
     def browsePNGDirectory(self):
@@ -268,7 +267,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
             self.streamPath  = self.streamFile.text()
             self.stream      = self.spectrometer.streamToFile(self.streamPath)
 
-            self.streamToDiskButton.setStyleSheet("background-color: brown; color: white;")
+            self.streamToDiskButton.setStyleSheet("color: brown;")
             self.streamToDiskButton.setText("Stop Streaming")
 
         else:
@@ -363,7 +362,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.delayLabel.setDisabled(True)
         self.delayTime.setDisabled(True)
         self.captureButton.setText("Capturing...")
-        self.captureButton.setStyleSheet("background-color: brown; color: white;")
+        self.captureButton.setStyleSheet("color: brown;")
         self.progressBar.setValue(0)
         self.progressBar.setVisible(True)
         self.configPanel.setDisabled(True)
@@ -409,6 +408,8 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
                         self.spectrometer.stopAcquisition() 
 
 
+                self.lastSpectra = spectra
+
                 if self.h5SaveButton.isChecked():
                     self.captureWritingSignal.emit()
                     self.saveToH5(spectra)
@@ -427,6 +428,14 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
 
         # Give the method to our thread pool to execute in the background
         self.pool.start(_thread)
+
+
+    def saveLastSpectrum(self):
+
+        if self.lastSpectra is None:
+            return
+        
+        self.saveToH5(self.lastSpectra)
 
 
     def updateCaptureProgress(self, value: float):
@@ -459,7 +468,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
     def updateAcquisition(self, acquiring: bool):
 
         if acquiring:
-            self.liveViewButton.setStyleSheet("background-color: brown; color: white;")
+            self.liveViewButton.setStyleSheet("color: brown;")
             self.liveViewButton.setText("Stop Continuous Acquisition")
         else:
             self.liveViewButton.setStyleSheet("")

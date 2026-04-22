@@ -15,14 +15,14 @@ class ChangeVoltage(SimpleAction):
         self.vsource.turnOn()
 
     def finish(self, data = None):
-        self.vsource.turnOff()
+        pass
     
     
 
 class VoltageSweep(H5Sweep[float]):
 
-    voltages = Parameter(name = "Voltages [V]", defaultValue = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
-    off      = Parameter(name = "Off?",         defaultValue = True)
+    voltages = Parameter(name = "Voltages [V]",         defaultValue = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
+    off      = Parameter(name = "Turn Off Afterwards?", defaultValue = True)
 
     source = Instrument(name = "Voltage Source", type = VSource, required = True)
 
@@ -37,3 +37,7 @@ class VoltageSweep(H5Sweep[float]):
     
     def valueToString(self, value: float):
         return "%.02g V" % value
+    
+    def finish(self, data: h5py.Group = None):
+        if self.off:
+            self.source.turnOff()

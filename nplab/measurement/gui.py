@@ -413,7 +413,7 @@ class ActionQueueGUI(Generic[Q, R], QWidget):
         if self._queue.isRunning:
 
             self.runButton.setDisabled(True)
-            self.runButton.setStyleSheet("background-color: purple; color: white;")
+            self.runButton.setStyleSheet("color: purple;")
             self.runButton.setText("Interrupting...")
             self._queue.interrupt()
 
@@ -431,7 +431,7 @@ class ActionQueueGUI(Generic[Q, R], QWidget):
 
             self.runButton.setText("Stop Queue")
             self.runButton.setDisabled(False)
-            self.runButton.setStyleSheet("background-color: brown; color: white;")
+            self.runButton.setStyleSheet("color: brown;")
 
 
     def runFinished(self, result: Result):

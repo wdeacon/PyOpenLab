@@ -131,6 +131,9 @@ class Sweep(Action[R], Generic[R, D]):
             self.message(MessageType.INFO, "%s = %s." % (self._tag, self.valueToString(value)))
 
             for action in actions:
+                action.reset()
+
+            for action in actions:
 
                 if self._interrupted:
                     raise InterruptedException()

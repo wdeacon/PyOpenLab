@@ -349,7 +349,10 @@
             </font>
            </property>
            <property name="text">
-            <string>(Streams to disk while continuously acquiring only)</string>
+            <string>(while acquiring)</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
            </property>
           </widget>
          </item>
@@ -417,11 +420,17 @@
        </layout>
       </item>
       <item row="1" column="0">
-       <layout class="QHBoxLayout" name="horizontalLayout_6" stretch="0">
+       <layout class="QHBoxLayout" name="horizontalLayout_6" stretch="0,0">
         <item>
          <widget class="QPushButton" name="h5SaveButton">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+            <horstretch>1</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
           <property name="styleSheet">
-           <string notr="true">background: purple; color: white;</string>
+           <string notr="true">color: purple;</string>
           </property>
           <property name="text">
            <string>Save to H5</string>
@@ -431,6 +440,33 @@
           </property>
           <property name="checked">
            <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="saveLastButton">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="font">
+           <font>
+            <weight>50</weight>
+            <bold>false</bold>
+            <underline>false</underline>
+            <kerning>true</kerning>
+           </font>
+          </property>
+          <property name="text">
+           <string>Save Last Capture</string>
           </property>
          </widget>
         </item>

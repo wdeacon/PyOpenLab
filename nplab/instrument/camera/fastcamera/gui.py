@@ -206,19 +206,19 @@ class FastCameraGUI(QWidget, Generic[C]):
             checked = False
 
             if self.mp4Button.isChecked():
-                self.mp4Button.setStyleSheet("background-color: teal; color: white;")
+                self.mp4Button.setStyleSheet("color: teal;")
                 checked = True
             else:
                 self.mp4Button.setStyleSheet("")
 
             if self.h5Button.isChecked():
-                self.h5Button.setStyleSheet("background-color: purple; color: white;")
+                self.h5Button.setStyleSheet("color: purple;")
                 checked = True
             else:
                 self.h5Button.setStyleSheet("")
 
             if self.gifButton.isChecked():
-                self.gifButton.setStyleSheet("background-color: navy; color: white;")
+                self.gifButton.setStyleSheet("color: navy;")
                 checked = True
             else:
                 self.gifButton.setStyleSheet("")
@@ -230,7 +230,7 @@ class FastCameraGUI(QWidget, Generic[C]):
                 self.deleteButton.setDisabled(True)
 
             if self.deleteButton.isChecked():
-                self.deleteButton.setStyleSheet("background-color: brown; color: white;")
+                self.deleteButton.setStyleSheet("color: brown;")
             else:
                 self.deleteButton.setStyleSheet("")
 
@@ -259,7 +259,7 @@ class FastCameraGUI(QWidget, Generic[C]):
     def updateSaveButtons(self):
 
         if self.h5SaveButton.isChecked():
-            self.h5SaveButton.setStyleSheet("background-color: purple; color: white;")
+            self.h5SaveButton.setStyleSheet("color: purple;")
             self.h5Group.setEnabled(True)
             self.h5Label.setEnabled(True)
         else:
@@ -269,7 +269,7 @@ class FastCameraGUI(QWidget, Generic[C]):
 
 
         if self.pngSaveButton.isChecked():
-            self.pngSaveButton.setStyleSheet("background-color: teal; color: white;")
+            self.pngSaveButton.setStyleSheet("color: teal;")
             self.pngLabel.setEnabled(True)
             self.pngDirectory.setEnabled(True)
             self.pngBrowse.setEnabled(True)
@@ -332,7 +332,7 @@ class FastCameraGUI(QWidget, Generic[C]):
             self.streamPath  = self.streamFile.text()
             self.stream      = self.camera.streamToFile(self.streamPath)
 
-            self.streamToDiskButton.setStyleSheet("background-color: brown; color: white;")
+            self.streamToDiskButton.setStyleSheet("color: brown;")
             self.streamToDiskButton.setText("Stop Streaming")
 
         else:
@@ -481,7 +481,7 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.delayLabel.setDisabled(True)
         self.delayTime.setDisabled(True)
         self.captureButton.setText("Capturing...")
-        self.captureButton.setStyleSheet("background-color: brown; color: white;")
+        self.captureButton.setStyleSheet("color: brown;")
         self.progressBar.setValue(0)
         self.progressBar.setVisible(True)
         self.liveViewButton.setVisible(False)
@@ -572,7 +572,7 @@ class FastCameraGUI(QWidget, Generic[C]):
     def updateAcquisition(self, acquiring: bool):
 
         if acquiring:
-            self.liveViewButton.setStyleSheet("background-color: brown; color: white;")
+            self.liveViewButton.setStyleSheet("color: brown;")
             self.liveViewButton.setText("Stop Continuous Acquisition")
         else:
             self.liveViewButton.setStyleSheet("")
