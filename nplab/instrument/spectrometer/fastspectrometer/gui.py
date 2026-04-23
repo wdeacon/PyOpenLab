@@ -41,7 +41,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
     h5Signal              = Signal()
     warningIcon           = QIcon.fromTheme("dialog-warning")
 
-    def __init__(self, spectrometer: S, fs):
+    def __init__(self, spectrometer: S, fs, preview = True):
 
         super().__init__()
         
@@ -50,11 +50,11 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.fs           = fs
 
         # Create buffers
-        self.wlBuffer     : Spectrum                   = None
-        self.params       : List[Instrument.Parameter] = []
-        self.stream       : SpectrumThread             = None
-        self.lastWidth    : int                        = None
-        self.lastHeight   : int                        = None
+        self.wlBuffer    : Spectrum                   = None
+        self.params      : List[Instrument.Parameter] = []
+        self.stream      : SpectrumThread             = None
+        self.lastWidth   : int                        = None
+        self.lastHeight  : int                        = None
         self.lastSpectra : Spectrum                   = None
 
         # Define types for automatically linked widgets
@@ -89,19 +89,26 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.saveLastButton     : QPushButton
          
         # Load UI from file
-        uic.loadUi((os.path.dirname(__file__) + '/resources/fsgui.ui'), self)
+        if preview:
+            uic.loadUi((os.path.dirname(__file__) + '/resources/fsgui.ui'), self)
+        else:
+            uic.loadUi((os.path.dirname(__file__) + '/resources/fsgui-controls.ui'), self)
 
         # Create other QT elements
         self.pool         = QThreadPool()
         self.errorMessage = QErrorMessage()
         self.bufferLock   = Lock()
-        self.plot         = pg.plot(title="Spectrum", left="Counts", bottom="Wavelength [m]")
-        self.plotData     = self.plot.plotItem.plot([],[])
+
+        if preview:
+            self.plot     = pg.plot(title="Spectrum", left="Counts", bottom="Wavelength [m]")
+            self.plotData = self.plot.plotItem.plot([],[])
+            self.spectrumGroup.layout().addWidget(self.plot)
+            self.spectrometer.addSpectrumListener(self.spectrumListener)
+
         self.configPanel  = JISAConfigPanel(self.spectrometer)
 
         # Add custom GUI elements to the overall layout
         self.configBox.layout().addWidget(self.configPanel)
-        self.spectrumGroup.layout().addWidget(self.plot)
 
         # If this is a camera-based spectrometer, then include a button to configure the frame to spectrum conversion
         if isinstance(self.spectrometer, CameraSpectrometer):
@@ -118,7 +125,6 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.setupConnections()
 
         # Connect listeners
-        self.spectrometer.addSpectrumListener(self.spectrumListener)
         self.spectrometer.addAcquisitionListener(lambda a: self.acquisitionSignal.emit(bool(a)))
 
 
@@ -201,7 +207,6 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
 
         self.captureButton.clicked.connect(self.capture)
         self.liveViewButton.clicked.connect(self.live)
-        self.spectrumSignal.connect(self.drawSpectrum)
         self.captureWritingSignal.connect(lambda: self.captureButton.setText("Writing..."))
         self.captureCompleteSignal.connect(self.captureComplete)
         self.streamToDiskButton.clicked.connect(self.streamClick)
@@ -211,6 +216,9 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.acquisitionSignal.connect(self.updateAcquisition)
         self.exceptionSignal.connect(self.showException)
         self.saveLastButton.clicked.connect(self.saveLastSpectrum)
+
+        if hasattr(self, "spectrumGroup"):
+            self.spectrumSignal.connect(self.drawSpectrum)
 
 
     def updateFPS(self):

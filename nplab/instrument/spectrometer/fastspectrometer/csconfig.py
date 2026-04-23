@@ -28,7 +28,7 @@ C = TypeVar("C", bound=Camera)
 
 class CSConfigGUI(QWidget, Generic[S, C]):
 
-    drawFrameSignal    = Signal(QPixmap)
+    drawFrameSignal    = Signal(np.ndarray)
     drawSpectrumSignal = Signal(Spectrum)
 
     def __init__(self, cs: S):
@@ -41,7 +41,7 @@ class CSConfigGUI(QWidget, Generic[S, C]):
         self.arr                     = None
         self.specBuffer   : Spectrum = None
 
-        self.cameraImage     : QLabel
+        self.imageBox        : QGroupBox
         self.spectrumBox     : QGroupBox
         self.configBox       : QGroupBox
         self.startX          : QSpinBox
@@ -71,6 +71,7 @@ class CSConfigGUI(QWidget, Generic[S, C]):
         self.configPanel    = JISAConfigPanel(self.camera)
         self.plot           = pg.plot(left="Counts")
         self.plotData       = self.plot.plotItem.plot([], [])
+        self.image          = pg.ImageView(view=pg.PlotItem())
         self.table          = ResultTableWidget()
 
         self.I = Column.ofIntegers("Channel Index")
@@ -81,6 +82,7 @@ class CSConfigGUI(QWidget, Generic[S, C]):
 
         self.wavelengths.addWidget(self.table)
         self.configBox.layout().addWidget(self.configPanel)
+        self.imageBox.layout().addWidget(self.image.ui.graphicsView)
         self.spectrumBox.layout().addWidget(self.plot)
 
         self.camera.addFrameListener(self.frameListener)
@@ -166,6 +168,9 @@ class CSConfigGUI(QWidget, Generic[S, C]):
 
     def frameListener(self, frame: Frame):
 
+        width  = frame.getWidth()
+        height = frame.getHeight()
+
         try:
 
             # So that we don't have multiple threads trying to access the buffer at the same time
@@ -175,56 +180,37 @@ class CSConfigGUI(QWidget, Generic[S, C]):
                 if self.buffer is None or len(self.buffer) != frame.size():
                     self.buffer = frame.getScaledARGBData()
                     self.arr    = np.array(self.buffer)
+                    self.rgb    = np.empty((width, height, 3), dtype=np.uint8)
                 else:
                     frame.readScaledARGBData(self.buffer)
                     np.copyto(self.arr, self.buffer)
 
                 # Record dimensions incase we need to redraw before a new frame comes in
-                self.lastWidth  = frame.getWidth()
-                self.lastHeight = frame.getHeight()
 
                 # Convert the buffer into a pixmap
-                pixmap = QPixmap(QImage(self.arr, self.lastWidth, self.lastHeight, QImage.Format.Format_ARGB32))
+                argb2d = self.arr.view(np.uint8).reshape(width, height, 4)
 
-                self.drawFrameSignal.emit(pixmap)
+                self.rgb[..., 0] = argb2d[..., 2]
+                self.rgb[..., 1] = argb2d[..., 1]
+                self.rgb[..., 2] = argb2d[..., 0]
+
+                self.drawFrameSignal.emit(self.rgb)
 
         except:
             print("Exception when drawing frame")
         finally:
             Util.sleep(100)
-
-
-    def resizeEvent(self, a0):
-        self.redrawFrame()
-        return super().resizeEvent(a0)
     
 
-    def redrawFrame(self):
+    def drawFrame(self, pixmap: np.ndarray):
 
-        with self.cameraDrawLock:
+        # So that we don't have multiple threads trying to access the buffer at the same time
+        with self.cameraLock:
 
             try:
-
-                # If these haven't been set, then we can't possibly redraw, so give up
-                if self.lastWidth is None or self.lastHeight is None:
-                    return
-
-                pixmap = QPixmap(QImage(self.arr, self.lastWidth, self.lastHeight, QImage.Format.Format_ARGB32))
-
-                self.drawFrameSignal.emit(pixmap)
-
-            except:
-                print("Exception when trying to redraw frame")
-
-        Util.sleep(10)
-
-
-    def drawFrame(self, pixmap: QPixmap):
-
-        try:
-            self.cameraImage.setPixmap(pixmap.scaled(self.cameraImage.width(), self.cameraImage.height(), Qt.AspectRatioMode.IgnoreAspectRatio))
-        except Exception as e:
-            print("Exception occurred when drawing frame. " + str(e))
+                self.image.setImage(pixmap, autoRange=False)
+            except Exception as e:
+                print("Exception occurred when drawing frame. " + str(e))
 
 
 

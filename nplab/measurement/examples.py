@@ -1,22 +1,23 @@
 import builtins
-
-import numpy as np
 import pyjisa.autoload
-from PyQt5.QtWidgets import QApplication
-import pyqtgraph
-from qtpy.QtGui import QWindow
-from qtpy.QtWidgets import QVBoxLayout
-from nplab.measurement.action import *
-from h5py import Group, File
 
-from nplab.measurement.gui import ActionQueueGUI, ActionSetupGUI
-from nplab.measurement.actionqueue import H5ActionQueue
-from nplab.measurement.standard.images import TakeImages
-from nplab.measurement.standard.iv import IVCurve
-from nplab.measurement.standard.repeat import RepeatSweep
-from nplab.measurement.standard.spectra import TakeSpectra
+import pyqtgraph as pg
+import numpy     as np
+
+from PyQt5.QtWidgets          import QApplication
+from qtpy.QtGui               import QWindow
+from qtpy.QtWidgets           import QVBoxLayout
+from nplab.measurement.action import *
+from h5py                     import Group, File
+
+from nplab.measurement.gui                   import ActionQueueGUI, ActionSetupGUI
+from nplab.measurement.actionqueue           import H5ActionQueue
+from nplab.measurement.standard.images       import TakeImages
+from nplab.measurement.standard.iv           import IVCurve
+from nplab.measurement.standard.repeat       import RepeatSweep
+from nplab.measurement.standard.spectra      import TakeSpectra
 from nplab.measurement.standard.voltagesweep import VoltageSweep
-from nplab.measurement.sweep import H5Sweep
+from nplab.measurement.sweep                 import H5Sweep
 
 from jisa.devices.spectrometer import CameraSpectrometer, Kymera, Spectrometer, FakeSpectrometer
 from jisa.devices.camera       import Andor3, Camera, FakeCamera

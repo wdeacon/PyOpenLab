@@ -29,10 +29,10 @@ class FastSpectrometer(Instrument, Generic[S]):
     
 
     def get_qt_ui(self, control_only=False, display_only=False):
-        return FastSpectrometerGUI(self.spectrometer, self)
+        return FastSpectrometerGUI(self.spectrometer, self, not control_only)
     
     def get_control_widget(self):
-        return self.get_qt_ui()
+        return self.get_qt_ui(control_only=True)
     
     def updateSpectrum(self, spectrum: Spectrum):
 

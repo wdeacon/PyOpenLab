@@ -42,7 +42,7 @@ class FastCameraGUI(QWidget, Generic[C]):
     h5Signal              = Signal()
     gifSignal             = Signal()
 
-    def __init__(self, camera: C, fastCamera):
+    def __init__(self, camera: C, fastCamera, preview=True):
 
         super().__init__()
         
@@ -97,7 +97,10 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.normaliseButton     : QPushButton
          
         # Load UI from file
-        uic.loadUi((os.path.dirname(__file__) + '/resources/fcgui.ui'), self)
+        if preview:
+            uic.loadUi((os.path.dirname(__file__) + '/resources/fcgui.ui'), self)
+        else:
+            uic.loadUi((os.path.dirname(__file__) + '/resources/fcgui-controls.ui'), self)
 
         # Create other QT elements
         self.pool         = QThreadPool()
@@ -113,8 +116,10 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.setupStreamer()
         self.setupConnections()
 
-        self.camera.addFrameListener(self.frameListener)
         self.camera.addAcquisitionListener(lambda a: self.acquisitionSignal.emit(bool(a)))
+
+        if preview:
+            self.camera.addFrameListener(self.frameListener)
 
 
     def setupStatusMonitoring(self):
@@ -141,20 +146,22 @@ class FastCameraGUI(QWidget, Generic[C]):
 
         self.captureButton.clicked.connect(self.capture)
         self.liveViewButton.clicked.connect(self.live)
-        self.frameCapturedSignal.connect(self.frameListener)
         self.captureWritingSignal.connect(lambda: self.captureButton.setText("Writing..."))
         self.captureCompleteSignal.connect(self.captureComplete)
         self.streamToDiskButton.clicked.connect(self.streamClick)
         self.streamBrowse.clicked.connect(self.browseForStream)
-        self.crosshairButton.clicked.connect(self.crosshairClick)
         self.h5SaveButton.clicked.connect(self.updateSaveButtons)
         self.pngSaveButton.clicked.connect(self.updateSaveButtons)
         self.pngBrowse.clicked.connect(self.browsePNGDirectory)
-        self.drawSignal.connect(self.drawFrame)
-        self.keepRatio.clicked.connect(self.redrawFrame)
         self.progressSignal.connect(self.updateProgress)
         self.acquisitionSignal.connect(self.updateAcquisition)
         self.exceptionSignal.connect(self.showException)
+
+        if hasattr(self, "cameraImage"):
+            self.keepRatio.clicked.connect(self.redrawFrame)
+            self.crosshairButton.clicked.connect(self.crosshairClick)
+            self.frameCapturedSignal.connect(self.frameListener)
+            self.drawSignal.connect(self.drawFrame)
 
 
     def setupStreamer(self):
