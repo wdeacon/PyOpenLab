@@ -1,5 +1,6 @@
 import numpy as np
 import pyjisa.autoload
+import importlib
 from jisa.devices import Instrument as JInstrument
 from jisa.devices.camera.frame import Frame
 from jisa.devices.spectrometer.spectrum import Spectrum
@@ -68,6 +69,7 @@ class Parameter(Generic[T]):
 
     def __set__(self, obj, value: T):
         self._values[obj] = value
+        Action.lastActions[obj.__class__] = obj
 
     
     def __get__(self, obj, type=None) -> Union[T, Self]:
@@ -95,6 +97,7 @@ class Instrument(Generic[I]):
 
     def __set__(self, obj, value: I):
         self._values[obj] = value
+        Action.lastActions[obj.__class__] = obj
 
 
     def __get__(self, obj, type=None) -> Union[I, None, Self]:
@@ -208,6 +211,8 @@ class Result(Generic[R]):
 class Action(ABC, Generic[R]):
     '''Base class to represent individual actions.'''
 
+    lastActions = {}
+
     def __init__(self, name: str, description: str):
         
         self.name        : str    = name
@@ -223,6 +228,26 @@ class Action(ABC, Generic[R]):
         self._errors      : list    = []
         self._lastMessage : Message = None
         self._lLock       : Lock    = Lock()
+
+        if self.__class__ in Action.lastActions:
+
+            last = Action.lastActions[self.__class__]
+
+            lastP = last.getParameters()
+            thisP = self.getParameters()
+
+            lastI = last.getInstruments()
+            thisI = self.getInstruments()
+
+            for tp in thisP:
+                lp = [p for p in lastP if p.name == tp.name][0]
+                tp.set(lp.get())
+
+            for ti in thisI:
+                li = [i for i in lastI if i.name == ti.name][0]
+                ti.set(li.get())
+
+        Action.lastActions[self.__class__] = self
 
 
     def start(self, data: R = None):
@@ -432,6 +457,44 @@ class Action(ABC, Generic[R]):
             instruments.append(IValue(obj, lambda n=name: getattr(self, n), lambda v, n=name: setattr(self, n, v)))
 
         return instruments
+    
+
+    def getInstrumentName(self, instrument) -> str:
+
+        if instrument is None:
+            return "None"
+
+        if hasattr(instrument, "getName"):
+            return instrument.getName()
+        elif hasattr(instrument, "name"):
+            return instrument.name
+        else:
+            str(instrument)
+
+
+    def getInstrumentMap(self) -> Dict:
+
+        object = {}
+
+        for ival in self.getInstruments():
+            object[ival.name] = self.getInstrumentName(ival.value)
+
+        return object
+
+
+    def loadInstrumentsFromMap(self, map: Dict, equipment):
+
+        ivals = self.getInstruments()
+
+        for (name, instName) in map.items():
+
+            try:
+                foundIVal = [i for i in ivals if i.name == name][0]
+                foundInst = [i for i in equipment if self.getInstrumentName(i) == instName][0]
+                foundIVal.set(foundInst)
+            except Exception as e:
+                print(e)
+                pass
 
 
     def getParameterMap(self) -> Dict[str, object]:
@@ -456,6 +519,38 @@ class Action(ABC, Generic[R]):
         import json
         return json.dumps(self.getParameterMap())
     
+
+    def encodeAction(self) -> Dict:
+
+        return {
+            "module"      : self.__class__.__module__,
+            "class"       : self.__class__.__qualname__,
+            "description" : self.description,
+            "parameters"  : self.getParameterMap(),
+            "instruments" : self.getInstrumentMap()
+        }
+    
+
+    def loadFromMap(self, map: Dict, equipment: List):
+        self.loadParametersFromMap(map["parameters"])
+        self.loadInstrumentsFromMap(map["instruments"], equipment)
+
+
+
+    @classmethod
+    def loadAction(clss, map: Dict, equipment: List):
+
+        module      = map["module"]
+        classN      = map["class"]
+        constructor = getattr(importlib.import_module(module), classN)
+        description = map["description"]
+
+        action: Action = constructor(description)
+
+        action.loadFromMap(map, equipment)
+
+        return action
+
 
     def loadParametersFromJSON(self, data: str):
         import json

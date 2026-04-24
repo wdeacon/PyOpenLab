@@ -1,6 +1,6 @@
 from abc import abstractmethod
 from threading import Lock
-from typing import Callable, Generic, List, TypeVar
+from typing import Callable, Dict, Generic, List, TypeVar
 from h5py import Group
 
 from nplab.measurement.action import Action, InterruptedException, MessageType, Result, Status
@@ -81,6 +81,25 @@ class Sweep(Action[R], Generic[R, D]):
 
     def getActions(self) -> List[Action]:
         return self._actions.copy()
+    
+
+    def encodeAction(self):
+
+        object            = super().encodeAction()
+        object["actions"] = [a.encodeAction() for a in self._actions]
+
+        return object
+    
+
+    def loadFromMap(self, map, equipment):
+
+        super().loadFromMap(map, equipment)
+
+        for aMap in map["actions"]:
+            action = Action.loadAction(aMap, equipment)
+            self.addAction(action)
+
+
     
     @abstractmethod
     def generate(self, value: D, actions: list) -> list:

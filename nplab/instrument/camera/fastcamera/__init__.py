@@ -2,7 +2,7 @@ import sys
 
 import pyjisa.autoload
 import os
-from threading import Thread
+from threading import Lock, Thread
 from typing import Callable, Generic, List, Tuple, TypeVar
 
 import numpy as np
@@ -42,30 +42,29 @@ class FastCamera(Camera, Generic[C]):
 
         try:
 
-            height = frame.getHeight()
-            width  = frame.getWidth()
-            
-            if self.buffer is None or self.rgb.shape[0] != height or self.rgb.shape[1] != width:
-                self.buffer = frame.getARGBData()
-                self.arr    = np.array(self.buffer)
-                self.rgb    = np.empty((height, width, 3), dtype=np.uint8)
-            else:
-                frame.readARGBData(self.buffer)
-                np.copyto(self.arr, self.buffer)
+            with self.acquisition_lock:
 
-            argb2d = self.arr.view(np.uint8).reshape(height, width, 4)
+                height = frame.getHeight()
+                width  = frame.getWidth()
+                
+                if self.buffer is None or self.rgb.shape[0] != height or self.rgb.shape[1] != width:
+                    self.buffer = frame.getARGBData()
+                    self.arr    = np.array(self.buffer)
+                    self.rgb    = np.empty((height, width, 3), dtype=np.uint8)
+                else:
+                    frame.readARGBData(self.buffer)
+                    np.copyto(self.arr, self.buffer)
 
-            self.rgb[..., 0] = argb2d[..., 2]
-            self.rgb[..., 1] = argb2d[..., 1]
-            self.rgb[..., 2] = argb2d[..., 0]
+                argb2d = self.arr.view(np.uint8).reshape(height, width, 4)
 
-            self.update_latest_frame(self.rgb)
+                self.rgb[..., 0] = argb2d[..., 2]
+                self.rgb[..., 1] = argb2d[..., 1]
+                self.rgb[..., 2] = argb2d[..., 0]
+
+                self.update_latest_frame(self.rgb)
 
         except Exception as e:
             print(e)
-
-        finally:
-            Util.sleep(10)
 
 
     def raw_snapshot(self) -> Tuple[bool, np.ndarray]:

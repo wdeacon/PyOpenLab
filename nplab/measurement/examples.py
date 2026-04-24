@@ -32,6 +32,8 @@ from nplab.utils.gui_generator import GuiGenerator
 
 # ===========================================================================================
 
+
+
 app = QApplication([])
 
 camera = FakeCamera()
