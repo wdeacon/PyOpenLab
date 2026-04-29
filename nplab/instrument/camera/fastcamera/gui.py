@@ -7,11 +7,12 @@ import numpy as np
 
 from typing import Callable, Dict, Generic, List, Tuple, TypeVar, Union
 
-from jisa.devices              import Instrument
-from jisa.devices.camera       import Camera as JCamera
-from jisa.devices.camera.frame import Frame, FrameThread, RGBFrame, U16RGBFrame
-from jisa.devices.features     import TemperatureControlled
-from jisa                      import Util
+from jisa.devices                import Instrument
+from jisa.devices.camera         import Camera as JCamera
+from jisa.devices.camera.frame   import Frame, FrameThread, RGBFrame, U16RGBFrame
+from jisa.devices.camera.feature import KineticSeries
+from jisa.devices.features       import TemperatureControlled
+from jisa                        import Util
 
 from qtpy import uic
 from qtpy.QtCore import QTimer, Qt, QThreadPool, Signal
@@ -95,6 +96,7 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.keepRatio           : QPushButton
         self.progressBar         : QProgressBar
         self.normaliseButton     : QPushButton
+        self.kineticGroup        : QGroupBox
          
         # Load UI from file
         if preview:
@@ -116,10 +118,14 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.setupStreamer()
         self.setupConnections()
 
-        self.camera.addAcquisitionListener(lambda a: self.acquisitionSignal.emit(bool(a)))
+        self.camera.addAcquisitionListener(lambda c, a: self.acquisitionSignal.emit(bool(a)) if c == 0 else None)
 
         if preview:
             self.camera.addFrameListener(self.frameListener)
+
+        if not isinstance(self.camera, KineticSeries):
+            self.layout().removeWidget(self.kineticGroup)
+            self.kineticGroup.deleteLater()
 
 
     def setupStatusMonitoring(self):
@@ -156,6 +162,7 @@ class FastCameraGUI(QWidget, Generic[C]):
         self.progressSignal.connect(self.updateProgress)
         self.acquisitionSignal.connect(self.updateAcquisition)
         self.exceptionSignal.connect(self.showException)
+        self.kineticAcquire.clicked.connect(self.kinetic)
 
         if hasattr(self, "cameraImage"):
             self.keepRatio.clicked.connect(self.redrawFrame)
@@ -555,6 +562,31 @@ class FastCameraGUI(QWidget, Generic[C]):
 
         # Give the method to our thread pool to execute in the background
         self.pool.start(_thread)
+
+
+    def kinetic(self):
+
+        count = self.kineticCount.value()
+        acc   = self.kineticAcc.value()
+        cycle = self.kineticCycle.value()
+        accC  = self.kineticAccCycle.value()
+
+        if isinstance(self.camera, KineticSeries):
+
+            queue = self.camera.getKineticFrameSeries(count, acc, cycle, accC)
+            tmo   = self.camera.getAcquisitionTimeout()
+
+            def _wait():
+
+                while queue.isAlive():
+
+                    frame = queue.nextFrame(tmo)
+                    self.frameCapturedSignal.emit(frame)
+
+                    if self.h5SaveButton.isChecked():
+                        self.saveToH5([frame])
+
+            self.pool.start(_wait)
 
 
     def updateProgress(self, progress: float):

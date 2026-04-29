@@ -79,7 +79,7 @@ class Camera(Instrument):
     
     parameters = None
     
-    filter_function = None 
+    filter_function = None  
     """This function is run on the image before it's displayed in live view.  
     It should accept, and return, an RGB image as its argument."""
     

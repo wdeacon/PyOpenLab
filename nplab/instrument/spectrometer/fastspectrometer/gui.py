@@ -125,7 +125,7 @@ class FastSpectrometerGUI(QWidget, Generic[S]):
         self.setupConnections()
 
         # Connect listeners
-        self.spectrometer.addAcquisitionListener(lambda a: self.acquisitionSignal.emit(bool(a)))
+        self.spectrometer.addAcquisitionListener(lambda c, a: self.acquisitionSignal.emit(bool(a)) if c == 0 else None)
 
 
     def setupStatusMonitoring(self):

@@ -114,7 +114,10 @@ class CSConfigGUI(QWidget, Generic[S, C]):
         self.binning.setDisabled(disabled)
 
 
-    def updateAcquisition(self, acquiring: bool):
+    def updateAcquisition(self, count: int, acquiring: bool):
+
+        if count != 0:
+            return
 
         if acquiring:
             self.liveViewButton.setStyleSheet("color: brown;")

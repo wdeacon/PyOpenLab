@@ -20,12 +20,12 @@ class IVCurve(H5Action):
     tmeter   = Instrument(name = "Thermometer",    type = TMeter,  required = False)
 
     def __init__(self, description): 
+
         super().__init__("IV Curve", description)
+        self.sweepData = None
 
 
     def main(self, data: Group):
-
-        self.plot.getPlotItem().clear()
             
         self.vsource.setVoltage(self.voltages[0])
         self.vsource.turnOn()
@@ -34,7 +34,7 @@ class IVCurve(H5Action):
         if self.tmeter is not None:
             self.tmeter.turnOn()
 
-        sweep = np.zeros((len(self.voltages), 3))
+        self.sweepData = np.zeros((len(self.voltages), 3))
 
         for (i, voltage) in enumerate(self.voltages):
 
@@ -44,15 +44,15 @@ class IVCurve(H5Action):
 
             self.sleep(self.delay)
 
-            sweep[i, 0] = voltage
-            sweep[i, 1] = self.imeter.getCurrent()
-            sweep[i, 2] = self.tmeter.getTemperature() if self.tmeter is not None else np.nan
-
-
-        data.create_dataset("Sweep", data=sweep)
+            self.sweepData[i, 0] = voltage
+            self.sweepData[i, 1] = self.imeter.getCurrent()
+            self.sweepData[i, 2] = self.tmeter.getTemperature() if self.tmeter is not None else np.nan
 
 
     def finish(self, data: Group):
+
+        if self.sweepData is not None:
+            data.create_dataset("Sweep", data=self.sweepData)
 
         if self.autoOff:
 
