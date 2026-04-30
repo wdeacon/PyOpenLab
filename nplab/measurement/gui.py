@@ -132,7 +132,14 @@ class ActionSetupGUI(Generic[A], QDialog):
         # We need to determine what type of field to create based on the details in the supplied parameter
         if parameter.type == Type.AUTO:
 
-            if isinstance(val, float):
+            if len(parameter.options) > 0:
+
+                widget = QComboBox()
+                widget.addItems([str(o) for o in parameter.options])
+                widget.setCurrentIndex(parameter.options.index(val))
+                self.callbacks.append(lambda: parameter.set(parameter.options(widget.currentIndex())))
+
+            elif isinstance(val, float):
                 widget = QDoubleSpinBox()
                 widget.setMinimum(parameter.range[0] if parameter.range[0] is not None else -inf)
                 widget.setMaximum(parameter.range[1] if parameter.range[1] is not None else +inf)

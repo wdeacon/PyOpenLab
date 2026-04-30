@@ -9,6 +9,9 @@ import numpy     as np
 from PyQt5.QtWidgets          import QApplication
 from qtpy.QtGui               import QWindow
 from qtpy.QtWidgets           import QVBoxLayout
+from nplab.instrument.camera.camera_with_location import CameraWithLocation
+from nplab.instrument.camera.fastcamera import FastCamera
+from nplab.instrument.stage.prior import ProScan
 from nplab.measurement.action import *
 from h5py                     import Group, File
 
@@ -23,7 +26,7 @@ from nplab.measurement.standard.voltagesweep import VoltageSweep
 from nplab.measurement.sweep                 import H5Sweep
 
 from jisa.devices.spectrometer import CameraSpectrometer, Kymera, Spectrometer, FakeSpectrometer
-from jisa.devices.camera       import Andor3, Camera, FakeCamera
+from jisa.devices.camera       import Andor2, Andor3, Camera, FakeCamera, Lumenera, ThorCam
 from jisa.devices.meter        import IMeter, TMeter
 from jisa.devices.source       import VSource
 from jisa.devices.smu          import K1234
@@ -43,14 +46,43 @@ from nplab.utils.gui_generator import GuiGenerator
 app = QApplication([])
 
 # Connect to instruments
-zyla = FakeCamera()
-spec = CameraSpectrometer(zyla)
+newton = Andor2(0)
+kymera = Kymera(0)
 
-smu  = K1234(None)
+# Combine newton camera and kymera spectrograph into a spectrometer
+spec = CameraSpectrometer(newton, kymera)
+
+# Connect to microscope camera
+lumenera = Lumenera(1)
+# thorcam  = ThorCam.Colour()
+
+# If you need to give a fastcamera to some further structure, like CameraWithLocation, wrap it in FastCamera like so
+fastLumenera = FastCamera(lumenera) # This makes it "look like" an old nplab-style camera
+stage        = ProScan("COM4")
+cwl          = CameraWithLocation(fastLumenera, stage) 
+
+# Enable cooling on the newton before we forget...
+newton.setTemperatureControlTarget(183.0)
+newton.setTemperatureControlEnabled(True)
+
+# # All instruments will have various .set...() methods to set configuration parmeters
+
+# # Exposure time
+# newton.setIntegrationTime(10e-6)
+
+# # EMCCD Amplification
+# newton.setAmplifierType(Andor2.AmplifierType.ELECTRON_MULTIPLYING)
+# newton.setEMGain(100)
+
+# # FVB and Isolated Crop
+# newton.setImageMode(Camera.ImageMode.FULL_VERTICAL_BINNING)
+# newton.setIsolatedCropHeight(100)
+# newton.setIsolatedCropWidth(newton.getSensorWidth())
+# newton.setIsolatedCropEnabled(True)
 
 # Generate GUI, giving it our instruments and the actions/sweeps we want to be available for the queue
 gui = GuiGenerator(
-    instrument_dict    = {"spec": spec, "cam": zyla, "smu": smu.getSMU(0)}, 
+    instrument_dict    = {"spec": spec, "cam": fastLumenera, "cwl": cwl, "stage": stage}, 
     actions            = [TakeImages, TakeSpectra, IVCurve, ChangePower, RepeatSweep, VoltageSweep, PowerSweep], 
     dock_settings_path = str(Path.home().joinpath("settings.npy"))
 )

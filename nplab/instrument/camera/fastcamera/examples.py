@@ -62,7 +62,7 @@ if isinstance(camera, TemperatureControlled):
 # Acquire a single frame
 frame: Frame = camera.getFrame()
 
-# Acquire 10 frames
+# Acquire 10 frames as a list
 frames = camera.getFrameSeries(10)
 
 # If the camera is capable of taking a kinetic series, do it
