@@ -7,7 +7,7 @@ from jisa.devices import Instrument
 from jisa.results import ResultTable
 from java.lang    import Short, Integer, Long, Double, String, Boolean
 
-from qtpy.QtCore import Qt
+from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import QCheckBox, QComboBox, QErrorMessage, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QLineEdit, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QVBoxLayout, QWidget
 
@@ -81,7 +81,7 @@ class JISAConfigPanel(QWidget, Generic[I]):
 
             form = forms[group]
 
-            widget, getter, setter = self.createParameterWidget(param.getDefaultValue(), param.getChoices())
+            widget, getter, setter, signal = self.createParameterWidget(param.getDefaultValue(), param.getChoices())
 
             if widget is None:
                 continue
@@ -96,8 +96,6 @@ class JISAConfigPanel(QWidget, Generic[I]):
             hbox.addWidget(widget, 1)
             setB = QPushButton("✓")
             setB.setFixedWidth(25)
-            hbox.addWidget(setB, 0, Qt.AlignTop)
-            hbox.addWidget(status, 0, Qt.AlignTop)
 
             form.addRow(param.getName(), hbox)
 
@@ -106,7 +104,13 @@ class JISAConfigPanel(QWidget, Generic[I]):
             except:
                 pass
 
-            setB.clicked.connect(lambda v, getter=getter, setter=setter, param=param, status=status: self.applyParameter(getter, setter, param, status))
+            if signal is not None:
+                signal.connect(lambda v=None, getter=getter, setter=setter, param=param, status=status: self.applyParameter(getter, setter, param, status))
+            else:
+                setB.clicked.connect(lambda v=None, getter=getter, setter=setter, param=param, status=status: self.applyParameter(getter, setter, param, status))
+                hbox.addWidget(setB, 0, Qt.AlignTop)
+
+            hbox.addWidget(status, 0, Qt.AlignTop)
             self.params.append((widget, getter, setter, param, status))
             
 
@@ -116,14 +120,14 @@ class JISAConfigPanel(QWidget, Generic[I]):
             self.scrollLayout.addWidget(box)
 
 
-    def createParameterWidget(self, defaultValue, choices: List = []) -> Tuple[QWidget, Callable, Callable]:
+    def createParameterWidget(self, defaultValue, choices: List = []) -> Tuple[QWidget, Callable, Callable, Signal]:
 
         if isinstance(defaultValue, Instrument.AutoQuantity):
 
             checkBox = QCheckBox("Auto")
             checkBox.setChecked(defaultValue.isAuto())
 
-            widget, getter, setter = self.createParameterWidget(defaultValue.getValue(), choices)
+            widget, getter, setter, signal = self.createParameterWidget(defaultValue.getValue(), choices)
 
             if widget is None:
                 return (None, None, None)
@@ -132,6 +136,8 @@ class JISAConfigPanel(QWidget, Generic[I]):
 
             def updateCheckBox():
                 widget.setDisabled(checkBox.isChecked())
+                if signal is not None:
+                    signal.emit()
 
             checkBox.stateChanged.connect(updateCheckBox)
             
@@ -151,14 +157,14 @@ class JISAConfigPanel(QWidget, Generic[I]):
                 checkBox.setChecked(aq.isAuto())
                 setter(aq.getValue())
 
-            return (cont, autoGetter, autoSetter)
+            return (cont, autoGetter, autoSetter, signal)
         
         elif isinstance(defaultValue, Instrument.OptionalQuantity):
 
             checkBox = QCheckBox("Enabled")
             checkBox.setChecked(defaultValue.isUsed())
             
-            widget, getter, setter = self.createParameterWidget(defaultValue.getValue(), choices)
+            widget, getter, setter, signal = self.createParameterWidget(defaultValue.getValue(), choices)
 
             if widget is None:
                 return (None, None, None)
@@ -167,6 +173,8 @@ class JISAConfigPanel(QWidget, Generic[I]):
 
             def updateCheckBox():
                 widget.setDisabled(not checkBox.isChecked())
+                if signal is not None:
+                    signal.emit()
 
             checkBox.stateChanged.connect(updateCheckBox)
             
@@ -186,7 +194,7 @@ class JISAConfigPanel(QWidget, Generic[I]):
                 checkBox.setChecked(aq.isUsed())
                 setter(aq.getValue())
 
-            return (cont, autoGetter, autoSetter)
+            return (cont, autoGetter, autoSetter, signal)
         
         elif len(choices) > 0:
 
@@ -201,20 +209,20 @@ class JISAConfigPanel(QWidget, Generic[I]):
 
             setter(defaultValue)
 
-            return (choiceBox, getter, setter)
+            return (choiceBox, getter, setter, choiceBox.currentIndexChanged)
         
         elif isinstance(defaultValue, (bool, Boolean)):
 
             checkBox = QCheckBox()
             checkBox.setChecked(defaultValue)
-            return (checkBox, checkBox.isChecked, checkBox.setChecked)
+            return (checkBox, checkBox.isChecked, checkBox.setChecked, checkBox.stateChanged)
         
         elif isinstance(defaultValue, (Double, float)):
 
             doubleBox = ScientificSpinBox()
             doubleBox.setValue(defaultValue)
 
-            return (doubleBox, doubleBox.value, doubleBox.setValue)
+            return (doubleBox, doubleBox.value, doubleBox.setValue, doubleBox.returnPressed)
 
         elif isinstance(defaultValue, (int, Integer)):
 
@@ -223,25 +231,25 @@ class JISAConfigPanel(QWidget, Generic[I]):
             intBox.setMaximum(2147483647)
             intBox.setValue(defaultValue)
 
-            return (intBox, lambda: np.int32(intBox.value()), intBox.setValue)
+            return (intBox, lambda: np.int32(intBox.value()), intBox.setValue, intBox.lineEdit().returnPressed)
         
         elif isinstance(defaultValue, (str, String)):
 
             textBox = QLineEdit()
             textBox.setText(str(defaultValue))
 
-            return (textBox, textBox.text, textBox.setText)
+            return (textBox, textBox.text, textBox.setText, textBox.returnPressed)
         
         elif isinstance(defaultValue, ResultTable):
 
             table = ResultTableWidget()
             table.setResultTable(defaultValue)
 
-            return (table, table.getResultTable, table.setResultTable)
+            return (table, table.getResultTable, table.setResultTable, None)
 
         else:
             
-            return (None, None, None)
+            return (None, None, None, None)
 
 
     def refreshParameters(self):

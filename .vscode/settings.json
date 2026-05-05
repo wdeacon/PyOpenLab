@@ -1,17 +1,6 @@
 {
 
-    "terminal.integrated.env.linux": {
-        "PYTHONPATH": "${workspaceFolder}",
-        "QT_QPA_PLATFORM": "xcb"
-    },
-
-    "terminal.integrated.env.osx": {
-        "PYTHONPATH": "${workspaceFolder}",
-    },
-
-    "terminal.integrated.env.windows": {
-        "PYTHONPATH": "${workspaceFolder}",
-    },
+    "python.terminal.useEnvFile": true,
 
     "jupyter.notebookFileRoot": "${workspaceFolder}",
 

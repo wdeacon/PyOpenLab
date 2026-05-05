@@ -46,24 +46,10 @@ from nplab.utils.gui_generator import GuiGenerator
 app = QApplication([])
 
 # Connect to instruments
-newton = Andor2(0)
-kymera = Kymera(0)
+newton = FakeCamera()
 
 # Combine newton camera and kymera spectrograph into a spectrometer
-spec = CameraSpectrometer(newton, kymera)
-
-# Connect to microscope camera
-lumenera = Lumenera(1)
-# thorcam  = ThorCam.Colour()
-
-# If you need to give a fastcamera to some further structure, like CameraWithLocation, wrap it in FastCamera like so
-fastLumenera = FastCamera(lumenera) # This makes it "look like" an old nplab-style camera
-stage        = ProScan("COM4")
-cwl          = CameraWithLocation(fastLumenera, stage) 
-
-# Enable cooling on the newton before we forget...
-newton.setTemperatureControlTarget(183.0)
-newton.setTemperatureControlEnabled(True)
+spec = CameraSpectrometer(newton)
 
 # # All instruments will have various .set...() methods to set configuration parmeters
 
@@ -82,7 +68,7 @@ newton.setTemperatureControlEnabled(True)
 
 # Generate GUI, giving it our instruments and the actions/sweeps we want to be available for the queue
 gui = GuiGenerator(
-    instrument_dict    = {"spec": spec, "cam": fastLumenera, "cwl": cwl, "stage": stage}, 
+    instrument_dict    = {"spec": spec}, 
     actions            = [TakeImages, TakeSpectra, IVCurve, ChangePower, RepeatSweep, VoltageSweep, PowerSweep], 
     dock_settings_path = str(Path.home().joinpath("settings.npy"))
 )

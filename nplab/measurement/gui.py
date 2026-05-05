@@ -127,17 +127,16 @@ class ActionSetupGUI(Generic[A], QDialog):
     def generateField(self, parameter: PValue[T]) -> QWidget:
 
         widget = None
+        signal = None
         val    = parameter.value
 
         # We need to determine what type of field to create based on the details in the supplied parameter
         if parameter.type == Type.AUTO:
 
             if len(parameter.options) > 0:
-
                 widget = QComboBox()
                 widget.addItems([str(o) for o in parameter.options])
                 widget.setCurrentIndex(parameter.options.index(val))
-                self.callbacks.append(lambda: parameter.set(parameter.options(widget.currentIndex())))
 
             elif isinstance(val, float):
                 widget = QDoubleSpinBox()

@@ -290,7 +290,8 @@ class ListWidget(QWidget, Generic[T]):
 
 class TimeIntervalWidget(QWidget):
 
-    valueChanged = Signal(int)  # milliseconds
+    valueChanged  = Signal(int)  # milliseconds
+    returnPressed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -337,6 +338,8 @@ class TimeIntervalWidget(QWidget):
 
         for spin in (self.hours, self.minutes, self.seconds, self.milliseconds):
             spin.valueChanged.connect(self._valueChanged)
+            spin.lineEdit().returnPressed.connect(self.returnPressed.emit)
+
 
     def _valueChanged(self):
         self.valueChanged.emit(self.value())

@@ -10,7 +10,8 @@ from java.lang import Integer, Long, Double, Boolean, String
 
 class ScientificSpinBox(QWidget):
 
-    valueChanged = Signal(float)
+    valueChanged  = Signal(float)
+    returnPressed = Signal()
 
     def __init__(self, parent=None, value=0.0):
 
@@ -41,6 +42,9 @@ class ScientificSpinBox(QWidget):
         # Signals
         self.mantissaSpin.valueChanged.connect(self.onChange)
         self.exponentSpin.valueChanged.connect(self.onChange)
+
+        self.mantissaSpin.lineEdit().returnPressed.connect(self.returnPressed.emit)
+        self.exponentSpin.lineEdit().returnPressed.connect(self.returnPressed.emit)
 
 
     def splitValue(self, value: float):
