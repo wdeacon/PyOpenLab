@@ -9,20 +9,25 @@ Most useful for keeping track of Renishaw spectral metadata
 This is an overhaul of the much older spc_to_h5 module
 '''
 
-import os
 import datetime
-import numpy as np
+import os
+
 import h5py
+import numpy as np
+
 from pyopenlab.analysis.general_spec_tools.renishaw_laser_powers import all_laser_powers
 
 try:
     import spc
 except Exception as e:
     print('spc module not installed!')
-    print('spc is not available via pip; instead, clone from https://github.com/rohanisaac/spc and install')
+    print(
+        'spc is not available via pip; instead, clone from https://github.com/rohanisaac/spc and install'
+    )
     raise e
 
 from pyopenlab.analysis.general_spec_tools import particle_track_analysis as pta
+
 
 class Renishaw_SPC_Datafile:
     '''
@@ -50,7 +55,8 @@ class Renishaw_SPC_Datafile:
         measurement type
             static or extended
     '''
-    def __init__(self, filename, power_dict = None, **kwargs):
+
+    def __init__(self, filename, power_dict=None, **kwargs):
         '''
         args:
             filename: str
@@ -61,35 +67,36 @@ class Renishaw_SPC_Datafile:
                 must be in the format {laser power : {percent power : absolute power (mW)}}
         '''
         self.filename = filename
-        
+
         timestamp = os.path.getmtime(filename)
         timestamp = datetime.datetime.fromtimestamp(timestamp)
         self.timestamp = str(timestamp).replace(' ', 'T')
-                        
-        metadata_keys = [b'Exposure_time', b'Accumulations', b'Cosmic_ray_removal', b'Focus_mode', b'Grating_grooves', 
-                         b'Laser', b'Laser_power', b'Measurement_type', b'Scan_type']
+
+        metadata_keys = [
+            b'Exposure_time', b'Accumulations', b'Cosmic_ray_removal', b'Focus_mode',
+            b'Grating_grooves', b'Laser', b'Laser_power', b'Measurement_type', b'Scan_type']
         metadata_dict = {}
-        
+
         F = spc.File(filename)
-            
+
         for key in metadata_keys:
             value = F.log_dict[key]
-            
+
             if type(key) == bytes:
                 key = key.decode()
-            
+
             try:
                 if type(value) == bytes:
                     value = value.decode()
-                
+
             except Exception as e:
                 value = str(value)
                 print(f'Encountered an error when parsing {filename}:')
                 print(f'spc.File("{filename}").log_dict["{key}"] = {value}')
                 print(f'Could not decode value {value} because {e}')
-                
-            metadata_dict[key] = value        
-        
+
+            metadata_dict[key] = value
+
         self.exposure = float(metadata_dict['Exposure_time'].split(': ')[-1])
         self.accumulations = int(metadata_dict['Accumulations'].split(': ')[-1])
         self.cosmic_rays_removed = bool(int(metadata_dict['Cosmic_ray_removal'].split(': ')[-1]))
@@ -105,22 +112,24 @@ class Renishaw_SPC_Datafile:
         try:
             self.laser_power = all_laser_powers[self.laser_wavelength][self.percent_laser_power]
         except KeyError:
-            print(f'{self.filename}: absolute laser power not known for {self.laser_wavelength} at {self.percent_laser_power}%')
+            print(
+                f'{self.filename}: absolute laser power not known for {self.laser_wavelength} at {self.percent_laser_power}%'
+            )
             self.laser_power = 1
 
         self.scan_type = metadata_dict['Scan_type']
         self.measurement_type = metadata_dict['Measurement_type']
-        
+
         self.x = F.x
         self.y = np.array([sub_file.y for sub_file in F.sub])
-        
+
         if len(self.y) == 1:
             self.y = self.y[0]
         else:
             self.Y = self.y.copy()
-            self.y = np.sum(self.Y, axis = 0)
-    
-    def add_to_h5(self, h5_group, dset_name = None, **kwargs):
+            self.y = np.sum(self.Y, axis=0)
+
+    def add_to_h5(self, h5_group, dset_name=None, **kwargs):
         '''
         creates new h5 dataset containing xy data (if single scan) or xY data (if timescan)
         updates dataset attributes with object metadata
@@ -133,19 +142,25 @@ class Renishaw_SPC_Datafile:
         '''
         if dset_name is None:
             dset_name = self.filename[:-4]
-        
+
         data = self.__dict__.get('Y', self.y)
-        dset = h5_group.create_dataset(dset_name, data = data)
-        
+        dset = h5_group.create_dataset(dset_name, data=data)
+
         for key, value in self.__dict__.items():
             if key not in ['Y', 'y', 'x']:
                 dset.attrs[key] = value
-        
+
         dset.attrs['wavelengths'] = self.x
         return dset
 
-def extract_all_spc(data_dir = None, h5_filename = None, h5_group_name = None, filenames = None, dset_names = None, 
-                    overwrite_h5 = False, overwrite_dsets = False,
+
+def extract_all_spc(data_dir=None,
+                    h5_filename=None,
+                    h5_group_name=None,
+                    filenames=None,
+                    dset_names=None,
+                    overwrite_h5=False,
+                    overwrite_dsets=False,
                     **kwargs):
     '''
     Converts a collection of spc_files into .h5 format
@@ -185,7 +200,8 @@ def extract_all_spc(data_dir = None, h5_filename = None, h5_group_name = None, f
         dset_names = [filename[:-4] for filename in filenames]
 
     else:
-        assert len(dset_names) == len(filenames), 'Please specify the correct number of dataset names'
+        assert len(dset_names) == len(
+            filenames), 'Please specify the correct number of dataset names'
 
     spc_files = [Renishaw_SPC_Datafile(filename, **kwargs) for filename in filenames]
 
@@ -203,8 +219,8 @@ def extract_all_spc(data_dir = None, h5_filename = None, h5_group_name = None, f
         data_group = F
         if h5_group_name is not None:
             data_group = F.get(h5_group_name, F.create_group(h5_group_name))
-        
+
         for spc_file, dset_name in zip(spc_files, dset_names):
             if dset_name in data_group.keys() and overwrite_dsets == True:
                 del data_group[dset_name]
-            dset = spc_file.add_to_h5(data_group, dset_name = dset_name, **kwargs)
+            dset = spc_file.add_to_h5(data_group, dset_name=dset_name, **kwargs)

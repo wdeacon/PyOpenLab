@@ -2,33 +2,37 @@
 
 __author__ = 'jm806'
 
-
-from pyopenlab.instrument.shutter import ShutterWithEmulatedRead
-from pyopenlab.instrument.serial_instrument import SerialInstrument
-import serial
 import time
+
+import serial
+
+from pyopenlab.instrument.serial_instrument import SerialInstrument
+from pyopenlab.instrument.shutter import ShutterWithEmulatedRead
+
 
 class Uniblitz(ShutterWithEmulatedRead, SerialInstrument):
     """
     Shutter controller from Uniblitz for BX51 white light path
     """
+
     def __init__(self, port=None):
-        self.port_settings = {'baudrate': 9600,
-                        'bytesize':serial.EIGHTBITS,
-                        'parity':serial.PARITY_NONE,
-                        'stopbits':serial.STOPBITS_ONE,
-                        'timeout':1, #wait at most one second for a response
-                        'writeTimeout':1, #similarly, fail if writing takes >1s
-                        }
+        self.port_settings = {
+            'baudrate': 9600,
+            'bytesize': serial.EIGHTBITS,
+            'parity': serial.PARITY_NONE,
+            'stopbits': serial.STOPBITS_ONE,
+            'timeout': 1,  #wait at most one second for a response
+            'writeTimeout': 1,  #similarly, fail if writing takes >1s
+        }
         self.termination_character = "\r"
         SerialInstrument.__init__(self, port=port)
         ShutterWithEmulatedRead.__init__(self)
         self.shutter_state = 0
-    
-    def set_state(self,state):
-        if state=='Open':
+
+    def set_state(self, state):
+        if state == 'Open':
             self.ser.write(str.encode('@'))
-        elif state == 'Closed': 
+        elif state == 'Closed':
             self.ser.write(str.encode('A'))
         # time.sleep(0.1)
 

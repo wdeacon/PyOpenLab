@@ -5,7 +5,10 @@ Created on Tue Oct 12 14:21:21 2021
 @author: Eoin
 """
 
-from pyopenlab.unit_conversions.constants import c, e, h, pi
+from pyopenlab.unit_conversions.constants import c
+from pyopenlab.unit_conversions.constants import e
+from pyopenlab.unit_conversions.constants import h
+from pyopenlab.unit_conversions.constants import pi
 
 
 def ev_to_joules(ev, *args, **kwargs):
@@ -79,9 +82,7 @@ spectroscopy_conversions = {
         "cm": hz_to_cm,
         "thz": hz_to_thz,
         'rads': hz_to_rads,
-        "hz": lambda x: x,
-    },
-}
+        "hz": lambda x: x,},}
 
 if __name__ == "__main__":
     laser = 633

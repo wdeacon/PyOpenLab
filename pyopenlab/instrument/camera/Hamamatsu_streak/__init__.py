@@ -1,12 +1,18 @@
 ﻿# -*- coding: utf-8 -*-
-from pyopenlab.utils.gui import QtWidgets, QtCore, uic
-from pyopenlab.instrument.camera.camera_scaled_roi import DisplayWidgetRoiScale, CameraRoiScale
-from pyopenlab.instrument.camera.Hamamatsu_streak.streak_sdk import StreakSdk, StreakError
-from weakref import WeakSet
 import os
+from weakref import WeakSet
+
+from pyopenlab.instrument.camera.camera_scaled_roi import CameraRoiScale
+from pyopenlab.instrument.camera.camera_scaled_roi import DisplayWidgetRoiScale
+from pyopenlab.instrument.camera.Hamamatsu_streak.streak_sdk import StreakError
+from pyopenlab.instrument.camera.Hamamatsu_streak.streak_sdk import StreakSdk
+from pyopenlab.utils.gui import QtCore
+from pyopenlab.utils.gui import QtWidgets
+from pyopenlab.utils.gui import uic
 
 
 class Streak(StreakSdk, CameraRoiScale):
+
     def __init__(self, *args, **kwargs):
         super(Streak, self).__init__(*args, **kwargs)
 
@@ -48,7 +54,8 @@ class StreakUI(QtWidgets.QWidget):
         self.pushButtonLess.clicked.connect(lambda: self.time_range('-'))
         self.pushButtonMore.clicked.connect(lambda: self.time_range('+'))
 
-        self.pushButtonCapture.clicked.connect(lambda: self.Streak.raw_image(update_latest_frame=True))
+        self.pushButtonCapture.clicked.connect(
+            lambda: self.Streak.raw_image(update_latest_frame=True))
 
     def gate_mode(self):
         mode = str(self.comboBoxGateMode.currentText())
@@ -71,9 +78,10 @@ class StreakUI(QtWidgets.QWidget):
         self.Streak.set_parameter('Devices', 'TD', 'MCP Gain', gain)
 
     def time_range(self, direction=None):
-        allowed_times = {'ns': [5, 10, 20, 50, 100, 200, 500],
-                         'us': [1, 2, 5, 10, 20, 50, 100, 200, 500],
-                         'ms': [1]}
+        allowed_times = {
+            'ns': [5, 10, 20, 50, 100, 200, 500],
+            'us': [1, 2, 5, 10, 20, 50, 100, 200, 500],
+            'ms': [1]}
         unit = str(self.comboBoxTimeUnit.currentText())
         given_number = int(self.lineEditTimeRange.text())
 

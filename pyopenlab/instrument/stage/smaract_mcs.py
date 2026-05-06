@@ -1,30 +1,37 @@
 ﻿from past.utils import old_div
+
 __author__ = 'alansanders, chrisgrosse'
 
-import ctypes, time
-from ctypes import byref, c_int, c_uint
-#from pyopenlab.instrument import Instrument
-from pyopenlab.instrument.stage import PiezoStage, StageUI, PiezoStageUI
+import ctypes
+from ctypes import byref
+from ctypes import c_int
+from ctypes import c_uint
 import os
+import time
+
+#from pyopenlab.instrument import Instrument
+from pyopenlab.instrument.stage import PiezoStage
+from pyopenlab.instrument.stage import PiezoStageUI
+from pyopenlab.instrument.stage import StageUI
+from pyopenlab.ui.ui_tools import UiTools
 from pyopenlab.utils.gui import *
 from pyopenlab.utils.gui import uic
-from pyopenlab.ui.ui_tools import UiTools
-
 
 try:
-    mcsc = ctypes.cdll.MCSControl # load C library from MCSControl.h
+    mcsc = ctypes.cdll.MCSControl  # load C library from MCSControl.h
 except:
     raise Warning("MCSControl dll not found")
 
 file_dir = os.path.dirname(os.path.realpath(__file__))
 
 
-def get_enums(): # get status return values from MCSControl.h
+def get_enums():  # get status return values from MCSControl.h
     with open(os.path.join(file_dir, 'MCSControl.h'), 'r') as f:
         lines = [line.strip().split(' ') for line in f.readlines() if line.startswith('#define')]
         enums = {}
         for line in lines:
-            while '' in line: line.remove('')
+            while '' in line:
+                line.remove('')
             if len(line) == 3:
                 try:
                     enums[line[1]] = int(line[2])
@@ -47,6 +54,7 @@ max_speed = 1e8
 
 
 class MCSError(Exception):
+
     def __init__(self, value):
         try:
             self.value = value
@@ -90,7 +98,7 @@ class SmaractMCS(PiezoStage):
         # outBuffer holds the locator strings, separated by '\n'
         # bufferSize holds the number of bytes written to outBuffer
         if cls.check_status(mcsc.SA_FindSystems("", outBuffer, byref(bufferSize))):
-#            print 'buffer size:', bufferSize
+            #            print 'buffer size:', bufferSize
             print('buffer:', ctypes.string_at(outBuffer))
         return ctypes.string_at(outBuffer)
 
@@ -111,7 +119,6 @@ class SmaractMCS(PiezoStage):
         self.min_voltage_levels = [0 for ch in range(self.num_ch)]
         self.max_voltage_levels = [4095 for ch in range(self.num_ch)]
 
-
     ### ====================== ###
     ### Initialization methods ###
     ### ====================== ###
@@ -124,7 +131,7 @@ class SmaractMCS(PiezoStage):
 
     def open_mcs(self):
         if not self.is_open:
-            mode = ctypes.c_char_p('sync') # use synchronouse communication mode
+            mode = ctypes.c_char_p('sync')  # use synchronouse communication mode
             if self.check_status(mcsc.SA_OpenSystem(byref(self.handle), self.mcs_id, mode)):
                 self.is_open = True
                 return True
@@ -164,8 +171,6 @@ class SmaractMCS(PiezoStage):
             ch = c_int(i)
             self.check_status(mcsc.SA_SetStepWhileScan_S(self.handle, ch, SA_NO_STEP_WHILE_SCAN))
 
-
-
     def get_sensor_type(self, ch):
         """
         returns the sensor type for a given channel ch
@@ -177,8 +182,6 @@ class SmaractMCS(PiezoStage):
         mcsc.SA_GetSensorType_S(self.handle, ch, byref(sensor_type))
         return sensor_type.value
 
-
-
     def set_sensor_type(self, ch, sensor_type):
         """
         sets the sensor type for a given channel ch
@@ -189,7 +192,6 @@ class SmaractMCS(PiezoStage):
         self.check_open_status()
         mcsc.SA_SetSensorType_S(self.handle, ch, sensor_type)
 
-
     def set_sensor_power_mode(self, mode):
         modes = {0: SA_SENSOR_DISABLED, 1: SA_SENSOR_ENABLED, 2: SA_SENSOR_POWERSAVE}
         self.check_open_status()
@@ -199,9 +201,10 @@ class SmaractMCS(PiezoStage):
         ch = c_int(int(ch))
         values = {0: SA_DISABLED, 1: SA_ENABLED}
         self.check_open_status()
-        self.check_status(mcsc.SA_SetChannelProperty_S(self.handle, ch,
-                                                       mcsc.SA_EPK(SA_GENERAL, SA_LOW_VIBRATION, SA_OPERATION_MODE),
-                                                       values[enable]))
+        self.check_status(
+            mcsc.SA_SetChannelProperty_S(
+                self.handle, ch, mcsc.SA_EPK(SA_GENERAL, SA_LOW_VIBRATION, SA_OPERATION_MODE),
+                values[enable]))
 
     def get_acceleration(self, ch):
         ch = c_int(int(ch))
@@ -223,8 +226,7 @@ class SmaractMCS(PiezoStage):
         ch = c_int(int(ch))
         speed = c_int()
         self.check_open_status()
-        self.check_status(mcsc.SA_GetClosedLoopMoveSpeed_S(self.handle, ch,
-                                                           byref(speed)))
+        self.check_status(mcsc.SA_GetClosedLoopMoveSpeed_S(self.handle, ch, byref(speed)))
         return speed.value
 
     def set_speed(self, ch, speed):
@@ -235,15 +237,13 @@ class SmaractMCS(PiezoStage):
         ch = c_int(int(ch))
         speed = c_int(int(speed))
         self.check_open_status()
-        self.check_status(mcsc.SA_SetClosedLoopMoveSpeed_S(self.handle, ch,
-                                                           speed))
+        self.check_status(mcsc.SA_SetClosedLoopMoveSpeed_S(self.handle, ch, speed))
 
     def get_frequency(self, ch):
         ch = c_int(int(ch))
         frequency = c_int()
         self.check_open_status()
-        self.check_status(mcsc.SA_GetClosedLoopMaxFrequency_S(self.handle, ch,
-                                                              byref(frequency)))
+        self.check_status(mcsc.SA_GetClosedLoopMaxFrequency_S(self.handle, ch, byref(frequency)))
         return frequency.value
 
     def set_frequency(self, ch, frequency):
@@ -254,8 +254,7 @@ class SmaractMCS(PiezoStage):
         ch = c_int(int(ch))
         frequency = c_int(int(frequency))
         self.check_open_status()
-        self.check_status(mcsc.SA_SetClosedLoopMaxFrequency_S(self.handle, ch,
-                                                              frequency))
+        self.check_status(mcsc.SA_SetClosedLoopMaxFrequency_S(self.handle, ch, frequency))
 
     ### Calibration Methods ###
 
@@ -301,8 +300,7 @@ class SmaractMCS(PiezoStage):
             value = SA_FORWARD_DIRECTION if (i in forward_channels) \
                 else SA_BACKWARD_DIRECTION
             ch = c_int(int(i))
-            self.check_status(mcsc.SA_SetSafeDirection_S(self.handle,
-                                                         ch, value))
+            self.check_status(mcsc.SA_SetSafeDirection_S(self.handle, ch, value))
         return forward_channels
 
     def find_references_ch(self, ch):
@@ -321,11 +319,11 @@ class SmaractMCS(PiezoStage):
         for i in range(num_ch):
             self.find_references_ch(i)
 
-
     """ =============================
         position of rotary positioner
         =============================
     """
+
     def move_angle_absolute(self, ch, angle, revolution, holdTime):
         """
         ch: positioner channel
@@ -340,7 +338,6 @@ class SmaractMCS(PiezoStage):
         holdTime = c_uint32(int(holdTime))
         self.check_open_status()
         mcsc.SA_GoToAngleAbolute_S(self.handle, ch, angle, revolution, holdTime)
-
 
     def move_angle_relative(self, ch, angle, revolution, holdTime):
         """
@@ -357,7 +354,7 @@ class SmaractMCS(PiezoStage):
         self.check_open_status()
         mcsc.SA_GoToAngleRelative_S(self.handle, ch, angle, revolution, holdTime)
 
-    def get_angle(self,ch):
+    def get_angle(self, ch):
         """
         returns the absolute angle and revolutions of the given positioner channel ch
         """
@@ -367,9 +364,6 @@ class SmaractMCS(PiezoStage):
         self.check_open_status()
         mcsc.SA_GetAngle_S(self.handle, byref(angle), byref(revolution))
         return [angle.value, revolution.value]
-
-
-
 
     ### ==================================================== ###
     ### Methods to read-out position and move to a specific  ###
@@ -386,7 +380,8 @@ class SmaractMCS(PiezoStage):
             return [self.get_position(axis) for axis in self.axis_names]
         else:
             if axis not in self.axis_names:
-                raise ValueError("{0} is not a valid axis, must be one of {1}".format(axis, self.axis_names))
+                raise ValueError("{0} is not a valid axis, must be one of {1}".format(
+                    axis, self.axis_names))
             ch = c_int(int(axis))
             position = c_int()
             self.check_open_status()
@@ -403,7 +398,8 @@ class SmaractMCS(PiezoStage):
         :return:
         """
         if axis not in self.axis_names:
-            raise ValueError("{0} is not a valid axis, must be one of {1}".format(axis, self.axis_names))
+            raise ValueError("{0} is not a valid axis, must be one of {1}".format(
+                axis, self.axis_names))
         position *= 1e9
         ch = c_int(int(axis))
         position = c_int(int(position))
@@ -418,12 +414,13 @@ class SmaractMCS(PiezoStage):
         """
         stops any ongoing movement of the positioner
         """
-        if axis is None: # stop movement of all positioner
-            axes= [c_int(int(axis)) for axis in self.axis_names]
+        if axis is None:  # stop movement of all positioner
+            axes = [c_int(int(axis)) for axis in self.axis_names]
             for ch in axes:
                 self.check_status(mcsc.SA_Stop_S(self.handle, ch))
-        elif axis not in self.axis_names: # wrong positioner name
-            raise ValueError("{0} is not a valid axis, must be one of {1}".format(axis, self.axis_names))
+        elif axis not in self.axis_names:  # wrong positioner name
+            raise ValueError("{0} is not a valid axis, must be one of {1}".format(
+                axis, self.axis_names))
         else:  # just stop movement of specified positioner
             ch = c_int(int(axis))
             self.check_status(mcsc.SA_Stop_S(self.handle, ch))
@@ -438,7 +435,7 @@ class SmaractMCS(PiezoStage):
         self.check_open_status()
         mcsc.SA_SetPosition_S(self.handle, ch, position)
 
-    def set_position(self, ch, position): # same as set_initial_position() !!!
+    def set_position(self, ch, position):  # same as set_initial_position() !!!
         '''
         units are nm
         '''
@@ -460,7 +457,10 @@ class SmaractMCS(PiezoStage):
         else:
             raise SmaractError('Unknown return value')
 
-    def multi_move(self, positions, axes, relative=False): #?? doesn't this method include the simple move() method??
+    def multi_move(self,
+                   positions,
+                   axes,
+                   relative=False):  #?? doesn't this method include the simple move() method??
         self.check_open_status()
 
         positions = [c_int(1e9 * p) for p in positions]
@@ -468,16 +468,19 @@ class SmaractMCS(PiezoStage):
 
         for i in range(len(axes)):
             if relative:
-                self.check_status(mcsc.SA_GotoPositionRelative_S(self.handle, channels[i], positions[i], c_int(0)))
+                self.check_status(
+                    mcsc.SA_GotoPositionRelative_S(self.handle, channels[i], positions[i],
+                                                   c_int(0)))
             else:
-                self.check_status(mcsc.SA_GotoPositionAbsolute_S(self.handle, channels[i], positions[i], c_int(0)))
+                self.check_status(
+                    mcsc.SA_GotoPositionAbsolute_S(self.handle, channels[i], positions[i],
+                                                   c_int(0)))
         for axis in axes:
             self.wait_until_stopped(axis)
 
     def multi_move_rel(self, step, axes):
         steps = [1e9 * step for axis in axes]
         self.multi_move(steps, axes, relative=True)
-
 
     ### ==================================== ###
     ### Method to control slip-stick motion ###
@@ -499,14 +502,14 @@ class SmaractMCS(PiezoStage):
                           from 1 .. 18,500
         """
         if axis not in self.axis_names:
-            raise ValueError("{0} is not a valid axis, must be one of {1}".format(axis, self.axis_names))
+            raise ValueError("{0} is not a valid axis, must be one of {1}".format(
+                axis, self.axis_names))
         ch = c_int(int(axis))
         steps = c_int(int(steps))
         amplitude = c_uint(int(amplitude))
         frequency = c_uint(int(frequency))
         self.check_open_status()
         self.check_status(mcsc.SA_StepMove_S(self.handle, ch, steps, amplitude, frequency))
-
 
     ### ===================================== ###
     ### Methods to control the piezo scanners ###
@@ -521,12 +524,13 @@ class SmaractMCS(PiezoStage):
         :return:
         """
         if axis is None:
-            return [1e-9*10.*self.get_voltage(axis) for axis in self.axis_names]
+            return [1e-9 * 10. * self.get_voltage(axis) for axis in self.axis_names]
         else:
             if axis not in self.axis_names:
-                raise ValueError("{0} is not a valid axis, must be one of {1}".format(axis, self.axis_names))
+                raise ValueError("{0} is not a valid axis, must be one of {1}".format(
+                    axis, self.axis_names))
             voltage = self.get_voltage(axis)
-            position = 1e-9*10.*voltage
+            position = 1e-9 * 10. * voltage
             return position
 
     def get_piezo_level(self, axis=None):
@@ -537,7 +541,8 @@ class SmaractMCS(PiezoStage):
             return [self.get_piezo_level(axis) for axis in self.axis_names]
         else:
             if axis not in self.axis_names:
-                raise ValueError("{0} is not a valid axis, must be one of {1}".format(axis, self.axis_names))
+                raise ValueError("{0} is not a valid axis, must be one of {1}".format(
+                    axis, self.axis_names))
             ch = c_int(int(axis))
             level = c_int()
             self.check_open_status()
@@ -551,7 +556,8 @@ class SmaractMCS(PiezoStage):
         speed: 4095 s - 1 us for full 4095 voltage range, 1 - 4,095,000,000
         """
         if axis not in self.axis_names:
-            raise ValueError("{0} is not a valid axis, must be one of {1}".format(axis, self.axis_names))
+            raise ValueError("{0} is not a valid axis, must be one of {1}".format(
+                axis, self.axis_names))
         ch = c_int(int(axis))
         level = c_int(int(level))
         speed = c_int(int(speed))
@@ -571,10 +577,10 @@ class SmaractMCS(PiezoStage):
             if relative:
                 pass
             else:
-                self.check_status(mcsc.SA_ScanMoveAbsolute_S(self.handle, axes[i], levels[i], speeds[i]))
+                self.check_status(
+                    mcsc.SA_ScanMoveAbsolute_S(self.handle, axes[i], levels[i], speeds[i]))
         for axis in axes:
             self.wait_until_stopped(axis)
-
 
     ### additional useful methods to control the piezo scanners
 
@@ -610,11 +616,11 @@ class SmaractMCS(PiezoStage):
         self.set_piezo_level(diff, axis, speed, relative=True)
 
     def set_piezo_position(self, position, axis, speed, relative=False):
-        level = self.position_to_level(1e9*position)
+        level = self.position_to_level(1e9 * position)
         self.set_piezo_level(level, axis, speed, relative)
 
     def set_piezo_position_rel(self, axis, step, speed):
-        diff = self.position_to_level(1e9*step)
+        diff = self.position_to_level(1e9 * step)
         self.set_piezo_level(diff, axis, speed, relative=True)
 
     def multi_set_piezo_voltage(self, voltages, axes, speeds, relative=False):
@@ -622,7 +628,7 @@ class SmaractMCS(PiezoStage):
         self.multi_set_piezo_level(levels, axes, speeds, relative)
 
     def multi_set_piezo_position(self, positions, axes, speeds, relative=False):
-        levels = [self.position_to_level(1e9*p) for p in positions]
+        levels = [self.position_to_level(1e9 * p) for p in positions]
         self.multi_set_piezo_level(levels, axes, speeds, relative)
 
     def position_to_level(self, position):
@@ -656,21 +662,24 @@ class SmaractMCS(PiezoStage):
 
 
 class SmaractStageUI(StageUI):
+
     def __init__(self, stage):
         super(SmaractStageUI, self).__init__(stage, stage_step_min=50e-9)
 
     def move_axis_relative(self, index, axis, dir=1):
-        if axis in [1,2,4,5]:
+        if axis in [1, 2, 4, 5]:
             dir *= -1
-        self.stage.move(dir*self.step_size[index], axis=axis, relative=True)
+        self.stage.move(dir * self.step_size[index], axis=axis, relative=True)
         self.update_ui[int].emit(axis)
 
 
-
-from pyopenlab.instrument.serial_instrument import SerialInstrument
 import serial
 
+from pyopenlab.instrument.serial_instrument import SerialInstrument
+
+
 class MCSSerialError(Exception):
+
     def __init__(self, error_msg):
         self.channel = error_msg[0]
         self.error_code = error_msg[1]
@@ -707,12 +716,11 @@ class MCSSerialError(Exception):
         if self.channel == '-1':
             return "[%s] %s" % (self.error_code, self.error[self.error_code])
         else:
-            return "[%s]: %s for channel %s" % (self.error_code, self.error[self.error_code], self.channel)
+            return "[%s]: %s for channel %s" % (self.error_code, self.error[self.error_code],
+                                                self.channel)
 
 
-
-
-class SmaractMCSSerial(SerialInstrument,PiezoStage):
+class SmaractMCSSerial(SerialInstrument, PiezoStage):
     """
     RS232 Smaract MCS controller interface for SmarAct stages.
 
@@ -722,20 +730,24 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
     given as decimal values which can be positive or negative
 
     """
-    port_settings = dict(baudrate=9600,
-                        bytesize=serial.EIGHTBITS,
-                        parity=serial.PARITY_NONE,
-                        stopbits=serial.STOPBITS_ONE,
-                        timeout=1, #wait at most one second for a response
-                        writeTimeout=1, #similarly, fail if writing takes >1s
-                        xonxoff=False, rtscts=False, dsrdtr=False,
-                    )
-    def __init__(self,port):
+    port_settings = dict(
+        baudrate=9600,
+        bytesize=serial.EIGHTBITS,
+        parity=serial.PARITY_NONE,
+        stopbits=serial.STOPBITS_ONE,
+        timeout=1,  #wait at most one second for a response
+        writeTimeout=1,  #similarly, fail if writing takes >1s
+        xonxoff=False,
+        rtscts=False,
+        dsrdtr=False,
+    )
+
+    def __init__(self, port):
         self.initial_character = ':'
         self.termination_character = '\n'
         super(SmaractMCSSerial, self).__init__(port=port)
         self._num_ch = None
-        self.unit="m"
+        self.unit = "m"
         self.axis_names = tuple(i for i in range(self.num_ch))
         self.positions = [0 for ch in range(self.num_ch)]
         self.levels = [0 for ch in range(self.num_ch)]
@@ -751,15 +763,16 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
     """
         overwrite query() from message_bus_instrumennt class to implement error detection
     """
-    def query(self,queryString,multiline=False,termination_line=None,timeout=None):
+
+    def query(self, queryString, multiline=False, termination_line=None, timeout=None):
         """
         original query() from message_bus_instrumennt class overwritten to
         implement error detection
         """
         with self.communications_lock:
             self.flush_input_buffer()
-            self.write(queryString) # intial and termination character are added in write()
-            if self.ignore_echo == True: # Needs Implementing for a multiline read!
+            self.write(queryString)  # intial and termination character are added in write()
+            if self.ignore_echo == True:  # Needs Implementing for a multiline read!
                 first_line = self.readline(timeout).strip()
                 if first_line == queryString:
                     return self.check_for_error(self.readline(timeout).strip())
@@ -774,20 +787,18 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
             else:
                 return self.check_for_error(self.readline(timeout).strip())
 
-
-
-    def check_for_error(self,response):
+    def check_for_error(self, response):
         if response[1] == "E" and not response[-1] == "0":
             print(response)
             raise MCSSerialError(response[2:].split(','))
         else:
             return response
 
-
     """ =======================
         Initialisation commands
         =======================
     """
+
     def get_communication_mode(self):
         mode = self.query("GCM")
         if mode[-1] == '0':
@@ -796,7 +807,7 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
             print("asynchronous communication mode")
         return int(mode[-1])
 
-    def set_communication_mode(self,mode):
+    def set_communication_mode(self, mode):
         if mode == "sync" or mode == "synchronous" or mode == "0":
             self.write("SCM0")
         elif mode == "async" or mode == "asynchronous" or mode == "1":
@@ -804,15 +815,15 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
         else:
             raise ValueError("No valid communication mode. Possible modes are: 'sync' or 'async'.")
 
-    def set_baud_rate(self,baudrate):
+    def set_baud_rate(self, baudrate):
         """
         the baud rate is stored to non-volatile memory and loaded on future power ups
         valid range for baudrate: 9,600 .. 115,200
         """
-        self.write("CB"+str(baudrate))
+        self.write("CB" + str(baudrate))
 
-    def get_channel_type(self,ch):
-        response = self.query("GCT"+str(ch))
+    def get_channel_type(self, ch):
+        response = self.query("GCT" + str(ch))
         return int(response[-1])
 
     def get_interface_version(self):
@@ -844,11 +855,11 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
         """
         Checks the status of a given positioner channel
         """
-        response=self.query("GS"+str(ch))
-        return int(response[response.index(",")+1:])
+        response = self.query("GS" + str(ch))
+        return int(response[response.index(",") + 1:])
 
     def wait_until_stopped(self, ch):
-        while self.check_status(ch)!=0:
+        while self.check_status(ch) != 0:
             print("sleep")
             time.sleep(1)
 
@@ -858,22 +869,21 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
     """
 
     def calibrate_system(self):
-#        print 'calibrating system..'
+        #        print 'calibrating system..'
         self.set_sensor_power_mode(1)
         num_ch = self.get_num_channels()
         for ch in range(num_ch):
-            print("calibrating channel",ch, "..")
-            self.write("CS"+str(ch))
+            print("calibrating channel", ch, "..")
+            self.write("CS" + str(ch))
             self.wait_until_stopped(ch)
 
-    def get_safe_direction(self,ch):
+    def get_safe_direction(self, ch):
         """
         returns the safe dirction for a given channel ch, with 0 being forward
         and 1 being backward
         """
-        response = self.query("GSD"+str(ch))
-        return int(response[response.index(",")+1:])
-
+        response = self.query("GSD" + str(ch))
+        return int(response[response.index(",") + 1:])
 
     def set_safe_directions(self):
         """
@@ -885,17 +895,16 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
 
         Note that this function is currently based on the tip experiment arrangement.
         """
-        safe_directions = [1,1,0,0,1,0]
+        safe_directions = [1, 1, 0, 0, 1, 0]
         for ch, value in enumerate(safe_directions):
-            self.write("SSD"+str(ch)+","+str(value))
+            self.write("SSD" + str(ch) + "," + str(value))
         return safe_directions
-
 
     def find_references_ch(self, ch):
         print('finding reference for ch', ch)
         self.set_sensor_power_mode(1)
         safe_directions = self.set_safe_directions()
-        self.write("FRM"+str(ch)+","+str(safe_directions[ch])+",0,1")
+        self.write("FRM" + str(ch) + "," + str(safe_directions[ch]) + ",0,1")
         self.wait_until_stopped(ch)
 
     def find_references(self):
@@ -903,38 +912,35 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
         for i in range(num_ch):
             self.find_references_ch(i)
 
-
     def set_position(self, ch, position):
         """
         defines the current position to have a specific value; the measuring
         scale is shifted accordingly
         """
-        self.write("SP"+str(ch)+","+str(position))
-
+        self.write("SP" + str(ch) + "," + str(position))
 
     def physical_position_known(self, ch):
-        response = self.query("GPPK"+str(ch))
-        if response[response.index(",")+1:] =="1":
+        response = self.query("GPPK" + str(ch))
+        if response[response.index(",") + 1:] == "1":
             return True
-        elif response[response.index(",")+1:] =="0":
+        elif response[response.index(",") + 1:] == "0":
             return False
         else:
             raise ValueError('Unknown return value')
-
-
 
     """ ========================================
         speed, accelaration and sensor settings
         ========================================
     """
+
     def get_acceleration(self, ch):
         """
         returns the acceleration of a given channel used for closed-loop
         commands in um*s^-2 (linear positioner) or mdegree*s^-2 (roatry positioner).
         A returned value of 0 means that the acceleration control is deactivated
         """
-        response = self.query("GCLA"+str(ch))
-        return int(response[response.index(",")+1:])
+        response = self.query("GCLA" + str(ch))
+        return int(response[response.index(",") + 1:])
 
     def set_acceleration(self, ch, acceleration):
         """
@@ -943,51 +949,50 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
         The valid range is 0 .. 10,000,000. A value of 0 deactivates the
         acceleration control feature.
         """
-        self.write("SCLA"+str(ch)+","+str(acceleration))
+        self.write("SCLA" + str(ch) + "," + str(acceleration))
 
-    def get_speed(self,ch):
+    def get_speed(self, ch):
         """
         returns the speed used for closed-loop commands for a given channel.
         For linear positioners units are: nm/s, for rotary positioners microdegree/s
         A value of 0 means the speed control is deactivated.
         """
-        response = self.query("GCLS"+str(ch))
-        return int(response[response.index(",")+1:])
+        response = self.query("GCLS" + str(ch))
+        return int(response[response.index(",") + 1:])
 
-    def set_speed(self,ch,speed):
+    def set_speed(self, ch, speed):
         """
         sets the speed used for closed-loop commands for a given channel.
         For linear positioners units are: nm/s, for rotary positioners microdegree/s
         A value of 0 means the speed control is being deactivated.
         The valid range is: 0.. 100,000,000
         """
-        self.write("SCLS"+str(ch)+","+str(int(speed)))
+        self.write("SCLS" + str(ch) + "," + str(int(speed)))
 
-    def set_frequency(self, ch,frequency):
+    def set_frequency(self, ch, frequency):
         """
         sets the maximum frequency used for closed-loop commands for a given channel.
         The valid range is 50.. 18,500 Hz
         """
-        if frequency <50 or frequency > 18500:
+        if frequency < 50 or frequency > 18500:
             raise ValueError("The valid range for the maximum frequency is 50.. 18,500 Hz")
         else:
-            self.write("SCLF"+str(ch)+","+str(int(frequency)))
+            self.write("SCLF" + str(ch) + "," + str(int(frequency)))
 
     def get_sensor_type(self, ch):
         """
         returns the sensor type for a given channel ch
         For a list of sensor types see MCS ASCII Programming Interface documentation
         """
-        response = self.query("GST"+str(ch))
-        return int(response[response.index(",")+1:])
-
+        response = self.query("GST" + str(ch))
+        return int(response[response.index(",") + 1:])
 
     def set_sensor_type(self, ch, sensor_type):
         """
         sets the sensor type for a given channel ch
         For a list of sensor types see MCS ASCII Programming Interface documentation
         """
-        self.write("SST"+str(ch)+","+str(sensor_type))
+        self.write("SST" + str(ch) + "," + str(sensor_type))
 
     def get_sensor_power_mode(self):
         """
@@ -999,7 +1004,6 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
         response = self.query("GSE")
         return int(response[3:])
 
-
     def set_sensor_power_mode(self, mode):
         """
         sets the power mode for all positioner channels. Modes can be:
@@ -1007,27 +1011,26 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
         1: sensors enabled
         2: power saving mode
         """
-        if mode not in [0,1,2]:
-            raise ValueError("No valid sensor mode! Valid modes are: 0 (disabled), 1 (enabled), 2 (powersafe)")
+        if mode not in [0, 1, 2]:
+            raise ValueError(
+                "No valid sensor mode! Valid modes are: 0 (disabled), 1 (enabled), 2 (powersafe)")
         else:
-            self.write("SSE"+str(mode))
-
+            self.write("SSE" + str(mode))
 
     def set_low_vibration_mode(self, ch, enable):
         raise ValueError("The low vibration mode is not supported by this controller!")
         # self.write("GCP"+str(ch)+",16908289")
 
-    def get_low_vibration_mode(self,ch):
+    def get_low_vibration_mode(self, ch):
         raise ValueError("The low vibration mode is not supported by this controller!")
+
+
 #        self.write("SCP"+str(ch)+","+str(sensor_type))
 
-
-
-
-    ### ==================================================== ###
-    ### Methods to read-out position and move to a specific  ###
-    ### position via slip-stick motion and piezo movement    ###
-    ## ===================================================== ###
+### ==================================================== ###
+### Methods to read-out position and move to a specific  ###
+### position via slip-stick motion and piezo movement    ###
+## ===================================================== ###
 
     def get_position(self, axis=None):
         """
@@ -1038,12 +1041,12 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
         if axis is None:
             return [self.get_position(axis) for axis in self.axis_names]
         else:
-            if axis not in [0,1,2,3,4,5]:  #self.axis_names:
-                raise ValueError("{0} is not a valid axis, must be one of {1}".format(axis, self.axis_names))
+            if axis not in [0, 1, 2, 3, 4, 5]:  #self.axis_names:
+                raise ValueError("{0} is not a valid axis, must be one of {1}".format(
+                    axis, self.axis_names))
             else:
-                response = self.query("GP"+str(axis))
-                return 1e-9*float(response[response.index(",")+1:])
-
+                response = self.query("GP" + str(axis))
+                return 1e-9 * float(response[response.index(",") + 1:])
 
     def move(self, position, axis, relative=False, holdTime=0):
         """
@@ -1054,14 +1057,15 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
         :param relative:
         :return:
         """
-        if axis not in [0,1,2,3,4,5]: #self.axis_names:
-            raise ValueError("{0} is not a valid axis, must be one of {1}".format(axis, self.axis_names))
+        if axis not in [0, 1, 2, 3, 4, 5]:  #self.axis_names:
+            raise ValueError("{0} is not a valid axis, must be one of {1}".format(
+                axis, self.axis_names))
         position *= 1e9
         if relative:
-            send_string = "MPR"+str(axis)+","+str(int(position))+","+str(holdTime)
+            send_string = "MPR" + str(axis) + "," + str(int(position)) + "," + str(holdTime)
             return self.query(send_string)
         else:
-            send_string = "MPA"+str(axis)+","+str(int(position))+","+str(holdTime)
+            send_string = "MPA" + str(axis) + "," + str(int(position)) + "," + str(holdTime)
             return self.query(send_string)
         self.wait_until_stopped(axis)
 
@@ -1069,20 +1073,21 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
         """
         stops any ongoing movement of the positioner
         """
-        if axis is None: # stop movement of all positioner
-            axes= [0,1,2,3,4,5] #c_int(int(axis)) for axis in self.axis_names]
+        if axis is None:  # stop movement of all positioner
+            axes = [0, 1, 2, 3, 4, 5]  #c_int(int(axis)) for axis in self.axis_names]
             for ch in axes:
-                self.write("S"+str(ch))
-        elif axis not in [0,1,2,3,4,5]: # self.axis_names: # wrong positioner name
-            raise ValueError("{0} is not a valid axis, must be one of {1}".format(axis, self.axis_names))
+                self.write("S" + str(ch))
+        elif axis not in [0, 1, 2, 3, 4, 5]:  # self.axis_names: # wrong positioner name
+            raise ValueError("{0} is not a valid axis, must be one of {1}".format(
+                axis, self.axis_names))
         else:  # just stop movement of specified positioner
-            self.write("S"+str(ch))
-
+            self.write("S" + str(ch))
 
     """ =============================
         position of rotary positioner
         =============================
     """
+
     def move_angle_absolute(self, ch, angle, revolution, holdTime):
         """
         ch: positioner channel
@@ -1091,7 +1096,7 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
         holdTime: time in milliseconds the angle is actively hold after reaching target: 0 .. 60,000
         with 0 deactivating feature and 60,000 is infinite/until manually stopped
         """
-        self.write("MAA"+str(ch)+","+str(angle)+","+str(revolution)+","+str(holdTime))
+        self.write("MAA" + str(ch) + "," + str(angle) + "," + str(revolution) + "," + str(holdTime))
 
     def move_angle_relative(self, ch, angle, revolution, holdTime):
         """
@@ -1101,9 +1106,9 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
         holdTime: time in milliseconds the angle is actively hold after reaching target: 0 .. 60,000
         with 0 deactivating feature and 60,000 is infinite/until manually stopped
         """
-        self.write("MAR"+str(ch)+","+str(angle)+","+str(revolution)+","+str(holdTime))
+        self.write("MAR" + str(ch) + "," + str(angle) + "," + str(revolution) + "," + str(holdTime))
 
-    def get_angle(self,ch):
+    def get_angle(self, ch):
         """
         returns the absolute angle and revolutions of the given positioner channel ch
         """
@@ -1111,8 +1116,6 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
         print("angle in microdegree:", response[0])
         print("revolutions:", response[1])
         return response
-
-
 
     ### ==================================== ###
     ### Method to control slip-stick motion ###
@@ -1134,9 +1137,10 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
                           from 1 .. 18,500
         """
         if axis not in self.axis_names:
-            raise ValueError("{0} is not a valid axis, must be one of {1}".format(axis, self.axis_names))
-        self.write("MST"+str(axis)+","+str(steps)+","+str(amplitude)+","+str(frequency))
-
+            raise ValueError("{0} is not a valid axis, must be one of {1}".format(
+                axis, self.axis_names))
+        self.write("MST" + str(axis) + "," + str(steps) + "," + str(amplitude) + "," +
+                   str(frequency))
 
     ### ===================================== ###
     ### Methods to control the piezo scanners ###
@@ -1150,9 +1154,10 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
             return [self.get_piezo_level(axis) for axis in self.axis_names]
         else:
             if axis not in self.axis_names:
-                raise ValueError("{0} is not a valid axis, must be one of {1}".format(axis, self.axis_names))
-            response = self.query("GVL"+str(axis))
-            return int(response[response.index(",")+1:])
+                raise ValueError("{0} is not a valid axis, must be one of {1}".format(
+                    axis, self.axis_names))
+            response = self.query("GVL" + str(axis))
+            return int(response[response.index(",") + 1:])
 
     def set_piezo_level(self, level, axis, speed=4095000000, relative=False):
         """
@@ -1161,17 +1166,17 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
         speed: 0.. 4,095,000,0000 => 12 bit increments per second, for value of 1: full range scan takes 4095 seconds, at full speed scan is done in 1 micro second
         """
         if axis not in self.axis_names:
-            raise ValueError("{0} is not a valid axis, must be one of {1}".format(axis, self.axis_names))
+            raise ValueError("{0} is not a valid axis, must be one of {1}".format(
+                axis, self.axis_names))
         if relative:
-            self.write("MSCR"+str(axis)+","+str(level)+","+str(speed))
+            self.write("MSCR" + str(axis) + "," + str(level) + "," + str(speed))
         else:
-            self.write("MSCA"+str(axis)+","+str(level)+","+str(speed))
+            self.write("MSCA" + str(axis) + "," + str(level) + "," + str(speed))
         self.wait_until_stopped(axis)
 
     def multi_set_piezo_level(self, levels, axes, speeds, relative=False):
         for i in range(len(axes)):
-            self.set_piezo_level(levels[i],axes[i],speed[i],relative)
-
+            self.set_piezo_level(levels[i], axes[i], speed[i], relative)
 
     ### additional useful methods to control the piezo scanners
     def get_piezo_voltage(self, axis):
@@ -1188,16 +1193,15 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
         self.set_piezo_level(level, axis, speed, relative)
 
     def set_piezo_position(self, position, axis, speed, relative=False):
-        level = self.position_to_level(1e9*position)
+        level = self.position_to_level(1e9 * position)
         self.set_piezo_level(level, axis, speed, relative)
-
 
     def multi_set_piezo_voltage(self, voltages, axes, speeds, relative=False):
         levels = [self.voltage_to_level(v) for v in voltages]
         self.multi_set_piezo_level(levels, axes, speeds, relative)
 
     def multi_set_piezo_position(self, positions, axes, speeds, relative=False):
-        levels = [self.position_to_level(1e9*p) for p in positions]
+        levels = [self.position_to_level(1e9 * p) for p in positions]
         self.multi_set_piezo_level(levels, axes, speeds, relative)
 
     def position_to_level(self, position):
@@ -1223,22 +1227,24 @@ class SmaractMCSSerial(SerialInstrument,PiezoStage):
     def get_qt_ui(self):
         return SmaractMCSUI(self)
 
-
     ### Useful Properties ###
     num_ch = property(get_num_channels)
     position = property(get_position)
     piezo_levels = property(get_piezo_level)
 
 
-
 class SmaractScanStageUI(PiezoStageUI):
+
     def __init__(self, stage):
         super(SmaractScanStageUI, self).__init__(stage)
 
     def move_axis_relative(self, index, axis, dir=1):
-        if axis in [1,2,4,5]:
+        if axis in [1, 2, 4, 5]:
             dir *= -1
-        self.stage.set_piezo_position(dir*self.step_size[index], axis=axis, speed=4095, relative=True)
+        self.stage.set_piezo_position(dir * self.step_size[index],
+                                      axis=axis,
+                                      speed=4095,
+                                      relative=True)
         self.update_ui[int].emit(axis)
 
     @QtCore.Slot(int)
@@ -1247,8 +1253,11 @@ class SmaractScanStageUI(PiezoStageUI):
         piezo_levels = self.stage.piezo_levels
         if axis is None:
             for i in range(len(self.position_widgets)):
-                self.position_widgets[i].xy_widget.setValue(piezo_levels[i*3],self.stage.max_voltage_levels[i*3+1]-piezo_levels[i*3+1])
-                self.position_widgets[i].z_bar.setValue(self.stage.max_voltage_levels[i*3+2]-piezo_levels[i*3+2])
+                self.position_widgets[i].xy_widget.setValue(
+                    piezo_levels[i * 3],
+                    self.stage.max_voltage_levels[i * 3 + 1] - piezo_levels[i * 3 + 1])
+                self.position_widgets[i].z_bar.setValue(self.stage.max_voltage_levels[i * 3 + 2] -
+                                                        piezo_levels[i * 3 + 2])
 
 #            current_position = self.stage.scan_position
 #            for i in range(len(self.positions)):
@@ -1256,19 +1265,29 @@ class SmaractScanStageUI(PiezoStageUI):
 #                self.positions[i].setText(p)
         else:
             if axis % 3 == 0:
-                self.position_widgets[old_div(axis,3)].xy_widget.setValue(piezo_levels[axis],self.stage.max_voltage_levels[axis+1]-piezo_levels[axis+1])
+                self.position_widgets[old_div(axis, 3)].xy_widget.setValue(
+                    piezo_levels[axis],
+                    self.stage.max_voltage_levels[axis + 1] - piezo_levels[axis + 1])
             elif axis % 3 == 1:
-                self.position_widgets[old_div(axis,3)].xy_widget.setValue(piezo_levels[axis-1],self.stage.max_voltage_levels[axis]-piezo_levels[axis])
+                self.position_widgets[old_div(axis, 3)].xy_widget.setValue(
+                    piezo_levels[axis - 1],
+                    self.stage.max_voltage_levels[axis] - piezo_levels[axis])
             else:
-                self.position_widgets[old_div(axis,3)].z_bar.setValue(self.stage.max_voltage_levels[axis]-piezo_levels[axis])
+                self.position_widgets[old_div(
+                    axis,
+                    3)].z_bar.setValue(self.stage.max_voltage_levels[axis] - piezo_levels[axis])
+
+
 #            i = self.stage.axis_names.index(axis)
 #            p = engineering_format(self.stage.scan_position[i], base_unit='m', digits_of_precision=3)
 #            self.positions[i].setText(p)
 
 
 class SmaractMCSUI(QtWidgets.QWidget, UiTools):
+
     def __init__(self, mcs, parent=None):
-        assert isinstance(mcs, SmaractMCS) or isinstance(mcs, SmaractMCSSerial) , "system must be a Smaract MCS"
+        assert isinstance(mcs, SmaractMCS) or isinstance(
+            mcs, SmaractMCSSerial), "system must be a Smaract MCS"
         super(SmaractMCSUI, self).__init__()
         self.mcs = mcs
         uic.loadUi(os.path.join(os.path.dirname(__file__), 'smaract_mcs.ui'), self)
@@ -1276,14 +1295,15 @@ class SmaractMCSUI(QtWidgets.QWidget, UiTools):
         self.num_ch.setText(str(mcs.num_ch))
         self.reference_button.clicked.connect(self.mcs.find_references)
         self.calibrate_button.clicked.connect(self.mcs.calibrate_system)
-        self.step_stage_widget = self.replace_widget(self.step_stage_layout, self.step_stage_widget, SmaractStageUI(self.mcs))
-        self.scan_stage_widget = self.replace_widget(self.scan_stage_layout, self.scan_stage_widget, SmaractScanStageUI(self.mcs))
+        self.step_stage_widget = self.replace_widget(self.step_stage_layout, self.step_stage_widget,
+                                                     SmaractStageUI(self.mcs))
+        self.scan_stage_widget = self.replace_widget(self.scan_stage_layout, self.scan_stage_widget,
+                                                     SmaractScanStageUI(self.mcs))
 
 
 if __name__ == '__main__':
 
     smaract = SmaractMCSSerial('COM3')
-
 
     # print SA_OK
 #    system_id = SmaractMCS.find_mcs_systems()
@@ -1291,9 +1311,9 @@ if __name__ == '__main__':
 #    stage1 = SmaractMCS(system_id)
 #    stage1.show_gui(blocking=False)
 
-    #print stage.position
-    #print stage.get_position()
-    #print stage.get_position(0)
+#print stage.position
+#print stage.get_position()
+#print stage.get_position(0)
 
 #    import sys
 #    from pyopenlab.utils.gui import get_qt_app

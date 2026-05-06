@@ -3,12 +3,16 @@ author: im354
 '''
 
 import sys
-from pyopenlab.utils.gui import *
+
+from pyopenlab.instrument.stage.thorlabs_ello import bytes_to_binary
+from pyopenlab.instrument.stage.thorlabs_ello import ElloDevice
+from pyopenlab.instrument.stage.thorlabs_ello import twos_complement_to_int
 from pyopenlab.ui.ui_tools import *
-from pyopenlab.instrument.stage.thorlabs_ello import ElloDevice, bytes_to_binary, twos_complement_to_int
+from pyopenlab.utils.gui import *
 
 
 class Ell8(ElloDevice):
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.configuration = self.get_device_info()
@@ -18,7 +22,7 @@ class Ell8(ElloDevice):
             print("Travel (degrees):", self.TRAVEL)
             print("Pulses per revolution", self.PULSES_PER_REVOLUTION)
             print("Device status:", self.get_device_status())
-    
+
     def get_position(self, axis=None):
         '''
         Query stage for its current position, in degrees
@@ -36,6 +40,7 @@ class Ell8(ElloDevice):
             return degrees_position
         else:
             raise ValueError("Incompatible Header received:{}".format(header))
+
     def move_absolute(self, angle, blocking=True):
         """Move to absolute position relative to home setting
 
@@ -52,7 +57,7 @@ class Ell8(ElloDevice):
         if -360 > angle or angle > 360:
             angle %= 360
         if angle < 0:
-            angle = 360+angle
+            angle = 360 + angle
         return super().move_absolute(angle, blocking=blocking)
 
 
@@ -60,16 +65,14 @@ class Thorlabs_ELL8K_UI(QtWidgets.QWidget, UiTools):
 
     def __init__(self, stage, parent=None, debug=0):
         if not isinstance(stage, Thorlabs_ELL8K):
-            raise ValueError(
-                "Object is not an instance of the Thorlabs_ELL8K Stage")
+            raise ValueError("Object is not an instance of the Thorlabs_ELL8K Stage")
         super(Thorlabs_ELL8K_UI, self).__init__()
-        
+
         self.stage = stage  # this is the actual rotation stage
         self.parent = parent
         self.debug = debug
         path = os.path.dirname(__file__)
-        uic.loadUi(os.path.join(os.path.dirname(
-            path), 'thorlabs_ell8k.ui'), self)
+        uic.loadUi(os.path.join(os.path.dirname(path), 'thorlabs_ell8k.ui'), self)
 
         self.move_relative_btn.clicked.connect(self.move_relative)
         self.move_absolute_btn.clicked.connect(self.move_absolute)

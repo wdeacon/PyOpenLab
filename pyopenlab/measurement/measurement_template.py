@@ -1,5 +1,7 @@
-﻿from pyopenlab.measurement import *
-import h5py
+﻿import h5py
+
+from pyopenlab.measurement import *
+
 
 class TemplateMeasurement(H5Action):
 
@@ -35,13 +37,10 @@ class TemplateMeasurement(H5Action):
         # Define what you want the human-readable name of this measurement type to be
         super().__init__("Measurement Name Here", description)
 
-    
     def main(self, data: h5py.Group = None) -> Result[h5py.Group]:
         # Write your measurement code here, using the parameters and instruments defined above
         pass
 
-
     def finish(self, data: h5py.Group = None):
         # Write code that you want to be always called when the measurement has finished here
         pass
-

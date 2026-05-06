@@ -11,17 +11,18 @@ http://markmail.org/message/z3hnoqruk56g2bje
 adapted and tested to work with PySide from Anaconda in March 2014
 """
 
+import matplotlib
+
 from pyopenlab.utils.gui import *
 
-import matplotlib
 # We want matplotlib to use a QT backend
 matplotlib.use('Qt4Agg')
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-
-from traits.api import Any, Instance
-from traitsui.qt4.editor import Editor
+from traits.api import Any
+from traits.api import Instance
 from traitsui.qt4.basic_editor_factory import BasicEditorFactory
+from traitsui.qt4.editor import Editor
 
 
 class FigureCanvasWithDeferredDraw(FigureCanvas):
@@ -29,7 +30,7 @@ class FigureCanvasWithDeferredDraw(FigureCanvas):
     # the GUI thread, even if the call comes from outside the GUI thread.
     # this is necessary if you want to plot from a background thread.
     ask_for_redraw = QtCore.Signal()
-    
+
     def __init__(self, figure):
         FigureCanvas.__init__(self, figure)
         # We connect the ask_for_redraw signal to the FigureCanvas's draw() method.
@@ -66,9 +67,16 @@ class MPLFigureEditor(BasicEditorFactory):
 
 if __name__ == "__main__":
     # Create a window to demo the editor
-    from traits.api import HasTraits, Int, Float, on_trait_change
-    from traitsui.api import View, Item
-    from numpy import sin, cos, linspace, pi
+    from numpy import cos
+    from numpy import linspace
+    from numpy import pi
+    from numpy import sin
+    from traits.api import Float
+    from traits.api import HasTraits
+    from traits.api import Int
+    from traits.api import on_trait_change
+    from traitsui.api import Item
+    from traitsui.api import View
 
     class Test(HasTraits):
 
@@ -76,8 +84,7 @@ if __name__ == "__main__":
         n = Int(11)
         a = Float(0.5)
 
-        view = View(Item('figure', editor=MPLFigureEditor(),
-                         show_label=False),
+        view = View(Item('figure', editor=MPLFigureEditor(), show_label=False),
                     Item('n'),
                     Item('a'),
                     width=400,

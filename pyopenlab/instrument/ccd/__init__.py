@@ -1,16 +1,18 @@
-﻿
-__author__ = 'alansanders'
+﻿__author__ = 'alansanders'
 
-from pyopenlab.instrument import Instrument
+import datetime
 import inspect
 import os
+
 import h5py
-import datetime
 import numpy as np
 import numpy.ma as ma
 
+from pyopenlab.instrument import Instrument
+
 
 class CCD(Instrument):
+
     def __init__(self):
         super(CCD, self).__init__()
         self._wavelengths = None
@@ -73,7 +75,7 @@ class CCD(Instrument):
         if self.background is not None:
             if self.reference is not None:
                 old_error_settings = np.seterr(all='ignore')
-                new_image = (image - self.background)/(self.reference - self.background)
+                new_image = (image - self.background) / (self.reference - self.background)
                 np.seterr(**old_error_settings)
                 # if the reference is nearly 0, we get infinities - just make them all NaNs.
                 new_image[np.isinf(new_image)] = np.nan

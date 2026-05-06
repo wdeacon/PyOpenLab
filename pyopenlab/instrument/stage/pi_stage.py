@@ -1,24 +1,30 @@
 ﻿from __future__ import print_function
+
 from builtins import range
+
 __author__ = 'alansanders'
 
-from pyopenlab.instrument.visa_instrument import VisaInstrument
-from pyopenlab.instrument.stage import Stage, StageUI
-import time
-import numpy as np
 from functools import partial
+import time
+
+import numpy as np
+
+from pyopenlab.instrument.stage import Stage
+from pyopenlab.instrument.stage import StageUI
+from pyopenlab.instrument.visa_instrument import VisaInstrument
 
 
 class PIStage(VisaInstrument, Stage):
     """
     Control interface for PI stages.
     """
-    def __init__(self, address='ASRL8::INSTR',timeout = 10,baud_rate = 57600):
+
+    def __init__(self, address='ASRL8::INSTR', timeout=10, baud_rate=57600):
         super(PIStage, self).__init__(address=address)
         self.instr.read_termination = '\n'
         self.instr.write_termination = '\n'
         self.instr.baud_rate = 57600
-   #     self.instr.timeout = 10
+        #     self.instr.timeout = 10
         self.axis_names = ('a', 'b')
         self.positions = [0 for ch in range(3)]
         self._stage_id = None
@@ -32,13 +38,15 @@ class PIStage(VisaInstrument, Stage):
 
     def move_axis(self, pos, axis, relative=False):
         if relative:
-            self.write('mvr {0}{1}'.format(axis, 1e6*pos))
+            self.write('mvr {0}{1}'.format(axis, 1e6 * pos))
         else:
-            self.write('mov {0}{1}'.format(axis, 1e6*pos))
+            self.write('mov {0}{1}'.format(axis, 1e6 * pos))
         self.wait_until_stopped(axis)
 
     def get_position(self, axis=None):
-        return self.get_axis_param(lambda axis: 1e-6*float(self.query('pos? {0}'.format(axis))), axis)
+        return self.get_axis_param(lambda axis: 1e-6 * float(self.query('pos? {0}'.format(axis))),
+                                   axis)
+
     position = property(fget=get_position, doc="Current position of the stage")
 
     def is_moving(self, axes=None):
@@ -51,7 +59,7 @@ class PIStage(VisaInstrument, Stage):
         for i in range(3):
             positions[i] = [self.get_position(axis) for axis in axes]
             time.sleep(0.005)
-        sum_of_diffs = np.sum(positions-positions[0], axis=1)
+        sum_of_diffs = np.sum(positions - positions[0], axis=1)
         if np.any(sum_of_diffs > 0.01):
             print(sum_of_diffs)
             return True
@@ -81,18 +89,25 @@ class PIStage(VisaInstrument, Stage):
 
     def get_velocity(self, axis=None):
         return self.get_axis_param(lambda axis: float(self.query('vel? {0}'.format(axis))), axis)
+
     def set_velocity(self, value, axis=None):
-        self.set_axis_param(lambda value, axis: self.write('vel {0}{1}'.format(axis, value)), value, axis)
+        self.set_axis_param(lambda value, axis: self.write('vel {0}{1}'.format(axis, value)), value,
+                            axis)
+
     velocity = property(get_velocity, set_velocity)
 
     def get_drift_compensation(self, axis=None):
         return self.get_axis_param(lambda axis: bool(self.query('dco? {0}'.format(axis))), axis)
+
     def set_drift_compensation(self, value, axis=None):
-        self.set_axis_param(lambda value, axis: self.write('dco {0}{1}'.format(axis, value)), value, axis)
+        self.set_axis_param(lambda value, axis: self.write('dco {0}{1}'.format(axis, value)), value,
+                            axis)
+
     drift_compensation = property(get_drift_compensation, set_drift_compensation)
 
     def get_loop_mode(self, axis=None):
         return self.get_axis_param(lambda axis: bool(self.query('svo? {0}'.format(axis))), axis)
+
     def set_loop_mode(self, value, axis=None):
         """
         Set the mode of each axis control loop
@@ -100,11 +115,14 @@ class PIStage(VisaInstrument, Stage):
         :param axis:
         :return:
         """
-        self.set_axis_param(lambda value, axis: self.write('svo {0}{1}'.format(axis, value)), value, axis)
+        self.set_axis_param(lambda value, axis: self.write('svo {0}{1}'.format(axis, value)), value,
+                            axis)
+
     loop_mode = property(get_loop_mode, set_loop_mode)
 
     def get_speed_mode(self, axis=None):
         return self.get_axis_param(lambda axis: bool(self.query('vco? {0}'.format(axis))), axis)
+
     def set_speed_mode(self, value, axis=None):
         """
         Set the mode of each axis control loop
@@ -112,23 +130,29 @@ class PIStage(VisaInstrument, Stage):
         :param axis:
         :return:
         """
-        self.set_axis_param(lambda value, axis: self.write('vco {0}{1}'.format(axis, value)), value, axis)
+        self.set_axis_param(lambda value, axis: self.write('vco {0}{1}'.format(axis, value)), value,
+                            axis)
+
     speed_mode = property(get_speed_mode, set_speed_mode)
 
     def get_online(self):
         return bool(self.query('onl?'))
+
     def set_online(self, value):
         self.write('onl {0}'.format(value))
+
     online = property(get_online, set_online)
 
     def get_on_target(self):
-       return bool(self.query('ont?'))
+        return bool(self.query('ont?'))
+
     on_target = property(get_on_target)
 
     def get_id(self):
         if self._stage_id is None:
             self._stage_id = self.query('*idn?')
         return self._stage_id
+
     stage_id = property(get_id)
 
     def get_qt_ui(self):
@@ -137,7 +161,7 @@ class PIStage(VisaInstrument, Stage):
 
 if __name__ == '__main__':
     stage = PIStage(address='ASRL4::INSTR')
-  #  stage.move((5e-6, 10e-6))
+#  stage.move((5e-6, 10e-6))
 #    print stage.position
 #    print stage.get_position()
 #    print stage.get_position(axis=('a', 'b'))

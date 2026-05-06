@@ -32,10 +32,10 @@ syntax loosely inspired by https://schedule.readthedocs.io/en/
 """
 from functools import wraps
 
+import numpy as np
+
 from pyopenlab.unit_conversions.raman_conversions import raman_conversions
 from pyopenlab.unit_conversions.spectroscopy_conversions import spectroscopy_conversions
-
-import numpy as np
 
 full_unit_names = {
     "hz": "Hertz",
@@ -43,8 +43,7 @@ full_unit_names = {
     "nm": "nanometers",
     "ev": "electron Volts",
     "cm": "inverse centimeters",
-    'rads': 'angular frequency'
-}
+    'rads': 'angular frequency'}
 
 
 class _to:
@@ -53,19 +52,18 @@ class _to:
 
 def _conversion_factory(conversions_dict, start_unit, end_unit):
     f = conversions_dict["to_hz"][start_unit]
-    
+
     @wraps(f)
     @np.vectorize
     def conv(value, *args, **kwargs):
-        return conversions_dict["hz_to"][end_unit](
-            f(value, *args, **kwargs), *args, **kwargs
-        )
+        return conversions_dict["hz_to"][end_unit](f(value, *args, **kwargs), *args, **kwargs)
 
     conv.__doc__ = f"{full_unit_names[start_unit]} to {full_unit_names[end_unit]}"
     return conv
 
 
 class Convert:
+
     def __init__(self, conversions):
         for start_unit in conversions["to_hz"]:
             setattr(
@@ -76,6 +74,7 @@ class Convert:
 
 
 class To:
+
     def __init__(self, start_unit, end_units, conversions):
         self.to = _to()
         for end_unit in end_units:

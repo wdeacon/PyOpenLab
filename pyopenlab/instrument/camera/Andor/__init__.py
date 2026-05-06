@@ -1,21 +1,29 @@
 ﻿# -*- coding: utf-8 -*-
 
-from pyopenlab.utils.gui import QtWidgets, QtCore, uic, QtGui
-from pyopenlab.instrument.camera.camera_scaled_roi import CameraRoiScale
-from pyopenlab.instrument.camera.Andor.andor_sdk import AndorBase
-from pyopenlab.utils.notified_property import register_for_property_changes
-import pyopenlab.datafile as df
-
 import os
 import re
-import numpy as np
-from pyopenlab.ui.ui_tools import UiTools
-from weakref import WeakSet
 import time
+from weakref import WeakSet
+
+import numpy as np
+
+import pyopenlab.datafile as df
+from pyopenlab.instrument.camera.Andor.andor_sdk import AndorBase
+from pyopenlab.instrument.camera.camera_scaled_roi import CameraRoiScale
+from pyopenlab.ui.ui_tools import UiTools
+from pyopenlab.utils.gui import QtCore
+from pyopenlab.utils.gui import QtGui
+from pyopenlab.utils.gui import QtWidgets
+from pyopenlab.utils.gui import uic
+from pyopenlab.utils.notified_property import register_for_property_changes
 
 
 class Andor(CameraRoiScale, AndorBase):
-    metadata_property_names = ('Exposure', 'x_axis', 'CurrentTemperature',)
+    metadata_property_names = (
+        'Exposure',
+        'x_axis',
+        'CurrentTemperature',
+    )
 
     def __init__(self, settings_filepath=None, camera_index=None, **kwargs):
         super(Andor, self).__init__()
@@ -37,11 +45,7 @@ class Andor(CameraRoiScale, AndorBase):
 
     '''Used functions'''
 
-    def get_metadata(self,
-                     property_names=[],
-                     include_default_names=True,
-                     exclude=None
-                     ):
+    def get_metadata(self, property_names=[], include_default_names=True, exclude=None):
         """
         Prevents printing a load of statements everytime the metadata is called.
         TODO: rewrite the AndorProperties so that they are not unnecessarily verbose
@@ -92,7 +96,10 @@ class Andor(CameraRoiScale, AndorBase):
         try:
             self.set_andor_parameter(parameter_name, *parameter_value)
         except Exception as e:
-            self.log(f'parameter {parameter_name} could not be set with the value {parameter_value} due to error {e}')             
+            self.log(
+                f'parameter {parameter_name} could not be set with the value {parameter_value} due to error {e}'
+            )
+
     @property
     def roi(self):
         return tuple([x - 1 for x in self.Image[2:]])
@@ -115,7 +122,7 @@ class Andor(CameraRoiScale, AndorBase):
 
     def get_control_widget(self):
         return AndorUI(self)
-    
+
 
 class AndorUI(QtWidgets.QWidget, UiTools):
     ImageUpdated = QtCore.Signal()
@@ -134,8 +141,7 @@ class AndorUI(QtWidgets.QWidget, UiTools):
         self.data_file = None
         self.save_all_parameters = False
 
-        self.gui_params = ['ReadMode', 'Exposure',
-                           'AcquisitionMode', 'OutAmp', 'TriggerMode']
+        self.gui_params = ['ReadMode', 'Exposure', 'AcquisitionMode', 'OutAmp', 'TriggerMode']
         self._func_dict = {}
         for param in self.gui_params:
             func = self.callback_to_update_prop(param)
@@ -186,17 +192,18 @@ class AndorUI(QtWidgets.QWidget, UiTools):
         self.read_temperature_pushButton.clicked.connect(self.temperature_gui)
         self.live_temperature_checkBox.clicked.connect(self.temperature_gui)
         self.temperature_display_thread.ready.connect(self.update_temperature_display)
-    
+
     def set_multitrack(self):
-        self.Andor.MultiTrack = self.spinBoxTracks.value(), self.spinBoxHeight.value(), self.spinBoxOffset.value()
+        self.Andor.MultiTrack = self.spinBoxTracks.value(), self.spinBoxHeight.value(
+        ), self.spinBoxOffset.value()
+
     def randomtrack_pixels(self):
-        numbers = [i  for i in re.split(r',| ', self.randomtrack_pixels_lineEdit.text()) if i]
+        numbers = [i for i in re.split(r',| ', self.randomtrack_pixels_lineEdit.text()) if i]
         pixels = list(map(int, numbers))
         assert not len(pixels) % 2, 'must be even number of inputs'
-        tracks = len(pixels)//2
+        tracks = len(pixels) // 2
         self.Andor.RandomTracks = tracks, pixels
 
-        
     def init_gui(self):
         trig_modes = {0: 0, 1: 1, 6: 2}
         self.comboBoxAcqMode.setCurrentIndex(self.Andor._parameters['AcquisitionMode'] - 1)
@@ -222,18 +229,18 @@ class AndorUI(QtWidgets.QWidget, UiTools):
 
     def temperature_gui(self):
         if self.sender() == self.read_temperature_pushButton:
-                self.temperature_display_thread.single_shot = True
+            self.temperature_display_thread.single_shot = True
         self.temperature_display_thread.start()
 
     def update_temperature_display(self, temperature):
         self.temperature_lcdNumber.display(float(temperature))
-    
+
     def get_temperature(self):
         return self.Andor.CurrentTemperature
-    
+
     def update_shutter_mode(self):
         self.Andor.keep_shutter_open = self.keep_shutter_open_checkBox.isChecked()
-    
+
     def acquisition_mode(self):
         available_modes = ['Single', 'Accumulate', 'Kinetic', 'Fast Kinetic']
         currentMode = self.comboBoxAcqMode.currentText()
@@ -243,7 +250,7 @@ class AndorUI(QtWidgets.QWidget, UiTools):
             self.keep_shutter_open_checkBox.hide()
         else:
             self.keep_shutter_open_checkBox.show()
-            
+
         if currentMode == 'Accumulate':
             self.spinBoxNumAccum.show()
             self.labelNumAccum.show()
@@ -251,17 +258,17 @@ class AndorUI(QtWidgets.QWidget, UiTools):
             self.labelCycleTime.show()
         else:
             self.spinBoxNumAccum.hide()
-            self.labelNumAccum.hide()  
+            self.labelNumAccum.hide()
             self.doubleSpinBoxCycleTime.hide()
             self.labelCycleTime.hide()
-            
+
         if currentMode == 'Kinetic':
             self.spinBoxNumFrames.show()
             self.labelNumFrames.show()
         else:
             self.spinBoxNumFrames.hide()
             self.labelNumFrames.hide()
-            
+
         if currentMode == 'Fast Kinetic':
             self.spinBoxNumRows.show()
             self.labelNumRows.show()
@@ -286,7 +293,7 @@ class AndorUI(QtWidgets.QWidget, UiTools):
             self.labelCenterRow.hide()
             if self.comboBoxAcqMode.currentText() != 'Fast Kinetic':
                 self.spinBoxNumRows.hide()
-                self.labelNumRows.hide()         
+                self.labelNumRows.hide()
         if currentMode == 'Multi-track':
             for box in ['Tracks', 'Height', 'Offset']:
                 eval(f'self.label{box}.show()')
@@ -349,11 +356,13 @@ class AndorUI(QtWidgets.QWidget, UiTools):
             center_row = self.spinBoxCenterRow.value()
             if center_row - num_rows < 0:
                 self.Andor._logger.info(
-                    'Too many rows provided for Single Track mode. Using %g rows instead' % center_row)
+                    'Too many rows provided for Single Track mode. Using %g rows instead' %
+                    center_row)
                 num_rows = center_row
             self.Andor.set_camera_parameter('SingleTrack', center_row, num_rows)
         else:
-            self.Andor._logger.info('Changing the rows only works in Fast Kinetic or in Single Track mode')
+            self.Andor._logger.info(
+                'Changing the rows only works in Fast Kinetic or in Single Track mode')
 
     def exposure(self, input=None):
         if input is None:
@@ -449,8 +458,8 @@ class AndorUI(QtWidgets.QWidget, UiTools):
             self.Andor.roi = self.Andor.gui_roi  # binning + params
         else:
             self.checkBoxCrop.setEnabled(True)
-            self.Andor.roi = (0, self.Andor._parameters['DetectorShape'][0]-1,
-                              0, self.Andor._parameters['DetectorShape'][1]-1)
+            self.Andor.roi = (0, self.Andor._parameters['DetectorShape'][0] - 1, 0,
+                              self.Andor._parameters['DetectorShape'][1] - 1)
 
     def Capture(self):
         self.Andor.raw_image(update_latest_frame=True)
@@ -476,13 +485,13 @@ class DisplayThread(QtCore.QThread):
         t0 = time.time()
         while self.parent.live_temperature_checkBox.isChecked() or self.single_shot:
             T = self.parent.get_temperature()
-            if time.time()-t0 < 1./self.refresh_rate:
+            if time.time() - t0 < 1. / self.refresh_rate:
                 continue
             else:
                 t0 = time.time()
             self.ready.emit(T)
             if self.single_shot:
-                self.single_shot = False               
+                self.single_shot = False
                 break
         self.finished.emit()
 
@@ -491,4 +500,3 @@ if __name__ == '__main__':
     andor = Andor()
     andor._logger.setLevel('DEBUG')
     gui = andor.show_gui(block=False)
-

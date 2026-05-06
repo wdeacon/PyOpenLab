@@ -8,19 +8,23 @@ Created on Mon Aug  9 16:22:04 2021
 author: im354
 '''
 
-
-from pyopenlab.utils.notified_property import NotifiedProperty
-from pyopenlab.ui.ui_tools import QuickControlBox
-from pyopenlab.instrument.stage.thorlabs_ello import ElloDevice, bytes_to_binary, twos_complement_to_int, int_to_hex, int_to_twos_complement
 import numpy as np
+
+from pyopenlab.instrument.stage.thorlabs_ello import bytes_to_binary
+from pyopenlab.instrument.stage.thorlabs_ello import ElloDevice
+from pyopenlab.instrument.stage.thorlabs_ello import int_to_hex
+from pyopenlab.instrument.stage.thorlabs_ello import int_to_twos_complement
+from pyopenlab.instrument.stage.thorlabs_ello import twos_complement_to_int
+from pyopenlab.ui.ui_tools import QuickControlBox
+from pyopenlab.utils.notified_property import NotifiedProperty
+
 
 class Ell20(ElloDevice):
 
     def __init__(self, serial_device, device_index=0, debug=0):
         '''can be passed either a BusDistributor instance, or  "COM5"  '''
         super().__init__(serial_device, device_index=0, debug=0)
-        
-        
+
         self.configuration = self.get_device_info()
         self.TRAVEL = self.configuration["travel"]
         self.PULSES_PER_MM = self.configuration["pulses"]
@@ -28,8 +32,7 @@ class Ell20(ElloDevice):
             print("Travel (degrees):", self.TRAVEL)
             print("Pulses per revolution", self.PULSES_PER_MM)
             print("Device status:", self.get_device_status())
-    
-    
+
     def _position_to_pulse_count(self, position):
         '''
         Convert from an position (specified in degrees) into the number of pulses
@@ -40,7 +43,7 @@ class Ell20(ElloDevice):
 
         Method used when sending instructions to move to stage
         '''
-        pulses = int(np.rint(position*self.PULSES_PER_MM))
+        pulses = int(np.rint(position * self.PULSES_PER_MM))
         if self.debug > 0:
             print("Input position:", position)
             print("Pulses:", pulses)
@@ -55,7 +58,7 @@ class Ell20(ElloDevice):
 
         Method used when reading data received from stage
         '''
-        return pulse_count/self.PULSES_PER_MM
+        return pulse_count / self.PULSES_PER_MM
 
     def _position_to_hex_pulses(self, position):
         '''
@@ -85,8 +88,7 @@ class Ell20(ElloDevice):
         binary_pulse_position = bytes_to_binary(hex_pulse_position)
         int_pulse_position = twos_complement_to_int(binary_pulse_position)
         return self._pulse_count_to_position(int_pulse_position)
-    
-    
+
     def move_absolute(self, position, blocking=True):
         """Move to absolute position relative to home setting
 
@@ -109,7 +111,7 @@ class Ell20(ElloDevice):
         if blocking:
             self._block_until_stopped()
         return self._decode_position_response(response)
-    
+
     def get_position(self, axis=None):
         '''
         Query stage for its current position, in degrees
@@ -122,7 +124,7 @@ class Ell20(ElloDevice):
             byte_position = response[3:11]
             binary_position = bytes_to_binary(byte_position)
             pulse_position = twos_complement_to_int(binary_position)
-            position = float(pulse_position)/self.PULSES_PER_MM
+            position = float(pulse_position) / self.PULSES_PER_MM
             return position
         else:
             raise ValueError("Incompatible Header received:{}".format(header))
@@ -168,7 +170,8 @@ class Ell20BiPositional(Ell20):
         self.log('not in either position', level='warn')
 
     def set_slot(self, index):
-        self.move(self.SLOTS[index]*self.TRAVEL)
+        self.move(self.SLOTS[index] * self.TRAVEL)
+
     slot = NotifiedProperty(get_slot, set_slot)
 
     def center(self):

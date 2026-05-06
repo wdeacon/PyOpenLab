@@ -16,7 +16,6 @@ except ImportError:
 
 import numpy as np
 from PIL import Image
-
 from thorlabs_tsi_sdk.tl_camera import TLCameraSDK
 from thorlabs_tsi_sdk.tl_camera_enums import SENSOR_TYPE
 from thorlabs_tsi_sdk.tl_polarization_processor import PolarizationProcessorSDK
@@ -35,7 +34,6 @@ with TLCameraSDK() as camera_sdk, PolarizationProcessorSDK() as polarization_sdk
         camera.frames_per_trigger_zero_for_unlimited = 0  # start camera in continuous mode
         camera.image_poll_timeout_ms = 2000  # 2 second timeout
         camera.arm(2)
-
         """
             In a real-world scenario, we want to save the image width and height before color processing so that we 
             do not have to query it from the camera each time it is needed, which would slow down the process. It is 
@@ -69,30 +67,33 @@ with TLCameraSDK() as camera_sdk, PolarizationProcessorSDK() as polarization_sdk
             Convert the raw sensor data to polarization image data. We will convert to each of the available outputs: 
             intensity, azimuth, and degree of linear polarization (DoLP).
             """
-            output_intensity = polarization_processor.transform_to_intensity(camera_polar_phase,
-                                                                             frame.image_buffer,
-                                                                             0,  # origin x
-                                                                             0,  # origin y
-                                                                             image_width,
-                                                                             image_height,
-                                                                             camera_bit_depth,
-                                                                             max_output_value)
-            output_azimuth = polarization_processor.transform_to_azimuth(camera_polar_phase,
-                                                                         frame.image_buffer,
-                                                                         0,  # origin x
-                                                                         0,  # origin y
-                                                                         image_width,
-                                                                         image_height,
-                                                                         camera_bit_depth,
-                                                                         max_output_value)
-            output_dolp = polarization_processor.transform_to_dolp(camera_polar_phase,
-                                                                   frame.image_buffer,
-                                                                   0,  # origin x
-                                                                   0,  # origin y
-                                                                   image_width,
-                                                                   image_height,
-                                                                   camera_bit_depth,
-                                                                   max_output_value)
+            output_intensity = polarization_processor.transform_to_intensity(
+                camera_polar_phase,
+                frame.image_buffer,
+                0,  # origin x
+                0,  # origin y
+                image_width,
+                image_height,
+                camera_bit_depth,
+                max_output_value)
+            output_azimuth = polarization_processor.transform_to_azimuth(
+                camera_polar_phase,
+                frame.image_buffer,
+                0,  # origin x
+                0,  # origin y
+                image_width,
+                image_height,
+                camera_bit_depth,
+                max_output_value)
+            output_dolp = polarization_processor.transform_to_dolp(
+                camera_polar_phase,
+                frame.image_buffer,
+                0,  # origin x
+                0,  # origin y
+                image_width,
+                image_height,
+                camera_bit_depth,
+                max_output_value)
             """
             Convert from 16-bit to 8-bit
             """
@@ -134,9 +135,11 @@ with TLCameraSDK() as camera_sdk, PolarizationProcessorSDK() as polarization_sdk
             use array splicing to extract each of the rotations and separate them visually. If you are familiar with 
             manipulating color image arrays, this is similar to pulling out the R, G, and B components of an RGB image.
             """
-            unprocessed_image = frame.image_buffer.reshape(image_height, image_width)  # this is the raw image data
+            unprocessed_image = frame.image_buffer.reshape(
+                image_height, image_width)  # this is the raw image data
             unprocessed_image = unprocessed_image >> camera_bit_depth - 8  # scale to 8 bits for easier displaying
-            output_quadview = np.zeros(shape=(image_height, image_width))  # initialize array for QuadView data
+            output_quadview = np.zeros(shape=(image_height,
+                                              image_width))  # initialize array for QuadView data
             # Top Left Quadrant =
             output_quadview[0:int(image_height / 2), 0:int(image_width / 2)] = \
                 unprocessed_image[0::2, 0::2]  # (0,0): top left rotation == camera_polar_phase

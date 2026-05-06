@@ -11,17 +11,24 @@ from __future__ import print_function
 
 __author__ = 'alansanders, richard bowman'
 
-from pyopenlab.utils.thread_utils import locked_action, background_action, background_actions_running
-from pyopenlab.instrument import Instrument
-from pyopenlab.utils.notified_property import NotifiedProperty, DumbNotifiedProperty
 from collections import deque
-import numpy as np
 import threading
 import warnings
+
+import numpy as np
+
+from pyopenlab.instrument import Instrument
+from pyopenlab.utils.notified_property import DumbNotifiedProperty
+from pyopenlab.utils.notified_property import NotifiedProperty
+from pyopenlab.utils.thread_utils import background_action
+from pyopenlab.utils.thread_utils import background_actions_running
+from pyopenlab.utils.thread_utils import locked_action
+
 
 class ExperimentStopped(Exception):
     """An exception raised to stop an experiment running in a background thread."""
     pass
+
 
 class Experiment(Instrument):
     """A class representing an experimental protocol.
@@ -31,12 +38,12 @@ class Experiment(Instrument):
     improved logging mechanism, designed for use as a status display, and some
     template methods for running a long experiment in the background.
     """
-    
+
     latest_data = DumbNotifiedProperty(doc="The last dataset/group we acquired")
     log_messages = DumbNotifiedProperty(doc="Log messages from the latest run")
     log_to_console = False
-    experiment_can_be_safely_aborted = False # set to true if you want to suppress warnings about ExperimentStopped
-    
+    experiment_can_be_safely_aborted = False  # set to true if you want to suppress warnings about ExperimentStopped
+
     def __init__(self):
         """Create an instance of the Experiment class"""
         super(Experiment, self).__init__()
@@ -82,7 +89,7 @@ class Experiment(Instrument):
         both, in addition to any arguments you might have).
         """
         NotImplementedError("The run() method of an Experiment must be overridden!")
-        
+
     def wait_or_stop(self, timeout, raise_exception=True):
         """Wait for the specified time in seconds.  Stop if requested.
         
@@ -116,13 +123,13 @@ class Experiment(Instrument):
         self._finished_event.clear()
         self.run(*args, **kwargs)
         self._finished_event.set()
-        
+
     def start(self, *args, **kwargs):
         """Start the experiment running in a background thread.  See run_in_background."""
         assert self.running == False, "Can't start the experiment when it is already running!"
         self.prepare_to_run(*args, **kwargs)
         self._experiment_thread = self.run_in_background(*args, **kwargs)
-        
+
     def stop(self, join=False):
         """Stop the experiment running, if supported.  May take a little while."""
         self._stop_event.set()
@@ -137,7 +144,7 @@ class Experiment(Instrument):
     def running(self):
         """Whether the experiment is currently running in the background."""
         return background_actions_running(self)
-    
+
     def log(self, message):
         """Log a message to the current HDF5 file and to the experiment's history"""
         self.log_messages += message + "\n"
@@ -149,8 +156,8 @@ class Experiment(Instrument):
 class ExperimentWithDataDeque(Experiment):
     """Alan's Experiment class, using a deque for data management."""
 
-    latest_data = None    
-    
+    latest_data = None
+
     def __init__(self):
         super(Experiment, self).__init__()
         #self.queue = Queue()
@@ -222,9 +229,13 @@ class ExperimentWithDataDeque(Experiment):
     @staticmethod
     def append_dataset(h5object, name, value, shape=(0,)):
         if name not in h5object:
-            dset = h5object.require_dataset(name, shape, dtype=np.float64, maxshape=(None,), chunks=True)
+            dset = h5object.require_dataset(name,
+                                            shape,
+                                            dtype=np.float64,
+                                            maxshape=(None,),
+                                            chunks=True)
         else:
             dset = h5object[name]
         index = dset.shape[0]
-        dset.resize(index+1,0)
-        dset[index,...] = value
+        dset.resize(index + 1, 0)
+        dset[index, ...] = value

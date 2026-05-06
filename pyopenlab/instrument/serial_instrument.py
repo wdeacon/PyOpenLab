@@ -4,14 +4,25 @@ Serial Instrument interface
 
 @author: Richard Bowman
 """
-from pyopenlab.instrument.message_bus_instrument import MessageBusInstrument
 import threading
-import serial
-import serial.tools.list_ports
-from serial import FIVEBITS, SIXBITS, SEVENBITS, EIGHTBITS
-from serial import PARITY_NONE, PARITY_EVEN, PARITY_ODD, PARITY_MARK, PARITY_SPACE
-from serial import STOPBITS_ONE, STOPBITS_ONE_POINT_FIVE, STOPBITS_TWO
 import time
+
+import serial
+from serial import EIGHTBITS
+from serial import FIVEBITS
+from serial import PARITY_EVEN
+from serial import PARITY_MARK
+from serial import PARITY_NONE
+from serial import PARITY_ODD
+from serial import PARITY_SPACE
+from serial import SEVENBITS
+from serial import SIXBITS
+from serial import STOPBITS_ONE
+from serial import STOPBITS_ONE_POINT_FIVE
+from serial import STOPBITS_TWO
+import serial.tools.list_ports
+
+from pyopenlab.instrument.message_bus_instrument import MessageBusInstrument
 
 
 class SerialInstrument(MessageBusInstrument):
@@ -54,7 +65,8 @@ class SerialInstrument(MessageBusInstrument):
         """
         Set up the serial port and so on.
         """
-        MessageBusInstrument.__init__(self)  # Using super() here can cause issues with multiple inheritance.
+        MessageBusInstrument.__init__(
+            self)  # Using super() here can cause issues with multiple inheritance.
         # Eventually this shouldn't rely on init...
         if self.termination_read is None:
             self.termination_read = self.termination_character
@@ -77,9 +89,11 @@ class SerialInstrument(MessageBusInstrument):
         """
         with self.communications_lock:
             if hasattr(self, 'ser') and self.ser.isOpen():
-                if not quiet: print("Warning: attempted to open an already-open port!")
+                if not quiet:
+                    print("Warning: attempted to open an already-open port!")
                 return
-            if port is None: port = self.find_port()
+            if port is None:
+                port = self.find_port()
             assert port is not None, "We don't have a serial port to open, meaning you didn't specify a valid port and autodetection failed.  Are you sure the instrument is connected?"
             self.ser = serial.Serial(port, **self.port_settings)
             # self.ser_io = io.TextIOWrapper(io.BufferedRWPair(self.ser, self.ser,1),
@@ -88,7 +102,8 @@ class SerialInstrument(MessageBusInstrument):
             # the block above wraps the serial IO layer with a text IO layer
             # this allows us to read/write in neat lines.  NB the buffer size must
             # be set to 1 byte for maximum responsiveness.
-            assert self.test_communications(), "The instrument doesn't seem to be responding.  Did you specify the right port?"
+            assert self.test_communications(
+            ), "The instrument doesn't seem to be responding.  Did you specify the right port?"
 
     def close(self):
         """Release the serial port"""
@@ -103,13 +118,18 @@ class SerialInstrument(MessageBusInstrument):
 
     def _write(self, query_string, ignore_echo=False, timeout=None):
         """Write a string to the serial port"""
-        assert self.ser.isOpen(), "Warning: attempted to write to the serial port before it was opened.  Perhaps you need to call the 'open' method first?"
+        assert self.ser.isOpen(
+        ), "Warning: attempted to write to the serial port before it was opened.  Perhaps you need to call the 'open' method first?"
         try:
-            if self.ser.outWaiting() > 0: self.ser.flushOutput()  # ensure there's nothing waiting
+            if self.ser.outWaiting() > 0:
+                self.ser.flushOutput()  # ensure there's nothing waiting
         except AttributeError:
-            if self.ser.out_waiting > 0: self.ser.flushOutput()  # ensure there's nothing waiting
-        if ignore_echo: self.flush_input_buffer()
-        self.ser.write(str.encode(self.initial_character + str(query_string) + self.termination_character))
+            if self.ser.out_waiting > 0:
+                self.ser.flushOutput()  # ensure there's nothing waiting
+        if ignore_echo:
+            self.flush_input_buffer()
+        self.ser.write(
+            str.encode(self.initial_character + str(query_string) + self.termination_character))
         if ignore_echo:
             echo = self.readline(timeout).strip()
             if query_string != echo:
@@ -159,7 +179,8 @@ class SerialInstrument(MessageBusInstrument):
         if our instrument is there."""
         with self.communications_lock:
             success = False
-            for port_name, _, _ in serial.tools.list_ports.comports():  # loop through serial ports, apparently 256 is the limit?!
+            for port_name, _, _ in serial.tools.list_ports.comports(
+            ):  # loop through serial ports, apparently 256 is the limit?!
                 try:
                     print("Trying port", port_name)
                     self.open(port_name)

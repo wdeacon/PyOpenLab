@@ -1,11 +1,17 @@
+from java.lang import Boolean
+from java.lang import Double
+from java.lang import Integer
+from java.lang import Long
+from java.lang import String
+from jisa.results import ResultList
+from jisa.results import ResultTable
 import numpy as np
 import pyjisa.autoload
-
-from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QImage, QPixmap
+from qtpy.QtCore import Qt
+from qtpy.QtCore import Signal
+from qtpy.QtGui import QImage
+from qtpy.QtGui import QPixmap
 from qtpy.QtWidgets import *
-from jisa.results import ResultTable, ResultList
-from java.lang import Integer, Long, Double, Boolean, String
 
 
 class RowEditDialog(QDialog):
@@ -30,7 +36,6 @@ class RowEditDialog(QDialog):
             layout.addRow(col.getTitle(), editor)
             self._editors[col] = editor
 
-
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
 
         self.buttons.accepted.connect(self.accept)
@@ -38,7 +43,6 @@ class RowEditDialog(QDialog):
 
         layout.addWidget(self.buttons)
         self.setLayout(layout)
-
 
     def setValues(self, values):
 
@@ -59,7 +63,6 @@ class RowEditDialog(QDialog):
                 edt.setChecked(False)
             elif type(edt) is QLineEdit:
                 edt.setText("")
-
 
     def createEditor(self, col):
 
@@ -82,7 +85,6 @@ class RowEditDialog(QDialog):
         else:
             return QLineEdit()
 
-
     def setEditorValue(self, editor, value):
 
         if isinstance(editor, QSpinBox):
@@ -96,8 +98,6 @@ class RowEditDialog(QDialog):
 
         elif isinstance(editor, QLineEdit):
             editor.setText(str(value))
-
-
 
     def getValues(self):
 
@@ -131,18 +131,18 @@ class ResultTableWidget(QWidget):
 
         super().__init__()
 
-        self.table   = QTableWidget()
+        self.table = QTableWidget()
         self.columns = []
-        self.editor  = RowEditDialog(self.columns)
+        self.editor = RowEditDialog(self.columns)
 
-        layout    = QVBoxLayout()
+        layout = QVBoxLayout()
         btnLayout = QHBoxLayout()
 
         self.addBtn = QPushButton("+")
         self.remBtn = QPushButton("-")
-        self.upBtn  = QPushButton("▲")
-        self.dnBtn  = QPushButton("▼")
-        self.okBtn  = QPushButton("Close")
+        self.upBtn = QPushButton("▲")
+        self.dnBtn = QPushButton("▼")
+        self.okBtn = QPushButton("Close")
 
         btnLayout.addWidget(self.addBtn)
         btnLayout.addWidget(self.remBtn)
@@ -160,8 +160,8 @@ class ResultTableWidget(QWidget):
         self.okBtn.clicked.connect(self.close)
         self.table.cellDoubleClicked.connect(self.editRow)
 
-        self.setContentsMargins(0,0,0,0)
-        self.layout().setContentsMargins(0,0,0,0)
+        self.setContentsMargins(0, 0, 0, 0)
+        self.layout().setContentsMargins(0, 0, 0, 0)
 
         self.table.setMinimumWidth(100)
         self.table.setMinimumHeight(150)
@@ -170,16 +170,15 @@ class ResultTableWidget(QWidget):
         self.upBtn.setMinimumWidth(25)
         self.dnBtn.setMinimumWidth(25)
 
-
     def setResultTable(self, table: ResultTable):
-        
+
         self.columns.clear()
         self.columns += table.getColumns()
-        self.editor    = RowEditDialog(self.columns)
+        self.editor = RowEditDialog(self.columns)
 
         self.table.clear()
         self.table.setColumnCount(table.getColumnCount())
-        self.table.setHorizontalHeaderLabels([ c.getTitle() for c in table.getColumns() ])
+        self.table.setHorizontalHeaderLabels([c.getTitle() for c in table.getColumns()])
         self.table.setRowCount(table.getRowCount())
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setMinimumWidth(0)
@@ -189,16 +188,15 @@ class ResultTableWidget(QWidget):
             values = [row.get(col) for col in self.columns]
             self.setRowData(rowIdx, values)
 
-
     def getResultTable(self) -> ResultTable:
 
         table = ResultList(*self.columns)
 
         for row in range(self.table.rowCount()):
-            table.mapRow({col: self.table.item(row, idx).data(1) for idx, col in enumerate(self.columns)})
+            table.mapRow({
+                col: self.table.item(row, idx).data(1) for idx, col in enumerate(self.columns)})
 
         return table
-
 
     def addRow(self):
 
@@ -212,7 +210,6 @@ class ResultTableWidget(QWidget):
             row_pos = self.table.rowCount()
             self.table.insertRow(row_pos)
             self.setRowData(row_pos, values)
-
 
     def editRow(self, row, _col):
 
@@ -228,7 +225,6 @@ class ResultTableWidget(QWidget):
         if dialog.exec_() == QDialog.Accepted:
             values = dialog.getValues()
             self.setRowData(row, values)
-
 
     def setRowData(self, rowIdx, values):
 
@@ -248,7 +244,6 @@ class ResultTableWidget(QWidget):
 
             self.table.setItem(rowIdx, colIdx, item)
 
-
     def removeRow(self):
 
         row = self.table.currentRow()
@@ -258,17 +253,15 @@ class ResultTableWidget(QWidget):
         else:
             QMessageBox.warning(self, "Warning", "No row selected")
 
-
     def moveRowUp(self):
 
         row = self.table.currentRow()
 
         if row <= 0:
             return
-        
+
         self.swapRows(row, row - 1)
         self.table.selectRow(row - 1)
-
 
     def moveRowDown(self):
 
@@ -276,13 +269,12 @@ class ResultTableWidget(QWidget):
 
         if row < 0 or row >= self.table.rowCount() - 1:
             return
-        
+
         self.swapRows(row, row + 1)
         self.table.selectRow(row + 1)
 
-
     def swapRows(self, row1, row2):
-        
+
         for col in range(self.table.columnCount()):
 
             item1 = self.table.takeItem(row1, col)
@@ -295,7 +287,7 @@ class ResultTableWidget(QWidget):
 class ImageListWidget(QWidget):
 
     def __init__(self, parent=None, thumbnail_size=120):
-        
+
         super().__init__(parent)
 
         self._images = []
@@ -324,21 +316,16 @@ class ImageListWidget(QWidget):
         main_layout.addWidget(self.scrollArea)
 
     def _create_label(self, image: QImage) -> QLabel:
-        
+
         label = QLabel()
 
-        pixmap = QPixmap.fromImage(image).scaled(
-            self._thumbnail_size,
-            self._thumbnail_size,
-            Qt.KeepAspectRatio,
-            Qt.SmoothTransformation
-        )
+        pixmap = QPixmap.fromImage(image).scaled(self._thumbnail_size, self._thumbnail_size,
+                                                 Qt.KeepAspectRatio, Qt.SmoothTransformation)
 
         label.setPixmap(pixmap)
         label.setAlignment(Qt.AlignCenter)
 
         return label
-    
 
     def addImage(self, image: QImage):
 
@@ -347,7 +334,6 @@ class ImageListWidget(QWidget):
         label = self._create_label(image)
 
         self.layout.insertWidget(self.layout.count() - 1, label)
-
 
     def clearImages(self):
 
@@ -360,14 +346,13 @@ class ImageListWidget(QWidget):
             if widget:
                 widget.deleteLater()
 
-
     def getImages(self):
         return list(self._images)
-    
+
 
 class ScientificSpinBox(QWidget):
 
-    valueChanged  = Signal(float)
+    valueChanged = Signal(float)
     returnPressed = Signal()
 
     def __init__(self, parent=None, value=0.0):
@@ -403,24 +388,20 @@ class ScientificSpinBox(QWidget):
         self.mantissaSpin.lineEdit().returnPressed.connect(self.returnPressed.emit)
         self.exponentSpin.lineEdit().returnPressed.connect(self.returnPressed.emit)
 
-
     def splitValue(self, value: float):
 
         if (value == 0.0):
             return 0.0, 0
 
         exponent = int(np.floor(np.log10(np.abs(value))) / 3) * 3
-        mantissa = value / (10 ** exponent)
+        mantissa = value / (10**exponent)
         return mantissa, exponent
-    
 
     def onChange(self):
         self.valueChanged.emit(self.value())
 
-
     def value(self) -> float:
-        return self.mantissaSpin.value() * (10 ** self.exponentSpin.value())
-    
+        return self.mantissaSpin.value() * (10**self.exponentSpin.value())
 
     def setValue(self, value: float):
 

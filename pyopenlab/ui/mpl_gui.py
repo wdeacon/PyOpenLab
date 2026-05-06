@@ -9,8 +9,10 @@ adapted and tested to work with PySide from Anaconda in March 2014
 """
 __author__ = 'alansanders'
 
-from pyopenlab.utils.gui import QtCore
 import matplotlib
+
+from pyopenlab.utils.gui import QtCore
+
 matplotlib.use('Qt4Agg')
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 

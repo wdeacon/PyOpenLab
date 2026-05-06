@@ -1,5 +1,4 @@
-﻿
-r'''
+﻿r'''
 You'll need the drivers for ximc, from https://files.xisupport.com/Software.en.html. - libximc-2.13.3-all.tar.gz
 
 Extract this and place the ximc folder (C:\Users\Hera\Downloads\XIMC_Software_package-2022.02.15-win32_win64\libximc-2.13.3-all.tar\libximc-2.13.3-all\ximc-2.13.3\ximc)
@@ -10,18 +9,21 @@ Full path to the wrapper should be: C:\Program Files\ximc\crossplatform\wrappers
 
 '''
 
-from ctypes import byref, c_uint, POINTER, c_int
-import time
+from ctypes import byref
+from ctypes import c_int
+from ctypes import c_uint
+from ctypes import POINTER
 import os
-import sys
-import platform
 from pathlib import Path
+import platform
+import sys
+import time
 
 from pyopenlab.instrument import Instrument
 from pyopenlab.ui.ui_tools import QuickControlBox
 from pyopenlab.utils.notified_property import NotifiedProperty
-# Dependences
 
+# Dependences
 
 ximc_dir = Path(r'C:\Program Files\ximc')
 ximc_package_dir = ximc_dir / "crossplatform" / "wrappers" / "python"
@@ -33,22 +35,20 @@ if platform.system() == "Windows":
     if sys.version_info >= (3, 11):
         os.add_dll_directory(libdir)
     else:
-     
+
         os.environ["Path"] = libdir + ";" + os.environ["Path"]
 
-
 import pyximc as xi
+
 
 def test_info(lib, device_id):
     print("\nGet device info")
     x_device_information = xi.device_information_t()
-    result = xi.lib.get_device_information(
-        device_id, byref(x_device_information))
+    result = xi.lib.get_device_information(device_id, byref(x_device_information))
     print("Result: " + repr(result))
     if result == xi.Result.Ok:
         print("Device information:")
-        print(" Manufacturer: " +
-              repr(xi.string_at(x_device_information.Manufacturer).decode()))
+        print(" Manufacturer: " + repr(xi.string_at(x_device_information.Manufacturer).decode()))
         print(" ManufacturerId: " +
               repr(xi.string_at(x_device_information.ManufacturerId).decode()))
         print(" ProductDescription: " +
@@ -76,8 +76,7 @@ def test_get_position(lib, device_id):
     result = xi.lib.get_position(device_id, byref(x_pos))
     print("Result: " + repr(result))
     if result == xi.Result.Ok:
-        print("Position: {0} steps, {1} microsteps".format(
-            x_pos.Position, x_pos.uPosition))
+        print("Position: {0} steps, {1} microsteps".format(x_pos.Position, x_pos.uPosition))
     return x_pos.Position, x_pos.uPosition
 
 
@@ -127,8 +126,7 @@ def test_set_speed(lib, device_id, speed):
     result = lib.get_move_settings(device_id, byref(mvst))
     # Print command return status. It will be 0 if all is OK
     print("Read command result: " + repr(result))
-    print("The speed was equal to {0}. We will change it to {1}".format(
-        mvst.Speed, speed))
+    print("The speed was equal to {0}. We will change it to {1}".format(mvst.Speed, speed))
     # Change current speed
     mvst.Speed = int(speed)
     # Write new move settings to controller
@@ -154,12 +152,10 @@ def test_set_microstep_mode_256(lib, device_id):
     print("Write command result: " + repr(result))
 
 
-
 sbuf = xi.create_string_buffer(64)
 xi.lib.ximc_version(sbuf)
 
-result = xi.lib.set_bindy_key(os.path.join(
-    ximc_dir, "win32", "keyfile.sqlite").encode("utf-8"))
+result = xi.lib.set_bindy_key(os.path.join(ximc_dir, "win32", "keyfile.sqlite").encode("utf-8"))
 if result != xi.Result.Ok:
     xi.lib.set_bindy_key("keyfile.sqlite".encode("utf-8"))
 
@@ -171,9 +167,7 @@ dev_count = xi.lib.get_device_count(devenum)
 controller_name = xi.controller_name_t()
 for dev_ind in range(0, dev_count):
     enum_name = xi.lib.get_device_name(devenum, dev_ind)
-    result = xi.lib.get_enumerate_device_controller_name(
-        devenum, dev_ind, byref(controller_name))
-
+    result = xi.lib.get_enumerate_device_controller_name(devenum, dev_ind, byref(controller_name))
 
 open_name = None
 if len(sys.argv) > 1:
@@ -183,13 +177,12 @@ elif dev_count > 0:
 else:
     raise Exception('Port closed')
 
-
-
 if type(open_name) is str:
     open_name = open_name.encode()
 
 
 class Iris(Instrument):
+
     def __init__(self):
         super().__init__()
         self.device_id = xi.lib.open_device(open_name)
@@ -202,55 +195,54 @@ class Iris(Instrument):
         self._wait()
         self.close_fully()
         self.open_fully()
-        
+
     def _wait(self):
-        xi.lib.command_wait_for_stop(self.device_id, 100)  
+        xi.lib.command_wait_for_stop(self.device_id, 100)
         # 100 ms refresh rate
-    
+
     def get_range(self):
-        sst  = xi.stage_settings_t()
+        sst = xi.stage_settings_t()
         xi.lib.get_stage_settings(ir.device_id, byref(sst))
         rang = sst.TravelRange
         return rang
-    
-        
+
     def _close_fully(self):
         xi.lib.command_left(self.device_id)
-        
+
     def _open_fully(self):
         xi.lib.command_right(self.device_id)
-        
+
     def close_fully(self):
         self._close_fully()
         self._wait()
-        self._close_pos = self.get_position() # open, closed    
+        self._close_pos = self.get_position()  # open, closed
         self._close_fraction = 1
-        
+
     def open_fully(self):
         self._open_fully()
         self._wait()
         self._close_fraction = 0
         self._open_pos = self.get_position()
-        
-    
+
     def close_partially(self, frac):
         try:
-            self.set_position(*(int((c - o)*frac + o) for c, o in zip(self._close_pos, self._open_pos)))
+            self.set_position(
+                *(int((c - o) * frac + o) for c, o in zip(self._close_pos, self._open_pos)))
             self._close_fraction = frac
         except AttributeError:
             self.log('must close fully before partially to calibrate range', level='warn')
+
     def open_partially(self, frac):
-        self.close_partially(1-frac)
-        
+        self.close_partially(1 - frac)
+
     def get_close_fraction(self):
         return self._close_fraction
-    
+
     def get_open_fraction(self):
         return 1 - self.get_close_fraction()
-    
+
     open_fraction = NotifiedProperty(get_open_fraction, open_partially)
-        
-    
+
     def set_position(self, pos, upos):
         xi.lib.command_move(self.device_id, pos, upos)
         self._wait()
@@ -259,8 +251,9 @@ class Iris(Instrument):
         x_pos = xi.get_position_t()
         xi.lib.get_position(self.device_id, byref(x_pos))
         return x_pos.Position, x_pos.uPosition
+
     position = property(get_position, set_position)
-    
+
     def set_speed(self, speed):
         mvst = xi.move_settings_t()
         mvst.Speed = int(speed)
@@ -270,7 +263,7 @@ class Iris(Instrument):
         mvst = xi.move_settings_t()
         xi.lib.get_move_settings(self.device_id, byref(mvst))
         return mvst.Speed
-    
+
     def get_control_settings(self):
         cst = xi.control_settings_t()
         xi.lib.get_control_settings(self.device_id, cst)
@@ -298,19 +291,20 @@ class Iris(Instrument):
 
     def _close(self):
         xi.lib.close_device(byref(xi.cast(self.device_id, POINTER(c_int))))
-        
+
     def get_qt_ui(self):
         return IrisGui(self)
-    
-    
+
+
 class IrisGui(QuickControlBox):
+
     def __init__(self, iris):
         self.iris = iris
         super().__init__()
         self.add_doublespinbox('open_fraction')
         self.auto_connect_by_name(controlled_object=self.iris)
-        
-        
+
+
 if __name__ == '__main__':
     ir = Iris()
     # ir.close_fully()

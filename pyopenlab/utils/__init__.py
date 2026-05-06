@@ -2,9 +2,9 @@
 __author__ = 'alansanders,rwb27'
 #__all__ = ['gui','thread_utils']
 
-import time
-import threading
 import collections
+import threading
+import time
 
 
 def monitor_property(instance, property_name, how_long, how_often, warn_limits=None):
@@ -19,7 +19,8 @@ def monitor_property(instance, property_name, how_long, how_often, warn_limits=N
     :param warn_limits: None or 2-tuple. If the monitored value goes outside these limits, throws out a warning.
     :return:
     """
-    setattr(instance, property_name + '_history', collections.deque(maxlen=int(how_long / how_often)))
+    setattr(instance, property_name + '_history',
+            collections.deque(maxlen=int(how_long / how_often)))
     setattr(instance, '_monitoring_' + property_name, True)
 
     def monitor():

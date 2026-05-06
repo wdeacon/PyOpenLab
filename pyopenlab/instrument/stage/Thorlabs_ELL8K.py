@@ -3,14 +3,15 @@ author: im354
 '''
 
 import sys
+import time
 
-import numpy as np 
+import numpy as np
+
 from pyopenlab.instrument.serial_instrument import SerialInstrument
 from pyopenlab.instrument.stage import Stage
 from pyopenlab.instrument.stage.Thorlabs_ELL20 import BusDistributor
-from pyopenlab.utils.gui import *
 from pyopenlab.ui.ui_tools import *
-import time
+from pyopenlab.utils.gui import *
 
 
 def bytes_to_binary(bytearr, debug=0):
@@ -19,8 +20,7 @@ def bytes_to_binary(bytearr, debug=0):
     '''
     if debug > 0:
         print(bytearr)
-    bytes_as_binary = [format(int(b, base=16), "#06b").replace(
-        "0b", "") for b in bytearr]
+    bytes_as_binary = [format(int(b, base=16), "#06b").replace("0b", "") for b in bytearr]
     if debug > 0:
         print(bytes_as_binary)
     binary = "".join(bytes_as_binary)
@@ -35,7 +35,7 @@ def twos_complement_to_int(binary, debug=0):
         print(binary)
     N = len(binary)
     a_N = int(binary[0])
-    return float(-a_N*2**(N-1) + int(binary[1:], base=2))
+    return float(-a_N * 2**(N - 1) + int(binary[1:], base=2))
 
 
 def int_to_hex(integer, padded_length=8, debug=0):
@@ -43,8 +43,7 @@ def int_to_hex(integer, padded_length=8, debug=0):
     Convert integer number to hexidecimal. Return value is zero-padded at the beginning
     until its length matches the value passed in "padded_length"
     '''
-    outp = (format(integer, "#0{}x".format(
-        padded_length+2)).replace("0x", "")).upper()
+    outp = (format(integer, "#0{}x".format(padded_length + 2)).replace("0x", "")).upper()
     return outp
 
 
@@ -61,29 +60,24 @@ def int_to_twos_complement(integer, padded_length=16, debug=0):
     elif integer < 0:
         if debug > 0:
             print("Below zero - returning twos complement")
-        integer = -1*integer
-        binary = format(integer, "0{}b".format(
-            padded_length+2)).replace("0b", "")
-        ones_complement = [str(1-int(b)) for b in str(binary)]
+        integer = -1 * integer
+        binary = format(integer, "0{}b".format(padded_length + 2)).replace("0b", "")
+        ones_complement = [str(1 - int(b)) for b in str(binary)]
         ones_complement = int("".join(ones_complement))
-        twos_complement = int("0b"+str(ones_complement), base=2) + 1
+        twos_complement = int("0b" + str(ones_complement), base=2) + 1
         twos_complement = format(twos_complement, "034b").replace("0b", "")
         if debug > 0:
             print("input:", integer)
             print("binary:", binary)
             print("ones comp:", ones_complement)
             print("twos comp (int):", int(twos_complement, base=2))
-        return int("0b"+twos_complement, base=2)
-
-
-
+        return int("0b" + twos_complement, base=2)
 
 
 class Thorlabs_ELL8K(Stage):
 
     # default id is 0, but if multiple devices of same type connected may have others
-    VALID_DEVICE_IDs = [str(v) for v in list(
-        range(0, 11)) + ["A", "B", "C", "D", "E", "F"]]
+    VALID_DEVICE_IDs = [str(v) for v in list(range(0, 11)) + ["A", "B", "C", "D", "E", "F"]]
 
     # How much a stage sleeps (in seconds) between successive calls to .get_position.
     # Used to make blocking calls to move_absolute and move_relative.
@@ -110,8 +104,7 @@ class Thorlabs_ELL8K(Stage):
         12: "Out of Range",
         13: "Over current error",
         14: "OK, no error",
-        "OutOfBounds": "Reserved"
-    }
+        "OutOfBounds": "Reserved"}
 
     def __init__(self, serial_device, device_index=0, debug=0):
         '''can be passed either a BusDistributor instance, or  "COM5"  '''
@@ -126,8 +119,7 @@ class Thorlabs_ELL8K(Stage):
 
         # configure stage parameters
         if str(device_index) not in Thorlabs_ELL8K.VALID_DEVICE_IDs:
-            raise ValueError(
-                "Device ID: {} is not valid!".format(device_index))
+            raise ValueError("Device ID: {} is not valid!".format(device_index))
         self.device_index = device_index
 
         configuration = self.get_device_info()
@@ -162,8 +154,8 @@ class Thorlabs_ELL8K(Stage):
 
         Method used when sending instructions to move to stage
         '''
-        pulse_per_deg = self.PULSES_PER_REVOLUTION/float(self.TRAVEL)
-        pulses = int(np.rint(angle*pulse_per_deg))
+        pulse_per_deg = self.PULSES_PER_REVOLUTION / float(self.TRAVEL)
+        pulses = int(np.rint(angle * pulse_per_deg))
         if self.debug > 0:
             print("Input angle:", angle)
             print("Pulses:", pulses)
@@ -178,7 +170,7 @@ class Thorlabs_ELL8K(Stage):
 
         Method used when reading data received from stage
         '''
-        return float(self.TRAVEL)*pulse_count/self.PULSES_PER_REVOLUTION
+        return float(self.TRAVEL) * pulse_count / self.PULSES_PER_REVOLUTION
 
     def __angle_to_hex_pulses(self, angle):
         '''
@@ -240,7 +232,7 @@ class Thorlabs_ELL8K(Stage):
         current_angle = 1.0
 
         try:
-            while(stopped == False):
+            while (stopped == False):
                 time.sleep(Thorlabs_ELL8K.BLOCK_SLEEPING_TIME)
                 current_angle = self.get_position()
                 stopped = (np.absolute(current_angle - previous_angle)
@@ -330,8 +322,7 @@ class Thorlabs_ELL8K(Stage):
             "firmware_release": firmware_release,
             "hardware_release": hardware_release,
             "travel": travel,
-            "pulses": pulses
-        }
+            "pulses": pulses}
         return outp
 
     def get_device_status(self):
@@ -387,7 +378,7 @@ class Thorlabs_ELL8K(Stage):
         if -360 > angle or angle > 360:
             angle %= 360
         if angle < 0:
-            angle = 360+angle
+            angle = 360 + angle
         pulses_hex = self.__angle_to_hex_pulses(angle)
         response = self.query_device("ma{0}".format(pulses_hex))
 
@@ -443,15 +434,13 @@ class Thorlabs_ELL8K_UI(QtWidgets.QWidget, UiTools):
 
     def __init__(self, stage, parent=None, debug=0):
         if not isinstance(stage, Thorlabs_ELL8K):
-            raise ValueError(
-                "Object is not an instance of the Thorlabs_ELL8K Stage")
+            raise ValueError("Object is not an instance of the Thorlabs_ELL8K Stage")
         super(Thorlabs_ELL8K_UI, self).__init__()
         self.stage = stage  # this is the actual rotation stage
         self.parent = parent
         self.debug = debug
 
-        uic.loadUi(os.path.join(os.path.dirname(
-            __file__), 'thorlabs_ell8k.ui'), self)
+        uic.loadUi(os.path.join(os.path.dirname(__file__), 'thorlabs_ell8k.ui'), self)
 
         self.move_relative_btn.clicked.connect(self.move_relative)
         self.move_absolute_btn.clicked.connect(self.move_absolute)

@@ -4,14 +4,17 @@ Classes related to the Keithley 2635A SMU.
 
 __author__ = 'alansanders'
 
-from pyopenlab.instrument.visa_instrument import VisaInstrument, queried_property
 import numpy as np
+
+from pyopenlab.instrument.visa_instrument import queried_property
+from pyopenlab.instrument.visa_instrument import VisaInstrument
 from pyopenlab.utils.gui import *
 from pyopenlab.utils.gui import uic
 
 
 class Keithley2635A(VisaInstrument):
     """Interface to the Keithley 2635A SMU."""
+
     def __init__(self, address='GPIB0::26::INSTR'):
         super(Keithley2635A, self).__init__(address)
         self.instr.read_termination = '\n'
@@ -22,64 +25,96 @@ class Keithley2635A(VisaInstrument):
         """Reset the SMU to its default state."""
         self.write('reset()')
 
-    output = queried_property('print(smua.source.output)', 'smua.source.output={0}',
-                              validate=['smua.OUTPUT_ON', 'smua.OUTPUT_OFF', 0, 1], dtype='str',
+    output = queried_property('print(smua.source.output)',
+                              'smua.source.output={0}',
+                              validate=['smua.OUTPUT_ON', 'smua.OUTPUT_OFF', 0, 1],
+                              dtype='str',
                               doc='Turn the SMU on or off')
-    source = queried_property('print(smua.source.func)', 'smua.source.func={0}',
-                              validate=['smua.OUTPUT_DCVOLTS', 'smua.OUTPUT_DCAMPS', 0, 1], dtype='str',
+    source = queried_property('print(smua.source.func)',
+                              'smua.source.func={0}',
+                              validate=['smua.OUTPUT_DCVOLTS', 'smua.OUTPUT_DCAMPS', 0, 1],
+                              dtype='str',
                               doc='Set the source type, either voltage or current')
 
     # def set_src_voltage(self, voltage):
     #    self.instr.write('smua.source.levelv=%s' % voltage)
     #    self.check_voltage_range(voltage)
 
-    src_voltage = queried_property('print(smua.source.levelv)', 'smua.source.levelv={0}',
+    src_voltage = queried_property('print(smua.source.levelv)',
+                                   'smua.source.levelv={0}',
                                    doc='Source voltage')
-    src_current = queried_property('print(smua.source.leveli)', 'smua.source.leveli={0}',
+    src_current = queried_property('print(smua.source.leveli)',
+                                   'smua.source.leveli={0}',
                                    doc='Source current')
-    src_voltage_range = queried_property('print(smua.source.rangev)', 'smua.source.rangev={0}',
+    src_voltage_range = queried_property('print(smua.source.rangev)',
+                                         'smua.source.rangev={0}',
                                          doc='Source voltage range')
-    src_current_range = queried_property('print(smua.source.rangei)', 'smua.source.rangei={0}',
+    src_current_range = queried_property('print(smua.source.rangei)',
+                                         'smua.source.rangei={0}',
                                          doc='Source current range')
-    meas_voltage_range = queried_property('print(smua.measure.rangev)', 'smua.measure.rangev={0}',
+    meas_voltage_range = queried_property('print(smua.measure.rangev)',
+                                          'smua.measure.rangev={0}',
                                           doc='Measured voltage range')
-    meas_current_range = queried_property('print(smua.measure.rangei)', 'smua.measure.rangei={0}',
+    meas_current_range = queried_property('print(smua.measure.rangei)',
+                                          'smua.measure.rangei={0}',
                                           doc='Measured current range')
-    src_compliance = queried_property('print(smua.source.compliance)', 'smua.source.compliance={0}',
+    src_compliance = queried_property('print(smua.source.compliance)',
+                                      'smua.source.compliance={0}',
                                       doc='Source compliance')
-    src_voltage_limit = queried_property('print(smua.source.limitv)', 'smua.source.limitv={0}',
+    src_voltage_limit = queried_property('print(smua.source.limitv)',
+                                         'smua.source.limitv={0}',
                                          doc='Source voltage limit')
-    src_current_limit = queried_property('print(smua.source.limiti)', 'smua.source.limiti={0}',
+    src_current_limit = queried_property('print(smua.source.limiti)',
+                                         'smua.source.limiti={0}',
                                          doc='Source current limit')
 
-    display = queried_property('print(display.smua.measure.func)', 'display.smua.measure.func={0}',
-                               validate=['display.MEASURE_DCAMPS', 'display.MEASURE_DCVOLTS', 'display.MEASURE_OHMS',
-                                         'display.MEASURE_WATTS', 0, 1, 2, 3],
-                               dtype='str', doc='Measurement displayed on the SMU front panel')
+    display = queried_property('print(display.smua.measure.func)',
+                               'display.smua.measure.func={0}',
+                               validate=[
+                                   'display.MEASURE_DCAMPS', 'display.MEASURE_DCVOLTS',
+                                   'display.MEASURE_OHMS', 'display.MEASURE_WATTS', 0, 1, 2, 3],
+                               dtype='str',
+                               doc='Measurement displayed on the SMU front panel')
 
-    src_voltage_autorange = queried_property('print(smua.source.autorangev)', 'smua.source.autorangev=%s',
-                                             validate=[0, 1, False, True], dtype='int',
+    src_voltage_autorange = queried_property('print(smua.source.autorangev)',
+                                             'smua.source.autorangev=%s',
+                                             validate=[0, 1, False, True],
+                                             dtype='int',
                                              doc='Source voltage autorange')
-    src_current_autorange = queried_property('print(smua.source.autorangei)', 'smua.source.autorangei=%s',
-                                             validate=[0, 1, False, True], dtype='int',
+    src_current_autorange = queried_property('print(smua.source.autorangei)',
+                                             'smua.source.autorangei=%s',
+                                             validate=[0, 1, False, True],
+                                             dtype='int',
                                              doc='Source current autorange')
 
-    src_voltage_lowrange = queried_property('print(smua.source.lowrangev)', 'smua.source.lowrangev=%s',
-                                            doc='Minimum range the source voltage autorange will set')
-    src_current_lowrange = queried_property('print(smua.source.lowrangei)', 'smua.source.lowrangei=%s',
-                                            doc='Minimum range the source current autorange will set')
+    src_voltage_lowrange = queried_property(
+        'print(smua.source.lowrangev)',
+        'smua.source.lowrangev=%s',
+        doc='Minimum range the source voltage autorange will set')
+    src_current_lowrange = queried_property(
+        'print(smua.source.lowrangei)',
+        'smua.source.lowrangei=%s',
+        doc='Minimum range the source current autorange will set')
 
-    meas_voltage_autorange = queried_property('print(smua.measure.autorangev)', 'smua.measure.autorangev=%s',
-                                              validate=[0, 1, False, True], dtype='int',
+    meas_voltage_autorange = queried_property('print(smua.measure.autorangev)',
+                                              'smua.measure.autorangev=%s',
+                                              validate=[0, 1, False, True],
+                                              dtype='int',
                                               doc='Measurement voltage autorange')
-    meas_current_autorange = queried_property('print(smua.measure.autorangei)', 'smua.measure.autorangei=%s',
-                                              validate=[0, 1, False, True], dtype='int',
+    meas_current_autorange = queried_property('print(smua.measure.autorangei)',
+                                              'smua.measure.autorangei=%s',
+                                              validate=[0, 1, False, True],
+                                              dtype='int',
                                               doc='Measurement current autorange')
 
-    meas_voltage_lowrange = queried_property('print(smua.measure.lowrangev)', 'smua.measure.lowrangev=%s',
-                                             doc='Minimum range the measurement voltage autorange will set')
-    meas_current_lowrange = queried_property('print(smua.measure.lowrangei)', 'smua.measure.lowrangei=%s',
-                                             doc='Minimum range the measurement current autorange will set')
+    meas_voltage_lowrange = queried_property(
+        'print(smua.measure.lowrangev)',
+        'smua.measure.lowrangev=%s',
+        doc='Minimum range the measurement voltage autorange will set')
+    meas_current_lowrange = queried_property(
+        'print(smua.measure.lowrangei)',
+        'smua.measure.lowrangei=%s',
+        doc='Minimum range the measurement current autorange will set')
 
     def read_voltage(self):
         """Measure the voltage."""
@@ -114,14 +149,14 @@ class Keithley2635A(VisaInstrument):
     def check_current_range(self, i):
         i_range = self.get_meas_current_range()
         while abs(i) >= i_range:
-            i_range = 10 ** (np.ceil(np.log10(i_range) + 1))  # go up one order of magnitude
+            i_range = 10**(np.ceil(np.log10(i_range) + 1))  # go up one order of magnitude
             self.set_meas_current_range(i_range)
             i = self.read_current()
             # print 'i up', i, i_range
         if i != 0:
             minimum = 1e-8
             while (np.log10(abs(i)) - np.log10(i_range) <= -3) and i_range > minimum:
-                i_range = 10 ** (np.ceil(np.log10(abs(i))))
+                i_range = 10**(np.ceil(np.log10(abs(i))))
                 # set a lower limit
                 i_range = i_range if i_range >= minimum else minimum
                 self.set_meas_current_range(i_range)
@@ -132,7 +167,7 @@ class Keithley2635A(VisaInstrument):
     def check_voltage_range(self, v):
         v_range = self.get_src_voltage_range()
         while abs(v) >= v_range:  # say v=1.2 and v_range=1, aim for v_range=10
-            v_range = 2 * 10 ** (np.ceil(np.log10(abs(v))))
+            v_range = 2 * 10**(np.ceil(np.log10(abs(v))))
             self.set_src_voltage_range(v_range)
             v = self.get_src_voltage()
             # print 'v up', v, v_range
@@ -141,7 +176,7 @@ class Keithley2635A(VisaInstrument):
         if v != 0:
             minimum = 200e-3
             while (np.log10(abs(v)) - np.log10(v_range) <= -2) and v_range > minimum:
-                v_range = 2 * 10 ** (np.ceil(np.log10(abs(v))))
+                v_range = 2 * 10**(np.ceil(np.log10(abs(v))))
                 v_range = v_range if v_range >= minimum else minimum
                 self.set_src_voltage_range(v_range)
                 v = self.get_src_voltage()
@@ -153,6 +188,7 @@ class Keithley2635A(VisaInstrument):
 
 
 class SmuUI(QtWidgets.QWidget):
+
     def __init__(self, smu, parent=None):
         super(SmuUI, self).__init__()
         self.smu = smu
@@ -252,8 +288,8 @@ class SmuUI(QtWidgets.QWidget):
         current = self.smu.read_current()
         resistance = self.smu.read_resistance()
         power = self.smu.read_power()
-        self.measurements.setText(
-            '{0:.2e} V, {1:.2e} A, {2:.2e} Ohms, {3:.2e} W'.format(voltage, current, resistance, power))
+        self.measurements.setText('{0:.2e} V, {1:.2e} A, {2:.2e} Ohms, {3:.2e} W'.format(
+            voltage, current, resistance, power))
 
     def on_activated(self, value):
         # print self.sender(), index, value

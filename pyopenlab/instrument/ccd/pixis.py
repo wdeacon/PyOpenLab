@@ -3,19 +3,22 @@ __author__ = 'alansanders'
 import ctypes as ct
 import os
 
-pvcam=PVCAM = ct.WinDLL(os.path.dirname(__file__) +"/DLL/Picam.dll")
+pvcam = PVCAM = ct.WinDLL(os.path.dirname(__file__) + "/DLL/Picam.dll")
 
-import pyopenlab.instrument.ccd.pvcam_h as pv
-import numpy as np
 import time
-from pyopenlab.instrument.ccd import CCD
-from pyopenlab.instrument.camera import Camera
-from pyopenlab.utils.gui import *
-from pyopenlab.ui.ui_tools import UiTools
+
+import numpy as np
+
 from pyopenlab import inherit_docstring
+from pyopenlab.instrument.camera import Camera
+from pyopenlab.instrument.ccd import CCD
+import pyopenlab.instrument.ccd.pvcam_h as pv
+from pyopenlab.ui.ui_tools import UiTools
+from pyopenlab.utils.gui import *
 
 
 class PixisError(Exception):
+
     def __init__(self, msg):
         print(msg)
         i = pvcam.pl_error_code()
@@ -25,11 +28,12 @@ class PixisError(Exception):
         pvcam.pl_self.pvcam_uninit()
 
 
-class Pixis256E(CCD,Camera):
+class Pixis256E(CCD, Camera):
+
     def __init__(self):
         super(Pixis256E, self).__init__()
         try:
-            self.pvcam = PVCAM #ct.windll.pvcam32
+            self.pvcam = PVCAM  #ct.windll.pvcam32
         except WindowsError as e:
             print('pvcam not found')
         cam_selection = ct.c_int16()
@@ -54,7 +58,13 @@ class Pixis256E(CCD,Camera):
             self.close_cam()
         self.close_lib()
 
-    def read_image(self, exposure, timing='timed', mode='kinetics', new=True, end=True, *args,
+    def read_image(self,
+                   exposure,
+                   timing='timed',
+                   mode='kinetics',
+                   new=True,
+                   end=True,
+                   *args,
                    **kwargs):
         """
         Read an image.
@@ -114,20 +124,20 @@ class Pixis256E(CCD,Camera):
         param_id = ct.c_uint32(param_id)
 
         if not isinstance(param_value, ct._SimpleCData):
-            raise TypeError("The parameter value must be passed as a ctypes instance, not a python value.")
+            raise TypeError(
+                "The parameter value must be passed as a ctypes instance, not a python value.")
 
-        b_status = self.pvcam.pl_get_param(self._handle, param_id,
-                                      pv.ATTR_AVAIL, ct.cast(ct.byref(b_param), ct.c_void_p))
+        b_status = self.pvcam.pl_get_param(self._handle, param_id, pv.ATTR_AVAIL,
+                                           ct.cast(ct.byref(b_param), ct.c_void_p))
         if b_param:
-            b_status = self.pvcam.pl_get_param(self._handle, param_id,
-                                          pv.ATTR_ACCESS,
-                                          ct.cast(ct.byref(param_access), ct.c_void_p))
+            b_status = self.pvcam.pl_get_param(self._handle, param_id, pv.ATTR_ACCESS,
+                                               ct.cast(ct.byref(param_access), ct.c_void_p))
 
             if param_access.value == pv.ACC_READ_WRITE or param_access.value == pv.ACC_WRITE_ONLY:
                 if not self.pvcam.pl_set_param(self._handle, param_id,
-                                          ct.cast(ct.byref(param_value), ct.c_void_p)):
-                    print("error: param %d (value = %d) did not get set" % (
-                    param_id.value, param_value.value))
+                                               ct.cast(ct.byref(param_value), ct.c_void_p)):
+                    print("error: param %d (value = %d) did not get set" %
+                          (param_id.value, param_value.value))
                     return False
             else:
                 print("error: param %d is not writable: %s" % (param_id.value, param_access.value))
@@ -142,13 +152,12 @@ class Pixis256E(CCD,Camera):
 
     def set_full_frame(self, region):
         ser_size = ct.c_uint16()
-        self.pvcam.pl_get_param(self._handle, pv.PARAM_SER_SIZE,
-                           pv.ATTR_DEFAULT, ct.cast(ct.byref(ser_size), ct.c_void_p))
+        self.pvcam.pl_get_param(self._handle, pv.PARAM_SER_SIZE, pv.ATTR_DEFAULT,
+                                ct.cast(ct.byref(ser_size), ct.c_void_p))
         par_size = ct.c_uint16()
-        self.pvcam.pl_get_param(self._handle, pv.PARAM_PAR_SIZE,
-                           pv.ATTR_DEFAULT, ct.cast(ct.byref(par_size), ct.c_void_p))
-        region.s1, region.s2, region.p1, region.p2 = (0, ser_size.value - 1,
-                                                      0, par_size.value - 1)
+        self.pvcam.pl_get_param(self._handle, pv.PARAM_PAR_SIZE, pv.ATTR_DEFAULT,
+                                ct.cast(ct.byref(par_size), ct.c_void_p))
+        region.s1, region.s2, region.p1, region.p2 = (0, ser_size.value - 1, 0, par_size.value - 1)
         region.sbin, region.pbin = (1, 1)
 
     def setup_kinetics(self, exposure, k_size, timing='trigger'):
@@ -170,11 +179,11 @@ class Pixis256E(CCD,Camera):
         }
         for p in params:
             status = self.set_any_param(p, params[p][0])
-            if not status: print('problem with %s' % params[p][1])
+            if not status:
+                print('problem with %s' % params[p][1])
 
         read_params = [
-            pv.PARAM_PIX_TIME,
-        ]
+            pv.PARAM_PIX_TIME,]
         for p in read_params:
             self.get_any_param(p)
 
@@ -190,8 +199,8 @@ class Pixis256E(CCD,Camera):
             timing_mode = pv.TRIGGER_FIRST_MODE
         elif timing == 'timed':
             timing_mode = pv.TIMED_MODE
-        if self.pvcam.pl_exp_setup_seq(self._handle, 1, 1, ct.byref(region),
-                                  timing_mode, exp_time, ct.byref(size)):
+        if self.pvcam.pl_exp_setup_seq(self._handle, 1, 1, ct.byref(region), timing_mode, exp_time,
+                                       ct.byref(size)):
             # print "frame size = %d" % size.value
             pass
         else:
@@ -230,8 +239,7 @@ class Pixis256E(CCD,Camera):
         fails.
         """
         status = ct.c_int16()
-        self.pvcam.pl_exp_check_status(self._handle, ct.byref(status),
-                                  ct.byref(ct.c_int32()))
+        self.pvcam.pl_exp_check_status(self._handle, ct.byref(status), ct.byref(ct.c_int32()))
         if status.value == pv.READOUT_FAILED:
             raise PixisError("Data collection error")
         elif status.value == pv.READOUT_COMPLETE:
@@ -252,19 +260,22 @@ class Pixis256E(CCD,Camera):
 
     def read_background(self):
         """Acquire a new spectrum and use it as a background measurement."""
-        self.background = self.read_image(self.exposure, self.timing, self.mode,
-                                          new=True, end=True)
+        self.background = self.read_image(self.exposure, self.timing, self.mode, new=True, end=True)
         self.update_config('background', self.background)
 
     def read_reference(self):
         """Acquire a new spectrum and use it as a reference."""
-        self.reference = self.read_image(self.exposure, self.timing, self.mode,
-                                         new=True, end=True)
+        self.reference = self.read_image(self.exposure, self.timing, self.mode, new=True, end=True)
         self.update_config('reference', self.reference)
-    
+
     def raw_snapshot(self):
         try:
-            image = self.read_image(self.exposure, timing='timed', mode='kinetics', new=False, end= True, k_size=1)
+            image = self.read_image(self.exposure,
+                                    timing='timed',
+                                    mode='kinetics',
+                                    new=False,
+                                    end=True,
+                                    k_size=1)
             return 1, image
         except Exception as e:
             self._logger.warn("Couldn't Capture because %s" % e)
@@ -281,15 +292,27 @@ class Pixis256EQt(Pixis256E, QtCore.QObject):
         super(Pixis256EQt, self).__init__()
 
     @inherit_docstring(Pixis256E.read_image)
-    def read_image(self, exposure, timing='timed', mode='kinetics', new=True, end=True, *args,
+    def read_image(self,
+                   exposure,
+                   timing='timed',
+                   mode='kinetics',
+                   new=True,
+                   end=True,
+                   *args,
                    **kwargs):
-        image = super(Pixis256EQt, self).read_image(exposure, timing='timed', mode='kinetics',
-                                                    new=True, end=True, *args, **kwargs)
+        image = super(Pixis256EQt, self).read_image(exposure,
+                                                    timing='timed',
+                                                    mode='kinetics',
+                                                    new=True,
+                                                    end=True,
+                                                    *args,
+                                                    **kwargs)
         self.image_taken.emit(image)
         return image
 
 
 class Pixis256EUI(QtWidgets.QWidget, UiTools):
+
     def __init__(self, pixis):
         if not isinstance(pixis, Pixis256EQt):
             raise TypeError('pixis is not an instance of Pixis256EQt')
@@ -320,8 +343,11 @@ class Pixis256EUI(QtWidgets.QWidget, UiTools):
     def on_click(self):
         sender = self.sender()
         if sender == self.take_image_button:
-            self.pixis.read_image(self.pixis.exposure, self.pixis.timing, self.pixis.mode,
-                                  new=True, end=True)
+            self.pixis.read_image(self.pixis.exposure,
+                                  self.pixis.timing,
+                                  self.pixis.mode,
+                                  new=True,
+                                  end=True)
         elif sender == self.take_bkgd_button:
             self.pixis.read_background()
         elif sender == self.clear_bkgd_button:
@@ -359,10 +385,11 @@ if __name__ == '__main__':
         print('ready')
         shots = 3
         for i in range(shots):
-            print('shot {0}'.format(i+1))
+            print('shot {0}'.format(i + 1))
             p.start_sequence()
             time.sleep(0.1)
-            while not (p.check_readout()): continue
+            while not (p.check_readout()):
+                continue
             print("triggered")
             img = p.readout_image()
             imgs.append(img)
@@ -374,7 +401,7 @@ if __name__ == '__main__':
         print('finished')
 
         print('plotting data')
-        fig, axes = plt.subplots(shots+1, sharex=True)
+        fig, axes = plt.subplots(shots + 1, sharex=True)
         for i, ax in enumerate(axes):
             img = ax.imshow(imgs[i])
         print('done')
@@ -386,9 +413,9 @@ if __name__ == '__main__':
 #    print "two"
 
 #    ui.show()
- #   sys.exit(app.exec_())
+#   sys.exit(app.exec_())
 
-    # p.read_image(p.exposure, timing='timed', mode='kinetics', new=True, end= False, k_size=1)
-    # img = p.read_image(p.exposure, timing='timed', mode='kinetics', new=False, end= True, k_size=1)
-    # plt.imshow(img)
-    # plt.show()
+# p.read_image(p.exposure, timing='timed', mode='kinetics', new=True, end= False, k_size=1)
+# img = p.read_image(p.exposure, timing='timed', mode='kinetics', new=False, end= True, k_size=1)
+# plt.imshow(img)
+# plt.show()

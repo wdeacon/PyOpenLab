@@ -1,12 +1,19 @@
-﻿import numpy as np
-import pyjisa.autoload
-
-from jisa.devices.camera import Camera, FakeCamera, Andor2, Andor3, Lumenera
+﻿from java.lang import Exception as JException
+from java.lang import Throwable
+from jisa.devices.camera import Andor2
+from jisa.devices.camera import Andor3
+from jisa.devices.camera import Camera
+from jisa.devices.camera import FakeCamera
+from jisa.devices.camera import Lumenera
+from jisa.devices.camera.feature import *
 from jisa.devices.camera.frame import Frame
 from jisa.devices.features import *
-from jisa.devices.camera.feature import *
-from jisa.devices.spectrometer import CameraSpectrometer, FakeSpectrometer, OceanOptics
 from jisa.devices.smu import K1234
+from jisa.devices.spectrometer import CameraSpectrometer
+from jisa.devices.spectrometer import FakeSpectrometer
+from jisa.devices.spectrometer import OceanOptics
+import numpy as np
+import pyjisa.autoload
 from qtpy import QtWidgets
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication
@@ -18,20 +25,17 @@ from pyopenlab.instrument.spectrometer.fastspectrometer.csconfig import CSConfig
 from pyopenlab.instrument.stage import DummyStage
 from pyopenlab.utils.gui_generator import GuiGenerator
 
-from java.lang import Throwable, Exception as JException
-
 # ==== CONNECTING ====
 
 # Connect to camera
 camera = Andor2(0)
 
-
 # ==== CONFIGURING ====
 # You should be able to find every parameter you can configure in the form of a camera.setXXX(...) method
 # where XXX is the name of the parameter.
 
-camera.setIntegrationTime(10e-6)          # 10 us exposure time
-camera.setImageMode(Camera.ImageMode.ROI) # Set camera to Region-of-Interest mode
+camera.setIntegrationTime(10e-6)  # 10 us exposure time
+camera.setImageMode(Camera.ImageMode.ROI)  # Set camera to Region-of-Interest mode
 
 # Returns a list of all image modes this camera is capable of
 possibleModes = camera.getImageModes()
@@ -70,7 +74,6 @@ if isinstance(camera, KineticSeries):
     # 10 frames, 1 accumulation per frame, 50 ms between frames, 50 ms between accumulations
     series = camera.getKineticFrameSeries(10, 1, 50e-3, 50e-3)
 
-
 # You can write a frame to a PNG file by calling
 frame.savePNG("/path/to/file.png")
 
@@ -92,22 +95,26 @@ camera.stopAcquisition()
 # still working with a previous frame, so they are lossy, but a good choice for things like updating
 # a gui.
 
+
 def frameListener(frame: Frame):
     # do something with the frame here, for example here we will just print its timestamp
     print("New frame, timestamp: %d" % frame.getTimestamp())
+
 
 # Attach the listener to the camera
 listener = camera.addFrameListener(frameListener)
 
 # To acquire frames losslessly, we can open a "Frame Queue". This is a buffer that will hold a copy
 # of every single frame that comes in via continuous acquisition.
-queue = camera.openFrameQueue() # or to limit its size (e.g., to 100 frames): camera.openFrameQueue(100)
+queue = camera.openFrameQueue(
+)  # or to limit its size (e.g., to 100 frames): camera.openFrameQueue(100)
 
 # then, one can remove frames from the head of the queue one-by-one like so
 while queue.isAlive():
-    frame = queue.nextFrame(10000) # Will timeout after waiting 10 seconds (10000 ms) for a frame, don't specify a timeout if you want it to wait forever
+    frame = queue.nextFrame(
+        10000
+    )  # Will timeout after waiting 10 seconds (10000 ms) for a frame, don't specify a timeout if you want it to wait forever
     print("New frame, timestamp: %d" % frame.getTimestamp())
-
 
 # Therefore, if our while loop cannot get through the frames as fast as they are coming in, then the queue
 # will grow.
@@ -115,8 +122,10 @@ while queue.isAlive():
 # To help with threading, you can open a queue and spawn a thread to work with whatever enters the queue all in one go
 # using the startFrameThread method
 
+
 def forEachFrame(frame: Frame):
     print("New frame, timestamp: %d" % frame.getTimestamp())
+
 
 thread = camera.startFrameThread(forEachFrame)
 
@@ -128,5 +137,3 @@ thread.stopNow()
 
 # You can even launch pre-defined thread designed to stream frame data directly to disk by calling
 thread = camera.streamToFile("/path/to/file.bin")
-
-

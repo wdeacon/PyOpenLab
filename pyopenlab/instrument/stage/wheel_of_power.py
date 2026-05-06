@@ -4,14 +4,16 @@ Created on Sun Oct 07 12:43:44 2018
 
 @author: wmd22, ydb20
 """
-from pyopenlab.experiment.gui import run_function_modally
+from collections import deque
+import os
+import threading
+import time
+
 import numpy as np
 from scipy.interpolate import interp1d
 from scipy.optimize import minimize
-from collections import deque
-import time
-import threading
-import os
+
+from pyopenlab.experiment.gui import run_function_modally
 
 
 class WheelOfPower(object):

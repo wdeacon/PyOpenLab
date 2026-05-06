@@ -1,40 +1,59 @@
-﻿import numpy as np
-import pyjisa.autoload
+﻿from typing import Callable, Generic, List, Tuple, TypeVar
 
-from typing import Callable, Generic, List, Tuple, TypeVar
-
+from java.lang import Boolean
+from java.lang import Double
+from java.lang import Integer
+from java.lang import Long
+from java.lang import Short
+from java.lang import String
 from jisa.devices import Instrument
 from jisa.results import ResultTable
-from java.lang    import Short, Integer, Long, Double, String, Boolean
-
-from qtpy.QtCore import Qt, Signal
+import numpy as np
+import pyjisa.autoload
+from qtpy.QtCore import Qt
+from qtpy.QtCore import Signal
 from qtpy.QtGui import QIcon
-from qtpy.QtWidgets import QCheckBox, QComboBox, QErrorMessage, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QLineEdit, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QVBoxLayout, QWidget
+from qtpy.QtWidgets import QCheckBox
+from qtpy.QtWidgets import QComboBox
+from qtpy.QtWidgets import QErrorMessage
+from qtpy.QtWidgets import QFormLayout
+from qtpy.QtWidgets import QFrame
+from qtpy.QtWidgets import QGroupBox
+from qtpy.QtWidgets import QHBoxLayout
+from qtpy.QtWidgets import QLineEdit
+from qtpy.QtWidgets import QPushButton
+from qtpy.QtWidgets import QScrollArea
+from qtpy.QtWidgets import QSizePolicy
+from qtpy.QtWidgets import QSpinBox
+from qtpy.QtWidgets import QVBoxLayout
+from qtpy.QtWidgets import QWidget
 
-from pyopenlab.ui.widgets.jisa.widgets import ResultTableWidget, ScientificSpinBox
+from pyopenlab.ui.widgets.jisa.widgets import ResultTableWidget
+from pyopenlab.ui.widgets.jisa.widgets import ScientificSpinBox
 
 I = TypeVar("I", bound=Instrument)
 
+
 class JISAConfigPanel(QWidget, Generic[I]):
-    
+
     warningIcon = QIcon.fromTheme("dialog-warning")
-    all         = []
+    all = []
 
     def __init__(self, instrument: I):
 
         super().__init__()
-        
-        self.instrument = instrument
-        self.params     = []
 
-        self.scrollArea    = QScrollArea()
-        self.buttons       = QHBoxLayout()
-        self.applyButton   = QPushButton("Apply All")
+        self.instrument = instrument
+        self.params = []
+
+        self.scrollArea = QScrollArea()
+        self.buttons = QHBoxLayout()
+        self.applyButton = QPushButton("Apply All")
         self.refreshButton = QPushButton("Refresh")
-        self.errorMessage  = QErrorMessage()
-        self.scrollWidget  = QWidget()
-        self.scrollLayout  = QVBoxLayout()
-        self.mainLayout    = QVBoxLayout()
+        self.errorMessage = QErrorMessage()
+        self.scrollWidget = QWidget()
+        self.scrollLayout = QVBoxLayout()
+        self.mainLayout = QVBoxLayout()
 
         self.setLayout(self.mainLayout)
 
@@ -43,30 +62,29 @@ class JISAConfigPanel(QWidget, Generic[I]):
 
         self.mainLayout.addWidget(self.scrollArea)
         self.mainLayout.addLayout(self.buttons)
-        self.mainLayout.setContentsMargins(0,0,0,0)
-        self.setContentsMargins(0,0,0,0)
+        self.mainLayout.setContentsMargins(0, 0, 0, 0)
+        self.setContentsMargins(0, 0, 0, 0)
 
         self.scrollWidget.setLayout(self.scrollLayout)
         self.scrollArea.setWidget(self.scrollWidget)
         self.scrollArea.setWidgetResizable(True)
         self.scrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.scrollArea.setContentsMargins(0,0,0,0)
-        self.scrollWidget.setContentsMargins(0,0,0,0)
-        self.scrollLayout.setContentsMargins(0,0,0,0)
+        self.scrollArea.setContentsMargins(0, 0, 0, 0)
+        self.scrollWidget.setContentsMargins(0, 0, 0, 0)
+        self.scrollLayout.setContentsMargins(0, 0, 0, 0)
         self.scrollArea.setFrameShape(QFrame.NoFrame)
-        self.scrollArea.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Ignored))
+        self.scrollArea.setSizePolicy(
+            QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Ignored))
         self.setupParameters()
         self.setupConnections()
 
         JISAConfigPanel.all.append(self)
 
-
     def setupConnections(self):
 
         self.refreshButton.clicked.connect(self.refreshParameters)
         self.applyButton.clicked.connect(self.applyParameters)
-
 
     def setupParameters(self):
 
@@ -81,7 +99,8 @@ class JISAConfigPanel(QWidget, Generic[I]):
 
             form = forms[group]
 
-            widget, getter, setter, signal = self.createParameterWidget(param.getDefaultValue(), param.getChoices())
+            widget, getter, setter, signal = self.createParameterWidget(
+                param.getDefaultValue(), param.getChoices())
 
             if widget is None:
                 continue
@@ -105,29 +124,33 @@ class JISAConfigPanel(QWidget, Generic[I]):
                 pass
 
             if signal is not None:
-                signal.connect(lambda v=None, getter=getter, setter=setter, param=param, status=status: self.applyParameter(getter, setter, param, status))
+                signal.connect(lambda v=None, getter=getter, setter=setter, param=param, status=
+                               status: self.applyParameter(getter, setter, param, status))
             else:
-                setB.clicked.connect(lambda v=None, getter=getter, setter=setter, param=param, status=status: self.applyParameter(getter, setter, param, status))
+                setB.clicked.connect(
+                    lambda v=None, getter=getter, setter=setter, param=param, status=status: self.
+                    applyParameter(getter, setter, param, status))
                 hbox.addWidget(setB, 0, Qt.AlignTop)
 
             hbox.addWidget(status, 0, Qt.AlignTop)
             self.params.append((widget, getter, setter, param, status))
-            
 
         for name, form in forms.items():
             box = QGroupBox(name)
             box.setLayout(form)
             self.scrollLayout.addWidget(box)
 
-
-    def createParameterWidget(self, defaultValue, choices: List = []) -> Tuple[QWidget, Callable, Callable, Signal]:
+    def createParameterWidget(self,
+                              defaultValue,
+                              choices: List = []) -> Tuple[QWidget, Callable, Callable, Signal]:
 
         if isinstance(defaultValue, Instrument.AutoQuantity):
 
             checkBox = QCheckBox("Auto")
             checkBox.setChecked(defaultValue.isAuto())
 
-            widget, getter, setter, signal = self.createParameterWidget(defaultValue.getValue(), choices)
+            widget, getter, setter, signal = self.createParameterWidget(
+                defaultValue.getValue(), choices)
 
             if widget is None:
                 return (None, None, None)
@@ -140,8 +163,9 @@ class JISAConfigPanel(QWidget, Generic[I]):
                     signal.emit()
 
             checkBox.stateChanged.connect(updateCheckBox)
-            
-            hbox = QHBoxLayout() if not isinstance(defaultValue.getValue(), ResultTable) else QVBoxLayout()
+
+            hbox = QHBoxLayout() if not isinstance(defaultValue.getValue(),
+                                                   ResultTable) else QVBoxLayout()
             cont = QWidget()
             cont.setLayout(hbox)
             cont.setContentsMargins(0, 0, 0, 0)
@@ -152,19 +176,20 @@ class JISAConfigPanel(QWidget, Generic[I]):
 
             def autoGetter():
                 return Instrument.AutoQuantity(checkBox.isChecked(), getter())
-            
+
             def autoSetter(aq: Instrument.AutoQuantity):
                 checkBox.setChecked(aq.isAuto())
                 setter(aq.getValue())
 
             return (cont, autoGetter, autoSetter, signal)
-        
+
         elif isinstance(defaultValue, Instrument.OptionalQuantity):
 
             checkBox = QCheckBox("Enabled")
             checkBox.setChecked(defaultValue.isUsed())
-            
-            widget, getter, setter, signal = self.createParameterWidget(defaultValue.getValue(), choices)
+
+            widget, getter, setter, signal = self.createParameterWidget(
+                defaultValue.getValue(), choices)
 
             if widget is None:
                 return (None, None, None)
@@ -177,8 +202,9 @@ class JISAConfigPanel(QWidget, Generic[I]):
                     signal.emit()
 
             checkBox.stateChanged.connect(updateCheckBox)
-            
-            hbox = QHBoxLayout() if not isinstance(defaultValue.getValue(), ResultTable) else QVBoxLayout()
+
+            hbox = QHBoxLayout() if not isinstance(defaultValue.getValue(),
+                                                   ResultTable) else QVBoxLayout()
             cont = QWidget()
             cont.setLayout(hbox)
             cont.setContentsMargins(0, 0, 0, 0)
@@ -189,34 +215,34 @@ class JISAConfigPanel(QWidget, Generic[I]):
 
             def autoGetter():
                 return Instrument.OptionalQuantity(checkBox.isChecked(), getter())
-            
+
             def autoSetter(aq: Instrument.OptionalQuantity):
                 checkBox.setChecked(aq.isUsed())
                 setter(aq.getValue())
 
             return (cont, autoGetter, autoSetter, signal)
-        
+
         elif len(choices) > 0:
 
-            choiceBox  = QComboBox()
+            choiceBox = QComboBox()
             choiceBox.addItems([str(c) for c in choices])
 
             def getter(choices=choices, choiceBox=choiceBox):
                 return choices[choiceBox.currentIndex()]
-            
+
             def setter(value):
                 choiceBox.setCurrentIndex(choices.index(value))
 
             setter(defaultValue)
 
             return (choiceBox, getter, setter, choiceBox.currentIndexChanged)
-        
+
         elif isinstance(defaultValue, (bool, Boolean)):
 
             checkBox = QCheckBox()
             checkBox.setChecked(defaultValue)
             return (checkBox, checkBox.isChecked, checkBox.setChecked, checkBox.stateChanged)
-        
+
         elif isinstance(defaultValue, (Double, float)):
 
             doubleBox = ScientificSpinBox()
@@ -231,15 +257,16 @@ class JISAConfigPanel(QWidget, Generic[I]):
             intBox.setMaximum(2147483647)
             intBox.setValue(defaultValue)
 
-            return (intBox, lambda: np.int32(intBox.value()), intBox.setValue, intBox.lineEdit().returnPressed)
-        
+            return (intBox, lambda: np.int32(intBox.value()), intBox.setValue,
+                    intBox.lineEdit().returnPressed)
+
         elif isinstance(defaultValue, (str, String)):
 
             textBox = QLineEdit()
             textBox.setText(str(defaultValue))
 
             return (textBox, textBox.text, textBox.setText, textBox.returnPressed)
-        
+
         elif isinstance(defaultValue, ResultTable):
 
             table = ResultTableWidget()
@@ -248,9 +275,8 @@ class JISAConfigPanel(QWidget, Generic[I]):
             return (table, table.getResultTable, table.setResultTable, None)
 
         else:
-            
-            return (None, None, None, None)
 
+            return (None, None, None, None)
 
     def refreshParameters(self):
 
@@ -260,7 +286,6 @@ class JISAConfigPanel(QWidget, Generic[I]):
                 s(p.getCurrentValue())
             except Exception as e:
                 print(e)
-
 
     def applyParameters(self):
         '''Applies all configuration parameters, then updates their displayed values'''
@@ -275,8 +300,13 @@ class JISAConfigPanel(QWidget, Generic[I]):
 
         self.instrument.afterApplyParameters(result)
 
-
-    def applyParameter(self, getter: Callable, setter: Callable, param: Instrument.Parameter, status: QPushButton, refresh=True, prepare=True):
+    def applyParameter(self,
+                       getter: Callable,
+                       setter: Callable,
+                       param: Instrument.Parameter,
+                       status: QPushButton,
+                       refresh=True,
+                       prepare=True):
         '''Applies one single parameter, optionally can refresh all others afterwards if specified'''
 
         status.setVisible(False)
@@ -302,7 +332,6 @@ class JISAConfigPanel(QWidget, Generic[I]):
 
         if prepare:
             self.instrument.afterApplyParameters(result)
-
 
     def showException(self, e: Exception):
         self.errorMessage.showMessage(str(e))

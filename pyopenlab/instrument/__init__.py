@@ -11,21 +11,26 @@ There's also some support mechanisms for metadata creation, and the bundling
 of metadata in ArrayWithAttrs objects that include both data and metadata.
 """
 
-from pyopenlab.utils.thread_utils import locked_action_decorator, background_action_decorator
-import pyopenlab
-from weakref import WeakSet
-import pyopenlab.utils.log
-from pyopenlab.utils.array_with_attrs import ArrayWithAttrs
-from pyopenlab.utils.show_gui_mixin import ShowGUIMixin
-import logging
-from pyopenlab.utils.log import create_logger
-import inspect
-import os
-import h5py
-import datetime
 from contextlib import contextmanager
+import datetime
+import inspect
+import logging
+import os
+from weakref import WeakSet
+
+import h5py
+
+import pyopenlab
+from pyopenlab.utils.array_with_attrs import ArrayWithAttrs
+import pyopenlab.utils.log
+from pyopenlab.utils.log import create_logger
+from pyopenlab.utils.show_gui_mixin import ShowGUIMixin
+from pyopenlab.utils.thread_utils import background_action_decorator
+from pyopenlab.utils.thread_utils import locked_action_decorator
+
 LOGGER = create_logger('Instrument')
 LOGGER.setLevel('INFO')
+
 
 class Instrument(ShowGUIMixin):
     """Base class for all instrument-control classes.
@@ -33,13 +38,15 @@ class Instrument(ShowGUIMixin):
     This class takes care of management of instruments, saving data, etc.
     """
     __instances = None
-    metadata_property_names = () #"Tuple of names of properties that should be automatically saved as HDF5 metadata
+    metadata_property_names = (
+    )  #"Tuple of names of properties that should be automatically saved as HDF5 metadata
 
     def __init__(self):
         """Create an instrument object."""
         super(Instrument, self).__init__()
-        Instrument.instances_set().add(self) #keep track of instances (should this be in __new__?)
-        self._logger = logging.getLogger('Instrument.' + str(type(self)).split('.')[-1].split('\'')[0])
+        Instrument.instances_set().add(self)  #keep track of instances (should this be in __new__?)
+        self._logger = logging.getLogger('Instrument.' +
+                                         str(type(self)).split('.')[-1].split('\'')[0])
 
     @classmethod
     def instances_set(cls):
@@ -59,7 +66,7 @@ class Instrument(ShowGUIMixin):
         Usually returns the first available instance.
         """
         instances = cls.get_instances()
-        if len(instances)>0:
+        if len(instances) > 0:
             return instances[0]
         else:
             if create:
@@ -101,15 +108,15 @@ class Instrument(ShowGUIMixin):
 
         Other arguments are passed to `pyopenlab.datafile.Group.create_dataset`.
         """
-        if "%d" not in name: # is this really necessary?
+        if "%d" not in name:  # is this really necessary?
             name = name + '_%d'
         df = cls.get_root_data_folder()
         dset = df.create_dataset(name, *args, **kwargs)
         if 'data' in kwargs and flush:
-            dset.file.flush() #make sure it's in the file if we wrote data
+            dset.file.flush()  #make sure it's in the file if we wrote data
         return dset
 
-    def log(self, message,level = 'info'):
+    def log(self, message, level='info'):
         """Save a log message to the current datafile.
 
         This is the preferred way to output debug/informational messages.  They
@@ -118,11 +125,7 @@ class Instrument(ShowGUIMixin):
         """
         pyopenlab.utils.log.log(message, from_object=self, level=level)
 
-    def get_metadata(self, 
-                     property_names=[], 
-                     include_default_names=True,
-                     exclude=None
-                     ):
+    def get_metadata(self, property_names=[], include_default_names=True, exclude=None):
         """A dictionary of settings, properties, etc. to save along with data.
 
         This returns the value of each property specified in the arguments or
@@ -153,8 +156,8 @@ class Instrument(ShowGUIMixin):
                 try:
                     keys.remove(p)
                 except ValueError:
-                    pass # Don't worry if we exclude items that are not there!
-        return {name: getattr(self,name) for name in keys}
+                    pass  # Don't worry if we exclude items that are not there!
+        return {name: getattr(self, name) for name in keys}
 
     metadata = property(get_metadata)
 
@@ -180,17 +183,19 @@ class Instrument(ShowGUIMixin):
         """Open the config file for the current spectrometer and return it, creating if it's not there"""
         if not hasattr(self, '_config_file'):
             try:
-                f = inspect.getfile(self.__class__) # fails in IPython
+                f = inspect.getfile(self.__class__)  # fails in IPython
             except (TypeError, ValueError):
-                f = inspect.getfile(self.__class__.__init__) # assumes the inst has an init method
+                f = inspect.getfile(self.__class__.__init__)  # assumes the inst has an init method
             d = os.path.dirname(f)
-            self._config_file = pyopenlab.datafile.DataFile(os.path.join(d, self.__class__.__name__+'_config.h5'), mode='a')
+            self._config_file = pyopenlab.datafile.DataFile(os.path.join(
+                d, self.__class__.__name__ + '_config.h5'),
+                                                            mode='a')
             self._config_file.attrs['date'] = datetime.datetime.now().strftime("%H:%M %d/%m/%y")
         return self._config_file
 
     config_file = property(open_config_file)
-    
-    def update_config(self, name, data, attrs= None):
+
+    def update_config(self, name, data, attrs=None):
         """Update the configuration file for this spectrometer.
         
         A file is created in the pyopenlab directory that holds configuration
@@ -198,10 +203,11 @@ class Instrument(ShowGUIMixin):
         function allows values to be stored in that file."""
         f = self.config_file
         if name in f.keys():
-            try: del f[name]
-            except: 
+            try:
+                del f[name]
+            except:
                 f[name][...] = data
-                f.flush()    
+                f.flush()
         else:
             f.create_dataset(name, data=data, attrs=attrs)
 

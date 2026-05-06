@@ -1,11 +1,16 @@
 ﻿# -*- coding: utf-8 -*-
 from __future__ import print_function
-from builtins import zip
+
 from builtins import map
-from pyopenlab.utils.gui import QtCore, QtWidgets, uic
-import pyqtgraph as pg
-import numpy as np
+from builtins import zip
 import os.path
+
+import numpy as np
+import pyqtgraph as pg
+
+from pyopenlab.utils.gui import QtCore
+from pyopenlab.utils.gui import QtWidgets
+from pyopenlab.utils.gui import uic
 
 
 class ArbitraryAxis(pg.AxisItem):
@@ -20,6 +25,7 @@ class ArbitraryAxis(pg.AxisItem):
         self.axis_values = None
 
     def pos_to_unit(self, value):
+
         def get_value(index):
             """Function that extracts the value from a list (axis_vectors) according to some given position (index),
             returning NaN if the index is out of range"""
@@ -163,7 +169,8 @@ class ExtendedImageView(pg.ImageView):
         # Crosshair label
         self.labelAction = QtWidgets.QAction("Crosshair label", self.menu)
         self.labelAction.setCheckable(True)
-        self.labelAction.toggled.connect(lambda boolean: self.label_crosshairpos.setVisible(boolean))
+        self.labelAction.toggled.connect(
+            lambda boolean: self.label_crosshairpos.setVisible(boolean))
         self.menu.addAction(self.labelAction)
 
     # Scaled axis functions
@@ -223,8 +230,10 @@ class ExtendedImageView(pg.ImageView):
     def quickMinMax(self, data):
         """Reimplements the ImageView.quickMinMax to set level percentiles"""
         mm = super(ExtendedImageView, self).quickMinMax(data)
-        return [(np.percentile(x, self.level_percentiles[0]),
-                 np.percentile(x, self.level_percentiles[1])) for x in mm]
+        return [
+            (np.percentile(x,
+                           self.level_percentiles[0]), np.percentile(x, self.level_percentiles[1]))
+            for x in mm]
 
     # Crosshairs
     def pos_to_unit(self, positions):
@@ -288,7 +297,8 @@ class ExtendedImageView(pg.ImageView):
 
                 # If the bottom and left axis have the same units, display the distance between the crosshairs
                 if self.axis_units['bottom'] == self.axis_units['left']:
-                    difft = np.linalg.norm(np.array(scaled_positions[:2]) - np.array(scaled_positions[2:]))
+                    difft = np.linalg.norm(
+                        np.array(scaled_positions[:2]) - np.array(scaled_positions[2:]))
                     unit = self.axis_units['bottom']
                     display_string += u"\u0394%s=%g" % (unit, difft)
 
@@ -330,4 +340,3 @@ def test():
 
 if __name__ == "__main__":
     test()
-

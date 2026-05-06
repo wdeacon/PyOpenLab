@@ -8,8 +8,10 @@ Created on Wed Jun 23 12:37:43 2021
 from collections import defaultdict
 
 import numpy as np
+from PyQt5 import QtCore
+from PyQt5 import QtGui
+from PyQt5 import QtWidgets
 import pyqtgraph as pg
-from PyQt5 import QtCore, QtGui, QtWidgets
 
 pg.setConfigOption('background', 'w')
 pg.setConfigOption('foreground', 'k')
@@ -61,13 +63,16 @@ class LorentzGraphWidget(pg.PlotWidget):
        xlim_func: when called provides an appropriate xlim. 
         
     '''
-    def __init__(self,
-                 modes,
-                 xlim_func,
-                 resolution=100,
-                 title='Efficiencies',
-                 xlabel='wavelength (nm)',
-                 ylabel='radiative efficiency',):
+
+    def __init__(
+        self,
+        modes,
+        xlim_func,
+        resolution=100,
+        title='Efficiencies',
+        xlabel='wavelength (nm)',
+        ylabel='radiative efficiency',
+    ):
         super().__init__(title=title)
         self.modes = modes
         self.xlim_func = xlim_func
@@ -84,7 +89,7 @@ class LorentzGraphWidget(pg.PlotWidget):
         p = self.plot(*args, **kwargs)  # pyqtgraph
         if remove:  # keep track of it if we want to remove it every update
             self.plots_to_remove.append(p)
-    
+
     def update(self, remove=True):
         while self.plots_to_remove:  # remove all the stored plots
             self.plot_item.removeItem(self.plots_to_remove.pop())
@@ -93,21 +98,18 @@ class LorentzGraphWidget(pg.PlotWidget):
         ys = np.zeros((len(self.modes), self.resolution))
         for i, (name, mode) in enumerate(self.modes.items()):
             y = mode['Lorentz'](xs)
-            
+
             ys[i] = y
             wl, eff = mode['annotate']()
             label = f'{name}, wl={round(wl)}nm, efficiency={np.around(eff, 2)}'
             self._plot(xs,
                        y,
-                       pen=pg.mkPen(pg.intColor(i,
-                                                len(self.modes),
-                                                alpha=100 + 155 * remove),
+                       pen=pg.mkPen(pg.intColor(i, len(self.modes), alpha=100 + 155 * remove),
                                     width=5),
                        name=label,
                        remove=remove)
         self._plot(xs, (ys**2 / ys.sum(axis=0)).sum(axis=0),
-                   pen=pg.mkPen(color=pg.mkColor(
-                       (0, 0, 0, 100 + 155 * remove)),
+                   pen=pg.mkPen(color=pg.mkColor((0, 0, 0, 100 + 155 * remove)),
                                 width=5,
                                 style=QtCore.Qt.DotLine),
                    name='sum',
@@ -122,6 +124,7 @@ class LorentzGraphWidget(pg.PlotWidget):
 
 
 class PinAndClearButtons(QtWidgets.QGroupBox):
+
     def __init__(self, graph):
         super().__init__('graph pinning buttons')
         self.setLayout(QtWidgets.QHBoxLayout())
@@ -134,11 +137,11 @@ class PinAndClearButtons(QtWidgets.QGroupBox):
 
 
 class GraphWithPinAndClearButtons(QtWidgets.QGroupBox):
+
     def __init__(self, *args, layout='V', **kwargs):
         super().__init__(kwargs.get('title', ''))
         self.graph = LorentzGraphWidget(*args, **kwargs)
-        layout = QtWidgets.QHBoxLayout(
-        ) if layout == 'H' else QtWidgets.QVBoxLayout()
+        layout = QtWidgets.QHBoxLayout() if layout == 'H' else QtWidgets.QVBoxLayout()
         layout.addWidget(self.graph)
         buttons = PinAndClearButtons(self.graph)
         layout.addWidget(buttons)
@@ -153,10 +156,10 @@ class GraphGroup(QtWidgets.QGroupBox):
     feed me GraphWidget objects and 
     I'll lay them out horizontally
     '''
+
     def __init__(self, graphs, layout='H'):
         super().__init__('Graphs')
-        layout = QtWidgets.QHBoxLayout(
-        ) if layout == 'H' else QtWidgets.QVBoxLayout()
+        layout = QtWidgets.QHBoxLayout() if layout == 'H' else QtWidgets.QVBoxLayout()
         self.setLayout(layout)
         self.graphs = graphs
         for i, g in enumerate(graphs):
@@ -177,6 +180,7 @@ class FloatMathMixin():
     '''allows any class to be used like a float,
     assuming it has a __float__ method.
     '''
+
     def __add__(self, other):
         return float(self) + np.asarray(other)
 
@@ -224,13 +228,7 @@ class Parameter(QtWidgets.QWidget, FloatMathMixin):
 
     param_changed = QtCore.pyqtSignal()
 
-    def __init__(self,
-                 name,
-                 default=1.,
-                 Min=-100_000.,
-                 Max=100_000.,
-                 units=None,
-                 slider=True):
+    def __init__(self, name, default=1., Min=-100_000., Max=100_000., units=None, slider=True):
 
         super().__init__()
         self.name = name
@@ -285,6 +283,7 @@ class ParameterGroupBox(QtWidgets.QGroupBox):
 
 class LivePlotWindow(QtWidgets.QMainWindow):
     '''Puts the graphing and parameter widgets together'''
+
     def __init__(self, graphs, parameters, style='Fusion'):
 
         super().__init__()
@@ -310,18 +309,19 @@ class LivePlotWindow(QtWidgets.QMainWindow):
 if __name__ == '__main__':
     import timeit
 
-    import qdarkstyle
-    from PyQt5.QtWidgets import QApplication
-
     from mim import MIM
+    from PyQt5.QtWidgets import QApplication
+    import qdarkstyle
     from QNM_viewer import wl_to_ev
     pi = 3.1415
+
     def Lorentz(wls, center_wl, eff):
         eVs, center_eV = map(wl_to_ev, (wls, center_wl))
         width_2 = MIM(center_eV, n, t) / (1 - eff)  # eV - = Gamma/2
         lor = (width_2 / (width_2**2 + ((eVs - center_eV))**2)) / (2 * pi**2)
         # 2pi times all eVs for angular frequency, then divide by pi for normalizing
         return lor * eff
+
     app = QApplication.instance()
     if app is None:
         app = QApplication([])
@@ -335,48 +335,43 @@ if __name__ == '__main__':
         Min=1.,
         Max=2.,
     )
+
     def real_eq(f, D, t, n):
         s = n * t**-0.46
 
-        return (395.5 + 0.0 + 179.6 * f + 0.3522 * D + 85.75 * s -
-                567.0 * f**2 + 1.823 * f * D + 93.01 * f * s + 0.00548 * D**2 +
-                1.438 * D * s + 0.836 * s**2)
+        return (395.5 + 0.0 + 179.6 * f + 0.3522 * D + 85.75 * s - 567.0 * f**2 + 1.823 * f * D +
+                93.01 * f * s + 0.00548 * D**2 + 1.438 * D * s + 0.836 * s**2)
+
     def imag_eq(real, D):
-        return (1.05
-        +0.0
-        -0.1229*D
-        +0.7649*real
-        +0.001026*D**2
-        +0.08007*D*real
-        -1.159*real**2
-        -2.85e-06*D**3
-        -0.0002686*D**2*real
-        -0.0126*D*real**2
-        +0.2632*real**3)
+        return (1.05 + 0.0 - 0.1229 * D + 0.7649 * real + 0.001026 * D**2 + 0.08007 * D * real -
+                1.159 * real**2 - 2.85e-06 * D**3 - 0.0002686 * D**2 * real - 0.0126 * D * real**2 +
+                0.2632 * real**3)
+
     def Lorentz_eq(wl):
         real = real_eq(f, D, t, n)
         efficiency = imag_eq(real, D)
         return Lorentz(wl, real, efficiency)
+
     def annotate():
         real = real_eq(f, D, t, n)
         efficiency = imag_eq(real, D)
         return real, efficiency
+
     def xlim():
-        wl = real_eq(f, D, t, n) 
+        wl = real_eq(f, D, t, n)
         return wl * 0.8, wl * 1.1
-    eqs = {'real': real_eq,
-           'image': imag_eq,
-           'Lorentz': Lorentz_eq,
-           'annotate': annotate,
-           }
-    LPW = LivePlotWindow([GraphWithPinAndClearButtons({'10': eqs},
-                                       xlim,
-                                       title='test',
-                                       resolution=100)], (f, D, t, n))
+
+    eqs = {
+        'real': real_eq,
+        'image': imag_eq,
+        'Lorentz': Lorentz_eq,
+        'annotate': annotate,}
+    LPW = LivePlotWindow(
+        [GraphWithPinAndClearButtons({'10': eqs}, xlim, title='test', resolution=100)],
+        (f, D, t, n))
     for _ in range(100):
         LPW.update_graphs()
     # print(timeit.timeit(LPW.update_graphs, number=100))
-    
+
     # LPW.show()
     # app.exec_()
-    

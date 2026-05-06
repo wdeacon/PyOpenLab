@@ -4,20 +4,21 @@ Created on Fri Aug  6 16:52:49 2021
 
 @author: Hera
 """
-from pyopenlab.instrument.serial_instrument import SerialInstrument
 from pyopenlab.instrument import Instrument
-from pyopenlab.utils.notified_property import NotifiedProperty
+from pyopenlab.instrument.serial_instrument import SerialInstrument
 from pyopenlab.ui.ui_tools import QuickControlBox
+from pyopenlab.utils.notified_property import NotifiedProperty
 
 
 def bytes_to_binary(bytearr, debug=0):
     '''
     Helper method for converting a bytearray datatype to a binary representation
     '''
-    if debug > 0: print(bytearr)
-    bytes_as_binary = [format(int(b, base=16), "#06b").replace(
-        "0b", "") for b in bytearr]
-    if debug > 0: print(bytes_as_binary)
+    if debug > 0:
+        print(bytearr)
+    bytes_as_binary = [format(int(b, base=16), "#06b").replace("0b", "") for b in bytearr]
+    if debug > 0:
+        print(bytes_as_binary)
     binary = "".join(bytes_as_binary)
     return binary
 
@@ -26,10 +27,11 @@ def twos_complement_to_int(binary, debug=0):
     '''
     Compute 2s complement of binary number representation
     '''
-    if debug > 0: print(binary)
+    if debug > 0:
+        print(binary)
     N = len(binary)
     a_N = int(binary[0])
-    return float(-a_N*2**(N-1) + int(binary[1:], base=2))
+    return float(-a_N * 2**(N - 1) + int(binary[1:], base=2))
 
 
 def int_to_hex(integer, padded_length=8, debug=0):
@@ -37,8 +39,7 @@ def int_to_hex(integer, padded_length=8, debug=0):
     Convert integer number to hexidecimal. Return value is zero-padded at the beginning
     until its length matches the value passed in "padded_length"
     '''
-    outp = (format(integer, "#0{}x".format(
-        padded_length+2)).replace("0x", "")).upper()
+    outp = (format(integer, "#0{}x".format(padded_length + 2)).replace("0x", "")).upper()
     return outp
 
 
@@ -53,20 +54,20 @@ def int_to_twos_complement(integer, padded_length=16, debug=0):
 
     #number is below zero - return twos complement representation:
     elif integer < 0:
-        if debug > 0: print("Below zero - returning twos complement")
-        integer = -1*integer
-        binary = format(integer, "0{}b".format(
-            padded_length+2)).replace("0b", "")
-        ones_complement = [str(1-int(b)) for b in str(binary)]
+        if debug > 0:
+            print("Below zero - returning twos complement")
+        integer = -1 * integer
+        binary = format(integer, "0{}b".format(padded_length + 2)).replace("0b", "")
+        ones_complement = [str(1 - int(b)) for b in str(binary)]
         ones_complement = int("".join(ones_complement))
-        twos_complement = int("0b"+str(ones_complement), base=2) + 1
+        twos_complement = int("0b" + str(ones_complement), base=2) + 1
         twos_complement = format(twos_complement, "034b").replace("0b", "")
         if debug > 0:
             print("input:", integer)
             print("binary:", binary)
             print("ones comp:", ones_complement)
             print("twos comp (int):", int(twos_complement, base=2))
-        return int("0b"+twos_complement, base=2)
+        return int("0b" + twos_complement, base=2)
 
 
 class BusDistributor(SerialInstrument):
@@ -91,8 +92,7 @@ class BusDistributor(SerialInstrument):
 class ThorlabsELL6(Instrument):
 
     #default id is 0, but if multiple devices of same type connected may have others
-    VALID_DEVICE_IDs = [str(v) for v in list(
-        range(11)) + ["A", "B", "C", "D", "E", "F"]]
+    VALID_DEVICE_IDs = [str(v) for v in list(range(11)) + ["A", "B", "C", "D", "E", "F"]]
 
     #How much a stage sleeps (in seconds) between successive calls to .get_position.
     #Used to make blocking calls to move_absolute and move_relative.
@@ -104,23 +104,22 @@ class ThorlabsELL6(Instrument):
 
     #human readable status codes
     DEVICE_STATUS_CODES = {
-            0: "OK, no error",
-            1: "Communication Timeout",
-            2: "Mechanical time out",
-            3: "Command error or not supported",
-            4: "Value out of range",
-            5: "Module isolated",
-            6: "Module out of isolation",
-            7: "Initialization error",
-            8: "Thermal error",
-            9: "Busy",
-            10: "Sensor Error",
-            11: "Motor Error",
-            12: "Out of Range",
-            13: "Over current error",
-            14: "OK, no error",
-            "OutOfBounds": "Reserved"
-        }
+        0: "OK, no error",
+        1: "Communication Timeout",
+        2: "Mechanical time out",
+        3: "Command error or not supported",
+        4: "Value out of range",
+        5: "Module isolated",
+        6: "Module out of isolation",
+        7: "Initialization error",
+        8: "Thermal error",
+        9: "Busy",
+        10: "Sensor Error",
+        11: "Motor Error",
+        12: "Out of Range",
+        13: "Over current error",
+        14: "OK, no error",
+        "OutOfBounds": "Reserved"}
     positions = 2
 
     def __init__(self, serial_device, device_index=0, debug=0):
@@ -133,8 +132,7 @@ class ThorlabsELL6(Instrument):
         self.debug = debug
 
         if str(device_index) not in self.VALID_DEVICE_IDs:
-            raise ValueError(
-                "Device ID: {} is not valid!".format(device_index))
+            raise ValueError("Device ID: {} is not valid!".format(device_index))
         self.device_index = device_index
         self.home()
 
@@ -144,15 +142,15 @@ class ThorlabsELL6(Instrument):
 
     def set_position(self, pos):
         assert 0 <= pos < self.positions
-        
+
         while pos > self._position:
             self.move_forward()
         while pos < self._position:
             self.move_backward()
-        
+
     def get_position(self):
         return self._position
-   
+
     position = NotifiedProperty(get_position, set_position)
 
     def query_device(self, query):
@@ -182,8 +180,6 @@ class ThorlabsELL6(Instrument):
     def move_backward(self):
         self.query_device('bw')
         self._position -= 1
-    
-
 
 
 class ThorlabsELL9(ThorlabsELL6):
@@ -198,6 +194,7 @@ class ThorlabsELL9(ThorlabsELL6):
 
 
 class ELL6UI(QuickControlBox):
+
     def __init__(self, instr):
         super().__init__('ELL6')
         self.add_spinbox('position', vmin=0, vmax=1)
@@ -205,6 +202,7 @@ class ELL6UI(QuickControlBox):
 
 
 class ELL9UI(QuickControlBox):
+
     def __init__(self, instr):
         super().__init__('ELL9')
         self.add_spinbox('position', vmin=0, vmax=3)

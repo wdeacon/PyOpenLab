@@ -1,6 +1,7 @@
 ﻿from pyopenlab.instrument.stage.thorlabs_ello.ell6 import Ell6
 from pyopenlab.ui.ui_tools import QuickControlBox
 
+
 class Ell9(Ell6):
     positions = 4
 
@@ -13,6 +14,7 @@ class Ell9(Ell6):
 
 
 class ELL6UI(QuickControlBox):
+
     def __init__(self, instr):
         super().__init__('ELL6')
         self.add_spinbox('position', vmin=0, vmax=1)
@@ -20,6 +22,7 @@ class ELL6UI(QuickControlBox):
 
 
 class ELL9UI(QuickControlBox):
+
     def __init__(self, instr):
         super().__init__('ELL9')
         self.add_spinbox('position', vmin=0, vmax=3)

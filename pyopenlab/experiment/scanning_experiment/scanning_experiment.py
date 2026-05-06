@@ -3,18 +3,21 @@ The base scanning experiment classes are found in this file, supporting the basi
 of scanning experiments and adding supporting for utilising HDF5 files for data storage.
 """
 from __future__ import print_function
+
 __author__ = 'alansanders'
 
-from pyopenlab.experiment.experiment import ExperimentWithDataDeque
 from threading import Thread
 import time
+
 from pyopenlab import datafile
+from pyopenlab.experiment.experiment import ExperimentWithDataDeque
 
 
 class ScanningExperiment(ExperimentWithDataDeque):
     """
     This class defines the core methods required for a threaded scanning experiment.
     """
+
     def __init__(self):
         super(ScanningExperiment, self).__init__()
         self.status = 'inactive'
@@ -33,7 +36,7 @@ class ScanningExperiment(ExperimentWithDataDeque):
         self.init_scan()
         self.acquisition_thread = Thread(target=self.scan, args=())
         self.acquisition_thread.start()
-        
+
     def abort(self):
         """Requests an abort of the currently running grid scan."""
         if not hasattr(self, 'acquisition_thread'):
@@ -42,7 +45,7 @@ class ScanningExperiment(ExperimentWithDataDeque):
             print('aborting')
             self.abort_requested = True
             self.acquisition_thread.join()
-            
+
     def init_scan(self):
         """
         This is called before the experiment enters its own thread. Methods that should be
@@ -65,7 +68,7 @@ class ScanningExperiment(ExperimentWithDataDeque):
     def scan_function(self, index):
         """Applied at each position in the grid scan."""
         raise NotImplementedError
-    
+
     def _timed_scan_function(self, index):
         """
         Supplementary function that can be used
@@ -77,10 +80,10 @@ class ScanningExperiment(ExperimentWithDataDeque):
         self.scan_function(index)
         dt = time.time() - t0
         self._step_times[index] = dt  # TODO: check initialisation of this
-        
+
     def scan(self):
         raise NotImplementedError
-        
+
     def analyse_scan(self):
         """
         This is called before the scan is closed to perform any final calculations.
@@ -95,7 +98,7 @@ class ScanningExperiment(ExperimentWithDataDeque):
         :return:
         """
         self.update(force=True)
-        
+
     def update(self, force=False):
         """
         This is the function that is called in the event loop and at the end of the scan
@@ -108,6 +111,7 @@ class ScanningExperimentHDF5(ScanningExperiment):
     """
     This class adds HDF5 file functionality for recording scans in a standardised manner.
     """
+
     def __init__(self):
         super(ScanningExperimentHDF5, self).__init__()
         self.f = datafile.current()

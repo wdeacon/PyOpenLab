@@ -17,24 +17,30 @@ Original Odemis was tested on Linux with a PI PIXIS. This was tested on Windows 
 
 """
 
-
 import ctypes as ct
-from pyopenlab.instrument.camera.ST133 import *  # Dictionary linking metadata names with codes
 import math
-import numpy as np
+import operator
 import os
 import threading
 import time
-from pyopenlab.instrument.camera.camera_scaled_roi import CameraRoiScale, DisplayWidgetRoiScale
-import pyopenlab.datafile as df
-from pyopenlab.utils.notified_property import NotifiedProperty
-from pyopenlab.utils.gui import QtCore, QtGui, QtWidgets, uic
-from pyopenlab.utils.log import create_logger
-from pyopenlab.ui.ui_tools import UiTools
-from pyopenlab.utils.notified_property import register_for_property_changes
-import operator
-from . import pvcam_h as pv  # Dictionary linking variables with values
 from weakref import WeakSet
+
+import numpy as np
+
+import pyopenlab.datafile as df
+from pyopenlab.instrument.camera.camera_scaled_roi import CameraRoiScale
+from pyopenlab.instrument.camera.camera_scaled_roi import DisplayWidgetRoiScale
+from pyopenlab.instrument.camera.ST133 import *  # Dictionary linking metadata names with codes
+from pyopenlab.ui.ui_tools import UiTools
+from pyopenlab.utils.gui import QtCore
+from pyopenlab.utils.gui import QtGui
+from pyopenlab.utils.gui import QtWidgets
+from pyopenlab.utils.gui import uic
+from pyopenlab.utils.log import create_logger
+from pyopenlab.utils.notified_property import NotifiedProperty
+from pyopenlab.utils.notified_property import register_for_property_changes
+
+from . import pvcam_h as pv  # Dictionary linking variables with values
 
 
 def index_closest(val, l):
@@ -49,6 +55,7 @@ def index_closest(val, l):
 
 
 class PVCamError(Exception):
+
     def __init__(self, errno, strerror, *args, **kwargs):
         super(PVCamError, self).__init__(errno, strerror, *args, **kwargs)
         self.args = (errno, strerror)
@@ -109,12 +116,14 @@ class PVCamDLL(ct.WinDLL):
                 err_mes = ct.create_string_buffer(pv.ERROR_MSG_LEN)
                 res = self.pl_error_message(err_code, err_mes)
                 if res:
-                    raise PVCamError(result, "Call to %s failed with error code %d: %s" %
-                                     (func.__name__, err_code, err_mes.value))
+                    raise PVCamError(
+                        result, "Call to %s failed with error code %d: %s" %
+                        (func.__name__, err_code, err_mes.value))
             except Exception:
                 # if not res:
-                raise PVCamError(result, "call to %s failed with unknown error code %d" %
-                                     (func.__name__, err_code))
+                raise PVCamError(
+                    result,
+                    "call to %s failed with unknown error code %d" % (func.__name__, err_code))
 
         return result
 
@@ -219,8 +228,7 @@ class PvcamSdk(object):
                 raise Exception("Failed to find PI PVCam camera (%d)"
                                 "Check the device is turned on and connected to "
                                 "the computer. "
-                                "You might need to turn it off and on again."
-                                % (device))
+                                "You might need to turn it off and on again." % (device))
         elif isinstance(device, str):
             # # check the file exists
             # if not os.path.exists("/dev/" + device):
@@ -256,9 +264,10 @@ class PvcamSdk(object):
         self.resolution = self.get_sensor_size()
 
         # setup everything best (fixed)
-        self._prev_settings = [None, None, None, None, None]  # image, exposure, readout, gain, shutter period
+        self._prev_settings = [None, None, None, None,
+                               None]  # image, exposure, readout, gain, shutter period
         # Bit depth is between 6 and 16, but data is _always_ uint16
-        self._shape = self.resolution + (2 ** self.get_param(pv.PARAM_BIT_DEPTH),)
+        self._shape = self.resolution + (2**self.get_param(pv.PARAM_BIT_DEPTH),)
 
         # put the detector pixelSize
         self.pixelSize = self.get_pixel_size()
@@ -319,7 +328,7 @@ class PvcamSdk(object):
             minexp = 0  # same as the resolution
         minexp = max(1e-3, minexp)  # at least 1 x the exposure resolution (1 ms)
         # exposure is represented by unsigned int
-        maxexp = (2 ** 32 - 1) * 1e-3  # s
+        maxexp = (2**32 - 1) * 1e-3  # s
         range_exp = (minexp, maxexp)  # s
         self._exposure_time = 0.01  # s
         # self.exposureTime = model.FloatContinuous(self.exposure, range_exp,
@@ -459,7 +468,7 @@ class PvcamSdk(object):
         # put back the settings
         self._prev_settings = [None, None, None, None, None]
         self._setStaticSettings()
-        
+
         # self.setTargetTemperature(self.targetTemperature.value)
         # self._temp_timer = util.RepeatingTimer(10, self.updateTemperatureVA,
         #                                  "PVCam temperature update")
@@ -497,8 +506,7 @@ class PvcamSdk(object):
         pv.TYPE_UNS64: ct.c_uint64,
         pv.TYPE_FLT64: ct.c_double,  # hopefully true on all platforms?
         pv.TYPE_BOOLEAN: ct.c_byte,
-        pv.TYPE_ENUM: ct.c_uint32,
-    }
+        pv.TYPE_ENUM: ct.c_uint32,}
 
     def get_param(self, param, value=pv.ATTR_CURRENT):
         """
@@ -509,8 +517,8 @@ class PvcamSdk(object):
         value (int from pv.ATTR_*): which value to read (current, default, min, max, increment)
         return (value): the value of the parameter, whose type depend on the parameter
         """
-        assert (value in (pv.ATTR_DEFAULT, pv.ATTR_CURRENT, pv.ATTR_MIN,
-                          pv.ATTR_MAX, pv.ATTR_INCREMENT))
+        assert (value
+                in (pv.ATTR_DEFAULT, pv.ATTR_CURRENT, pv.ATTR_MIN, pv.ATTR_MAX, pv.ATTR_INCREMENT))
 
         # find out the type of the parameter
         tp = ct.c_uint16()
@@ -582,8 +590,7 @@ class PvcamSdk(object):
             content = ct.c_uint32()
             self.pvcam.pl_enum_str_length(self._handle, param, i, ct.byref(length))
             desc = ct.create_string_buffer(length.value)
-            self.pvcam.pl_get_enum_param(self._handle, param, i, ct.byref(content),
-                                         desc, length)
+            self.pvcam.pl_get_enum_param(self._handle, param, i, ct.byref(content), desc, length)
             ret[content.value] = desc.value
         return ret
 
@@ -642,13 +649,17 @@ class PvcamSdk(object):
         """
         returns a simplified hardware version information
         """
-        versions = {pv.PARAM_CAM_FW_VERSION: "firmware",
-                    # Fails on PI pvcam (although PARAM_DD_VERSION manages to
-                    # read the firmware version inside the kernel)
-                    pv.PARAM_PCI_FW_VERSION: "firmware board",
-                    pv.PARAM_CAM_FW_FULL_VERSION: "firmware (full)",
-                    pv.PARAM_CAMERA_TYPE: "camera type",
-                    }
+        versions = {
+            pv.PARAM_CAM_FW_VERSION:
+                "firmware",
+            # Fails on PI pvcam (although PARAM_DD_VERSION manages to
+            # read the firmware version inside the kernel)
+            pv.PARAM_PCI_FW_VERSION:
+                "firmware board",
+            pv.PARAM_CAM_FW_FULL_VERSION:
+                "firmware (full)",
+            pv.PARAM_CAMERA_TYPE:
+                "camera type",}
         ret = ""
         for pid, name in list(versions.items()):
             try:
@@ -766,7 +777,7 @@ class PvcamSdk(object):
         gains = {}
         for i in range(ming, maxg + 1):
             # seems to be correct for PIXIS and ST133
-            gains[i] = 2 ** (i - 1)
+            gains[i] = 2**(i - 1)
         return gains
 
     def _set_gain(self, value):
@@ -845,13 +856,13 @@ class PvcamSdk(object):
         self._binning = value
 
         # adapt resolution so that the AOI stays the same
-        change = (prev_binning[0] / self._binning[0],
-                  prev_binning[1] / self._binning[1])
+        change = (prev_binning[0] / self._binning[0], prev_binning[1] / self._binning[1])
         old_resolution = self._transposeSizeFromUser(self.resolution.value)
         new_resolution = (int(round(old_resolution[0] * change[0])),
                           int(round(old_resolution[1] * change[1])))
 
-        self.resolution.value = self._transposeSizeToUser(new_resolution)  # will automatically call _storeSize
+        self.resolution.value = self._transposeSizeToUser(
+            new_resolution)  # will automatically call _storeSize
         return self._transposeSizeToUser(value)
 
     def _storeSize(self, size):
@@ -863,15 +874,13 @@ class PvcamSdk(object):
          resolution.
         """
         full_res = self._shape[:2]
-        resolution = (int(full_res[0] // self._binning[0]),
-                      int(full_res[1] // self._binning[1]))
-        assert ((1 <= size[0]) and (size[0] <= resolution[0]) and
-                (1 <= size[1]) and (size[1] <= resolution[1]))
+        resolution = (int(full_res[0] // self._binning[0]), int(full_res[1] // self._binning[1]))
+        assert ((1 <= size[0]) and (size[0] <= resolution[0]) and (1 <= size[1]) and
+                (size[1] <= resolution[1]))
 
         # Region of interest
         # center the image
-        lt = ((resolution[0] - size[0]) // 2,
-              (resolution[1] - size[1]) // 2)
+        lt = ((resolution[0] - size[0]) // 2, (resolution[1] - size[1]) // 2)
 
         # the rectangle is defined in normal pixels (not super-pixels) from (0,0)
         self._image_rect = (lt[0] * self._binning[0], (lt[0] + size[0]) * self._binning[0] - 1,
@@ -894,8 +903,7 @@ class PvcamSdk(object):
         """
         # find maximum resolution (with binning)
         resolution = self._shape[:2]
-        max_size = (int(resolution[0] // self._binning[0]),
-                    int(resolution[1] // self._binning[1]))
+        max_size = (int(resolution[0] // self._binning[0]), int(resolution[1] // self._binning[1]))
         min_size = (int(math.ceil(self._min_res[0] / self._binning[0])),
                     int(math.ceil(self._min_res[1] / self._binning[1])))
 
@@ -914,7 +922,7 @@ class PvcamSdk(object):
     #     returns the new exposure time
     #     """
     #     assert (0 < value)
-    # 
+    #
     #     # The checks done in the VA should be enough
     #     # we cache it until just before the next acquisition
     #     self.exposure = value
@@ -929,8 +937,9 @@ class PvcamSdk(object):
         returns (boolean): True if _update_settings() needs to be called
         """
         new_image_settings = self._binning + self._image_rect
-        new_settings = [new_image_settings, self._exposure_time,
-                        self._readout_rate, self._gain, self._shutter_period]
+        new_settings = [
+            new_image_settings, self._exposure_time, self._readout_rate, self._gain,
+            self._shutter_period]
         return new_settings != self._prev_settings
 
     def _update_settings(self):
@@ -943,8 +952,8 @@ class PvcamSdk(object):
                 region (pv.rgn_type): the region structure that can be used to set up the acquisition
                 size (2-tuple of int): the size of the data array that will get acquired
         """
-        (prev_image_settings, prev_exp_time,
-         prev_readout_rate, prev_gain, prev_shut) = self._prev_settings
+        (prev_image_settings, prev_exp_time, prev_readout_rate, prev_gain,
+         prev_shut) = self._prev_settings
 
         if prev_readout_rate != self._readout_rate:
             self._logger.debug("Updating readout rate settings to %f Hz", self._readout_rate)
@@ -976,8 +985,7 @@ class PvcamSdk(object):
         #         self._number_frames)
         size = (self._number_frames,
                 (self._image_rect[3] - self._image_rect[2] + 1) // self._binning[1],
-                (self._image_rect[1] - self._image_rect[0] + 1) // self._binning[0]
-                )
+                (self._image_rect[1] - self._image_rect[0] + 1) // self._binning[0])
 
         # nothing special for the exposure time
         # self._metadata[MD_EXP_TIME] = self._exposure_time
@@ -991,13 +999,12 @@ class PvcamSdk(object):
         self._logger.debug("exposure = %f s, readout = %f s", readout_time, self._exposure_time)
         try:
             if tot_time < self._shutter_period:
-                self._logger.info("Disabling shutter because it would go at %g Hz",
-                                  1 / tot_time)
+                self._logger.info("Disabling shutter because it would go at %g Hz", 1 / tot_time)
                 self.set_param(pv.PARAM_SHTR_OPEN_MODE, pv.OPEN_PRE_SEQUENCE)
             elif readout_time < (self._exposure_time / 100):
-                self._logger.info("Disabling shutter because readout is %g times "
-                                  "smaller than exposure",
-                                  self._exposure_time / readout_time)
+                self._logger.info(
+                    "Disabling shutter because readout is %g times "
+                    "smaller than exposure", self._exposure_time / readout_time)
                 self.set_param(pv.PARAM_SHTR_OPEN_MODE, pv.OPEN_PRE_SEQUENCE)
             elif self.get_param(pv.PARAM_SHTR_OPEN_MODE) != 0:
                 self.set_param(pv.PARAM_SHTR_OPEN_MODE, pv.OPEN_PRE_EXPOSURE)
@@ -1007,8 +1014,9 @@ class PvcamSdk(object):
         except PVCamError:
             self._logger.debug("Failed to change shutter mode")
 
-        self._prev_settings = [new_image_settings, self._exposure_time,
-                               self._readout_rate, self._gain, self._shutter_period]
+        self._prev_settings = [
+            new_image_settings, self._exposure_time, self._readout_rate, self._gain,
+            self._shutter_period]
 
         return self._exposure_time, region, size
 
@@ -1019,7 +1027,7 @@ class PvcamSdk(object):
         """
         cbuffer = (ct.c_uint16 * (self._number_frames * length // 2))()  # empty array
         return cbuffer
-    
+
     @staticmethod
     def _buffer_as_array(cbuffer, size):
         """
@@ -1061,13 +1069,15 @@ class PvcamSdk(object):
         self.pvcam.pl_exp_setup_seq(self._handle, self._number_frames, 1, ct.byref(region),
                                     pv.TIMED_MODE, exp_ms, ct.byref(blength))
         self._logger.debug("acquisition setup report buffer size of %d", blength.value)
-        cbuffer = self._allocate_buffer(blength.value)  # TODO shall allocate a new buffer every time?
+        cbuffer = self._allocate_buffer(
+            blength.value)  # TODO shall allocate a new buffer every time?
         assert (blength.value / 2) >= (np.prod(size))
 
         readout_sw = np.prod(size) * 1.0 / self._readout_rate  # s
         # tends to be very slightly bigger:
         readout = self.get_param(pv.PARAM_READOUT_TIME) * 1e-3  # s
-        self._logger.debug("exposure of %g s, readout %g s (expected %g s)", exp_ms * 1e-3, readout, readout_sw)
+        self._logger.debug("exposure of %g s, readout %g s (expected %g s)", exp_ms * 1e-3, readout,
+                           readout_sw)
         duration = exposure + readout  # seems it actually takes +40ms
         return exposure, region, size, duration, cbuffer
 
@@ -1412,8 +1422,8 @@ class Pvcam(CameraRoiScale, PvcamSdk):
         try:
             self.set_param(getattr(pv, parameter_name), getattr(pv, parameter_value))
         except Exception as e:
-            self._logger.warn('paramter ' +parameter_name+' could not be set with the value '+parameter_value+
-                     ' due to error '+str(e))
+            self._logger.warn('paramter ' + parameter_name + ' could not be set with the value ' +
+                              parameter_value + ' due to error ' + str(e))
 
     def get_control_widget(self):
         return pvcamUI(self)
@@ -1578,7 +1588,8 @@ class pvcamUI(QtWidgets.QWidget, UiTools):
             dataset_name = "pvcam%d" % idx
 
         if self.backgrounded:
-            self._logger.info("Saving backgrounded image. Remember to save the background separately")
+            self._logger.info(
+                "Saving backgrounded image. Remember to save the background separately")
             data = np.array(data, np.float)
             data -= self.camera.background
 

@@ -24,11 +24,11 @@ except ImportError:
     configure_path = None
 
 import os
-import tifffile
 
 from thorlabs_tsi_sdk.tl_camera import TLCameraSDK
-from thorlabs_tsi_sdk.tl_mono_to_color_processor import MonoToColorProcessorSDK
 from thorlabs_tsi_sdk.tl_camera_enums import SENSOR_TYPE
+from thorlabs_tsi_sdk.tl_mono_to_color_processor import MonoToColorProcessorSDK
+import tifffile
 
 NUMBER_OF_IMAGES = 10  # Number of TIFF images to be saved
 OUTPUT_DIRECTORY = os.path.abspath(r'.')  # Directory the TIFFs will be saved to
@@ -67,12 +67,9 @@ with TLCameraSDK() as sdk:
         if is_color_camera:
             mono_to_color_sdk = MonoToColorProcessorSDK()
             mono_to_color_processor = mono_to_color_sdk.create_mono_to_color_processor(
-                camera.camera_sensor_type,
-                camera.color_filter_array_phase,
-                camera.get_color_correction_matrix(),
-                camera.get_default_white_balance_matrix(),
-                camera.bit_depth
-            )
+                camera.camera_sensor_type, camera.color_filter_array_phase,
+                camera.get_color_correction_matrix(), camera.get_default_white_balance_matrix(),
+                camera.bit_depth)
 
         # begin acquisition
         camera.issue_software_trigger()
@@ -80,25 +77,29 @@ with TLCameraSDK() as sdk:
         while frames_counted < NUMBER_OF_IMAGES:
             frame = camera.get_pending_frame_or_null()
             if frame is None:
-                raise TimeoutError("Timeout was reached while polling for a frame, program will now exit")
+                raise TimeoutError(
+                    "Timeout was reached while polling for a frame, program will now exit")
 
             frames_counted += 1
 
             image_data = frame.image_buffer
             if is_color_camera:
                 # transform the raw image data into RGB color data
-                image_data = mono_to_color_processor.transform_to_48(image_data, image_width, image_height)
+                image_data = mono_to_color_processor.transform_to_48(image_data, image_width,
+                                                                     image_height)
                 image_data = image_data.reshape(image_height, image_width, 3)
 
             with tifffile.TiffWriter(OUTPUT_DIRECTORY + os.sep + FILENAME, append=True) as tiff:
                 """
                     Setting append=True here means that calling tiff.save will add the image as a page to a multipage TIFF. 
                 """
-                tiff.save(data=image_data,  # np.ushort image data array from the camera
-                          compress=0,   # amount of compression (0-9), by default it is uncompressed (0)
-                          extratags=[(TAG_BITDEPTH, 'I', 1, bit_depth, False),  # custom TIFF tag for bit depth
-                                     (TAG_EXPOSURE, 'I', 1, exposure, False)]  # custom TIFF tag for exposure
-                          )
+                tiff.save(
+                    data=image_data,  # np.ushort image data array from the camera
+                    compress=0,  # amount of compression (0-9), by default it is uncompressed (0)
+                    extratags=[
+                        (TAG_BITDEPTH, 'I', 1, bit_depth, False),  # custom TIFF tag for bit depth
+                        (TAG_EXPOSURE, 'I', 1, exposure, False)]  # custom TIFF tag for exposure
+                )
                 """
                     If compress > 0 tifffile will compress the image using zlib - deflate compression.
                     Instead of an int a str can be supplied to specify a different compression algorithm;
@@ -123,7 +124,6 @@ with TLCameraSDK() as sdk:
                 mono_to_color_sdk.dispose()
             except Exception as exception:
                 print("Unable to dispose mono to color sdk: " + str(exception))
-
 """
 Reading tiffs - to test that the tags from before worked, we're going to read back the tags on the first page. 
 Note that custom TIFF tags are not going to be picked up by normal TIFF viewers, but can be read programmatically 
@@ -135,5 +135,5 @@ with tifffile.TiffFile(OUTPUT_DIRECTORY + os.sep + FILENAME) as tiff_read:
     if len(tiff_read.pages) < 1:
         raise ValueError("No pages were found in multipage TIFF")
     page_one = tiff_read.pages[0]
-    print("First Image: Bit Depth = {} bpp, Exposure Time = {} ms".format(page_one.tags[str(TAG_BITDEPTH)].value,
-                                                                          page_one.tags[str(TAG_EXPOSURE)].value/1000))
+    print("First Image: Bit Depth = {} bpp, Exposure Time = {} ms".format(
+        page_one.tags[str(TAG_BITDEPTH)].value, page_one.tags[str(TAG_EXPOSURE)].value / 1000))

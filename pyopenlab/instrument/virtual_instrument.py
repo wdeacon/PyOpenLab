@@ -1,5 +1,4 @@
 ﻿# -*- coding: utf-8 -*-
-
 """
 Created on Wed May 31 14:20:06 2017
 
@@ -10,11 +9,12 @@ A control mechanism for running a 32-bit instrument from a 64-bit python console
 
 @author: Will
 """
-import numpy as np
-import mmap
-import time
-import re
 import inspect
+import mmap
+import re
+import time
+
+import numpy as np
 
 from pyopenlab.instrument.message_bus_instrument import MessageBusInstrument
 
@@ -38,7 +38,8 @@ class VirtualInstrument_listener(object):
         self.out_size = memory_size * 100
         self.memory_identifier = memory_identifier
         np.set_printoptions(
-            threshold=np.inf)  # Set the prints options so that the arrays are printed as strings with no shortening
+            threshold=np.inf
+        )  # Set the prints options so that the arrays are printed as strings with no shortening
 
     def begin_listening(self):
         """ Start the listening loop, this is a never ending loop which looks for 
@@ -64,7 +65,8 @@ class VirtualInstrument_listener(object):
                         try:
                             data_i_str = np.array_str(data_i)  # attempt to convert array's to a str
                             try:
-                                self.memory_map_out.write('data.append(np.array(' + data_i_str + '));')
+                                self.memory_map_out.write('data.append(np.array(' + data_i_str +
+                                                          '));')
                             except ValueError:
                                 print('Memory map size error, Increase the output map size')
 
@@ -194,6 +196,7 @@ def create_speaker_class(original_class):
     """
 
     class original_class_Stripped(original_class):  # copies the class
+
         def __init__(self):
             original_class.__init__(self)
 
@@ -202,9 +205,13 @@ def create_speaker_class(original_class):
         if inspect.ismethod(command):
             setattr(original_class_Stripped, command_name, function_builder(command_name))
 
-    class virtual_speaker_class(original_class_Stripped,
-                                VirtualInstrument_speaker):  # creates the new class by sublcassing the stripped class and the speaker class
-        def __init__(self, memory_size=65536, memory_identifier='VirtualInstMemory_' + original_class.__name__):
+    class virtual_speaker_class(
+            original_class_Stripped, VirtualInstrument_speaker
+    ):  # creates the new class by sublcassing the stripped class and the speaker class
+
+        def __init__(self,
+                     memory_size=65536,
+                     memory_identifier='VirtualInstMemory_' + original_class.__name__):
             VirtualInstrument_speaker.__init__(self, memory_size, memory_identifier)
 
     return virtual_speaker_class()
@@ -217,7 +224,10 @@ def create_listener_class(original_class):
     """
 
     class virtual_listener(original_class, VirtualInstrument_listener):
-        def __init__(self, memory_size=65536, memory_identifier='VirtualInstMemory_' + original_class.__name__):
+
+        def __init__(self,
+                     memory_size=65536,
+                     memory_identifier='VirtualInstMemory_' + original_class.__name__):
             original_class.__init__(self)
             VirtualInstrument_listener.__init__(self, memory_size, memory_identifier)
 
@@ -227,8 +237,8 @@ def create_listener_class(original_class):
 def create_listener_by_name(module_name, class_name):
     """A convenceince function for creating the listener class via the name of the module and class
     """
-    exec ('from ' + (module_name + " import " + class_name) + ' as ' + class_name)
-    exec ('virtual_listener=create_listener_class(' + class_name + ')')
+    exec('from ' + (module_name + " import " + class_name) + ' as ' + class_name)
+    exec('virtual_listener=create_listener_class(' + class_name + ')')
     return virtual_listener
 
 
@@ -244,9 +254,7 @@ def setup_communication(original_class):
     speaker_class = create_speaker_class(original_class)
     import subprocess
     command_str = "exec(\'import qtpy;from pyopenlab.instrument.virtual_instrument import inialise_listenser;inialise_listenser(" + r"\"" + original_class.__module__ + r"\",\"" + original_class.__name__ + r"\"" + ")')"
-    listner_console = subprocess.Popen(["python32",
-                                        "-c",
-                                        command_str])
+    listner_console = subprocess.Popen(["python32", "-c", command_str])
     return speaker_class, listner_console
 
 

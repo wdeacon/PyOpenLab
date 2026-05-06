@@ -3,14 +3,18 @@
 Subclass of Camera that has units for its axis. The GUI also provides crosshairs for defining ROIs
 """
 
-from pyopenlab.utils.gui import QtCore, QtGui, QtWidgets
-from pyopenlab.ui.widgets.imageview import ExtendedImageView
-from pyopenlab.instrument.camera import Camera
-import pyqtgraph
-import numpy as np
-from pyqtgraph.graphicsItems.GradientEditorItem import Gradients
 from weakref import WeakSet
+
+import numpy as np
+import pyqtgraph
+from pyqtgraph.graphicsItems.GradientEditorItem import Gradients
+
+from pyopenlab.instrument.camera import Camera
+from pyopenlab.ui.widgets.imageview import ExtendedImageView
 from pyopenlab.utils.array_with_attrs import ArrayWithAttrs
+from pyopenlab.utils.gui import QtCore
+from pyopenlab.utils.gui import QtGui
+from pyopenlab.utils.gui import QtWidgets
 
 
 class CameraRoiScale(Camera):
@@ -23,6 +27,7 @@ class CameraRoiScale(Camera):
 
     This class also handles binning, and keeps the scaled axes and ROI selection unaffected by the binning
     """
+
     def __init__(self, crosshair_origin='top_left'):
         super(CameraRoiScale, self).__init__()
         self.axis_values = dict(bottom=None, left=None, top=None, right=None)
@@ -64,8 +69,10 @@ class CameraRoiScale(Camera):
         :return: 4-tuple of integers. Pixel positions xmin, xmax, ymin, ymax
         """
         self._roi = value
+
         def fltr(img):
             return img[self._roi[2]:self._roi[3], self._roi[0]:self._roi[1]]
+
         setattr(self, 'filter_function', fltr)
 
     @property
@@ -77,7 +84,8 @@ class CameraRoiScale(Camera):
         assert len(self._preview_widgets) == 1
         for wdg in self._preview_widgets:
             lims = wdg.get_roi()
-            if lims is None: lims = (0,1,0,1)
+            if lims is None:
+                lims = (0, 1, 0, 1)
         return lims
 
     @property
@@ -116,7 +124,7 @@ class CameraRoiScale(Camera):
 
                     # Resize the crosshairs, so that they are always 1/40th of the total size of the image, but never
                     # less than 5 pixels
-                    size = max(((roi[1] - roi[0])/40., (roi[3]-roi[2])/40., 5))
+                    size = max(((roi[1] - roi[0]) / 40., (roi[3] - roi[2]) / 40., 5))
                     for idx in [1, 2]:
                         xhair = getattr(widgt, 'CrossHair%d' % idx)
                         xhair._size = size
@@ -129,8 +137,9 @@ class CameraRoiScale(Camera):
                         elif self.crosshair_origin == 'top_right':
                             xhair._origin = [self.detector_shape[0], self.detector_shape[1]]
                         else:
-                            self._logger.info('Not recognised: crosshair_origin = %s. Needs to be top_left, top_right, '
-                                              'bottom_left or bottom_right' % self.crosshair_origin)
+                            self._logger.info(
+                                'Not recognised: crosshair_origin = %s. Needs to be top_left, top_right, '
+                                'bottom_left or bottom_right' % self.crosshair_origin)
                         xhair.update()
 
         super(CameraRoiScale, self).update_widgets()
@@ -155,7 +164,7 @@ class DisplayWidgetRoiScale(ExtendedImageView):
         self._pxl_scale = scale
         self._pxl_offset = offset
 
-        self.LineDisplay = self.ui.roiPlot#creates a PlotWidget instance
+        self.LineDisplay = self.ui.roiPlot  #creates a PlotWidget instance
         self.LineDisplay.showGrid(x=True, y=True)
         self.ui.splitter.setHandleWidth(10)
         self.getHistogramWidget().gradient.restoreState(list(Gradients.values())[1])
@@ -164,7 +173,8 @@ class DisplayWidgetRoiScale(ExtendedImageView):
 
         self.plot = ()
         for ii in range(self._max_num_line_plots):
-            self.plot += (self.LineDisplay.plot(pen=pyqtgraph.intColor(ii, self._max_num_line_plots)),)
+            self.plot += (self.LineDisplay.plot(
+                pen=pyqtgraph.intColor(ii, self._max_num_line_plots)),)
 
         self.toggle_displays()
 
@@ -214,9 +224,9 @@ class DisplayWidgetRoiScale(ExtendedImageView):
             self.LineDisplay.show()
             self.LineDisplay.showAxis('left')
             self.LineDisplay.setMouseEnabled(True, True)
-            self.ui.splitter.setSizes([0, self.height()-35, 35])
+            self.ui.splitter.setSizes([0, self.height() - 35, 35])
         else:
-            self.ui.splitter.setSizes([self.height()-35, 0, 35])
+            self.ui.splitter.setSizes([self.height() - 35, 0, 35])
 
     def _update_image(self, newimage):
         scale = self._pxl_scale
@@ -276,6 +286,7 @@ class DummyCameraRoiScale(CameraRoiScale):
 
 if __name__ == '__main__':
     import sys
+
     from pyopenlab.utils.gui import get_qt_app
     app = get_qt_app()
 

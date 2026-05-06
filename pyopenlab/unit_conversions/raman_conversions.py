@@ -5,8 +5,8 @@ Created on Tue Oct 12 14:21:21 2021
 @author: Eoin
 """
 
-import pyopenlab.unit_conversions.spectroscopy_conversions as cnv
 from pyopenlab.unit_conversions.constants import c
+import pyopenlab.unit_conversions.spectroscopy_conversions as cnv
 
 
 def nm_to_hz(nm, laser):
@@ -23,16 +23,13 @@ raman_conversions = {
         'ev': cnv.ev_to_hz,
         'cm': cnv.cm_to_hz,
         'thz': cnv.thz_to_hz,
-        'hz': lambda x: x
-    },
+        'hz': lambda x: x},
     'hz_to': {
         'nm': hz_to_nm,
         'ev': cnv.hz_to_ev,
         'cm': cnv.hz_to_cm,
         'thz': cnv.hz_to_thz,
-        'hz': lambda x: x
-    },
-}
+        'hz': lambda x: x},}
 
 if __name__ == '__main__':
     laser = 633

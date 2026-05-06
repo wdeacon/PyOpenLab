@@ -1,24 +1,28 @@
 ﻿import os
 from threading import Lock
+from typing import Generic, TypeVar
 
+from jisa import Util
+from jisa.devices.camera import Camera
+from jisa.devices.camera.frame import Frame
+from jisa.devices.spectrometer import CameraSpectrometer
+from jisa.devices.spectrometer.spectrum import Spectrum
+from jisa.results import Column
+from jisa.results import ResultList
+from jisa.results import ResultTable
 from numpy import int32
+import numpy as np
 import pyjisa.autoload
 import pyqtgraph as pg
-
-import numpy as np
 from qtpy import uic
-from qtpy.QtCore import QThreadPool, Qt, Signal
-from qtpy.QtGui import QImage, QPainter, QPen, QPixmap
+from qtpy.QtCore import Qt
+from qtpy.QtCore import QThreadPool
+from qtpy.QtCore import Signal
+from qtpy.QtGui import QImage
+from qtpy.QtGui import QPainter
+from qtpy.QtGui import QPen
+from qtpy.QtGui import QPixmap
 from qtpy.QtWidgets import *
-
-from jisa                               import Util
-from jisa.results                       import ResultTable, ResultList, Column
-from jisa.devices.camera                import Camera
-from jisa.devices.camera.frame          import Frame
-from jisa.devices.spectrometer          import CameraSpectrometer
-from jisa.devices.spectrometer.spectrum import Spectrum
-
-from typing import TypeVar, Generic
 
 from pyopenlab.ui.widgets.jisa import JISAConfigPanel
 from pyopenlab.ui.widgets.jisa.widgets import ResultTableWidget
@@ -26,57 +30,58 @@ from pyopenlab.ui.widgets.jisa.widgets import ResultTableWidget
 S = TypeVar("S", bound=CameraSpectrometer)
 C = TypeVar("C", bound=Camera)
 
+
 class CSConfigGUI(QWidget, Generic[S, C]):
 
-    drawFrameSignal    = Signal(np.ndarray)
+    drawFrameSignal = Signal(np.ndarray)
     drawSpectrumSignal = Signal(Spectrum)
 
     def __init__(self, cs: S):
 
         super().__init__()
 
-        self.spectrometer : S        = cs
-        self.camera       : C        = cs.getCamera()
-        self.buffer                  = None
-        self.arr                     = None
-        self.specBuffer   : Spectrum = None
+        self.spectrometer: S = cs
+        self.camera: C = cs.getCamera()
+        self.buffer = None
+        self.arr = None
+        self.specBuffer: Spectrum = None
 
-        self.imageBox        : QGroupBox
-        self.spectrumBox     : QGroupBox
-        self.configBox       : QGroupBox
-        self.startX          : QSpinBox
-        self.startY          : QSpinBox
-        self.endX            : QSpinBox
-        self.endY            : QSpinBox
-        self.binning         : QSpinBox
-        self.wavelengths     : QHBoxLayout
-        self.showWavelengths : QPushButton
-        self.addRow          : QPushButton
-        self.remRow          : QPushButton
-        self.closeButton     : QPushButton
-        self.liveViewButton  : QPushButton
-        self.applyButton     : QPushButton
-        self.typeBox         : QComboBox
-        self.fitOrder        : QSpinBox
-        
+        self.imageBox: QGroupBox
+        self.spectrumBox: QGroupBox
+        self.configBox: QGroupBox
+        self.startX: QSpinBox
+        self.startY: QSpinBox
+        self.endX: QSpinBox
+        self.endY: QSpinBox
+        self.binning: QSpinBox
+        self.wavelengths: QHBoxLayout
+        self.showWavelengths: QPushButton
+        self.addRow: QPushButton
+        self.remRow: QPushButton
+        self.closeButton: QPushButton
+        self.liveViewButton: QPushButton
+        self.applyButton: QPushButton
+        self.typeBox: QComboBox
+        self.fitOrder: QSpinBox
+
         # Load UI from file
         uic.loadUi((os.path.dirname(__file__) + '/resources/csconfig.ui'), self)
 
         # Create other QT elements
-        self.pool           = QThreadPool()
-        self.errorMessage   = QErrorMessage()
-        self.cameraLock     = Lock()
+        self.pool = QThreadPool()
+        self.errorMessage = QErrorMessage()
+        self.cameraLock = Lock()
         self.cameraDrawLock = Lock()
-        self.spectrumLock   = Lock()
-        self.configPanel    = JISAConfigPanel(self.camera)
-        self.plot           = pg.plot(left="Counts")
-        self.plotData       = self.plot.plotItem.plot([], [])
-        self.image          = pg.ImageView(view=pg.PlotItem())
-        self.table          = ResultTableWidget()
+        self.spectrumLock = Lock()
+        self.configPanel = JISAConfigPanel(self.camera)
+        self.plot = pg.plot(left="Counts")
+        self.plotData = self.plot.plotItem.plot([], [])
+        self.image = pg.ImageView(view=pg.PlotItem())
+        self.table = ResultTableWidget()
 
         self.I = Column.ofIntegers("Channel Index")
         self.W = Column.ofDoubles("Wavelength", "m")
-        data   = ResultList(self.I, self.W)
+        data = ResultList(self.I, self.W)
 
         self.table.setResultTable(data)
 
@@ -92,7 +97,6 @@ class CSConfigGUI(QWidget, Generic[S, C]):
         self.setupConnections()
         self.typeChange()
 
-
     def setupConnections(self):
 
         self.liveViewButton.clicked.connect(self.live)
@@ -101,7 +105,6 @@ class CSConfigGUI(QWidget, Generic[S, C]):
         self.closeButton.clicked.connect(self.close)
         self.drawFrameSignal.connect(self.drawFrame)
         self.drawSpectrumSignal.connect(self.drawSpectrum)
-
 
     def typeChange(self):
 
@@ -112,7 +115,6 @@ class CSConfigGUI(QWidget, Generic[S, C]):
         self.endX.setDisabled(disabled)
         self.endY.setDisabled(disabled)
         self.binning.setDisabled(disabled)
-
 
     def updateAcquisition(self, count: int, acquiring: bool):
 
@@ -126,14 +128,12 @@ class CSConfigGUI(QWidget, Generic[S, C]):
             self.liveViewButton.setStyleSheet("")
             self.liveViewButton.setText("Start Continuous Acquisition")
 
-
     def live(self):
 
         if self.spectrometer.isAcquiring():
             self.spectrometer.stopAcquisition()
         else:
             self.spectrometer.startAcquisition()
-
 
     def setConverter(self):
 
@@ -151,11 +151,11 @@ class CSConfigGUI(QWidget, Generic[S, C]):
 
         else:
 
-            startX      = int32(self.startX.value())
-            startY      = int32(self.startY.value())
-            endX        = int32(self.endX.value())
-            endY        = int32(self.endY.value())
-            binning     = int32(self.binning.value())
+            startX = int32(self.startX.value())
+            startY = int32(self.startY.value())
+            endX = int32(self.endX.value())
+            endY = int32(self.endY.value())
+            binning = int32(self.binning.value())
 
             if len(wavelengths) < 2:
                 wavelengths.clear()
@@ -164,14 +164,12 @@ class CSConfigGUI(QWidget, Generic[S, C]):
 
             self.spectrometer.setConverter(startX, startY, endX, endY, binning, wavelengths)
 
-
         if stopped:
             self.spectrometer.startAcquisition()
 
-
     def frameListener(self, frame: Frame):
 
-        width  = frame.getWidth()
+        width = frame.getWidth()
         height = frame.getHeight()
 
         try:
@@ -182,8 +180,8 @@ class CSConfigGUI(QWidget, Generic[S, C]):
                 # If the frame size has changed, then we need to recreate the buffer, otherwise we should reuse it
                 if self.buffer is None or len(self.buffer) != frame.size():
                     self.buffer = frame.getScaledARGBData()
-                    self.arr    = np.array(self.buffer)
-                    self.rgb    = np.empty((width, height, 3), dtype=np.uint8)
+                    self.arr = np.array(self.buffer)
+                    self.rgb = np.empty((width, height, 3), dtype=np.uint8)
                 else:
                     frame.readScaledARGBData(self.buffer)
                     np.copyto(self.arr, self.buffer)
@@ -203,7 +201,6 @@ class CSConfigGUI(QWidget, Generic[S, C]):
             print("Exception when drawing frame")
         finally:
             Util.sleep(100)
-    
 
     def drawFrame(self, pixmap: np.ndarray):
 
@@ -214,8 +211,6 @@ class CSConfigGUI(QWidget, Generic[S, C]):
                 self.image.setImage(pixmap, autoRange=False)
             except Exception as e:
                 print("Exception occurred when drawing frame. " + str(e))
-
-
 
     def spectrumListener(self, spec: Spectrum):
 
@@ -231,9 +226,8 @@ class CSConfigGUI(QWidget, Generic[S, C]):
 
         Util.sleep(100)
 
-
     def drawSpectrum(self, spec: Spectrum):
-            
+
         with self.spectrumLock:
 
             try:

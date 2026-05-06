@@ -1,19 +1,21 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import division
-from builtins import zip
+
 from builtins import range
-from past.utils import old_div
+from builtins import zip
+
+from matplotlib import gridspec
+import matplotlib.pyplot as plt
 import numpy as np
+from past.utils import old_div
 # import pyfftw
 from scipy import misc
-import matplotlib.pyplot as plt
-from matplotlib import gridspec
-
 
 # TODO: performance quantifiers for IFT algorithms (smoothness, efficiency)
 # TODO: compare initial phase methods in IFT algorithms: quadratic phase; starting in the real plane with a flat phase
 # TODO: compare CPU and GPU
+
 
 def _get_coordinate_arrays(image, center=None):
     """Creates coordinate arrays in pixel units
@@ -26,7 +28,7 @@ def _get_coordinate_arrays(image, center=None):
     if center is None:
         center = [int(old_div(s, 2)) for s in shape]
     elif any(np.array(center) < 1):
-        center = [int(old_div(s, 2) + c*s) for s, c in zip(shape, center)]
+        center = [int(old_div(s, 2) + c * s) for s, c in zip(shape, center)]
     yx = [np.arange(shape[idx]) - center[idx] for idx in range(2)[::-1]]
     x, y = np.meshgrid(*yx)
     return x, y
@@ -95,7 +97,7 @@ def multispot_grating(input_phase, grating_const, n_spot, center=None):
             gx = np.pi * grating_const * np.cos((i + 0.5) * 2 * np.pi / n_spot)
             gy = np.pi * grating_const * np.sin((i + 0.5) * 2 * np.pi / n_spot)
             mask = np.zeros(x.shape)
-            mask[theta <= (i+1) * 2 * np.pi / n_spot] = 1
+            mask[theta <= (i + 1) * 2 * np.pi / n_spot] = 1
             mask[theta <= i * 2 * np.pi / n_spot] = 0
             phase += (x * gx + y * gy) * mask
     return input_phase + phase
@@ -110,7 +112,7 @@ def focus(input_phase, curvature=0, center=None):
     :return:
     """
     x, y = _get_coordinate_arrays(input_phase, center)
-    phase = curvature * (x ** 2 + y ** 2)
+    phase = curvature * (x**2 + y**2)
     return input_phase + phase
 
 
@@ -124,13 +126,13 @@ def astigmatism(input_phase, amplitude=0, angle=0, center=None):
     :return:
     """
     x, y = _get_coordinate_arrays(input_phase, center)
-    rho = np.sqrt(x ** 2 + y ** 2)
+    rho = np.sqrt(x**2 + y**2)
     phi = np.arctan2(x, y)
 
     horizontal = amplitude * np.cos(angle * np.pi / 180)
     diagonal = amplitude * np.sin(angle * np.pi / 180)
 
-    phase = (horizontal * np.cos(2 * phi) + diagonal * np.sin(2 * phi)) * rho ** 2
+    phase = (horizontal * np.cos(2 * phi) + diagonal * np.sin(2 * phi)) * rho**2
 
     return input_phase + phase
 
@@ -194,7 +196,12 @@ def direct_superposition(input_phase, k_vectors, phases=None):
     return input_phase + np.angle(np.fft.fftshift(np.fft.fft2(real_plane)))
 
 
-def mraf(original_phase, target_intensity, input_field=None, mixing_ratio=0.4, signal_region_size=0.5, iterations=30):
+def mraf(original_phase,
+         target_intensity,
+         input_field=None,
+         mixing_ratio=0.4,
+         signal_region_size=0.5,
+         iterations=30):
     """Mixed-Region Amplitude Freedom algorithm for continuous patterns https://doi.org/10.1364/OE.16.002176
 
     :param original_phase:
@@ -212,8 +219,8 @@ def mraf(original_phase, target_intensity, input_field=None, mixing_ratio=0.4, s
     target_intensity = np.asarray(target_intensity, np.float)
     if input_field is None:
         # By default, the initial phase focuses a uniform SLM illumination onto the signal region
-        input_phase = ((old_div(x ** 2, (old_div(shp[1], (signal_region_size * 2 * np.sqrt(2)))))) +
-                       (old_div(y ** 2, (old_div(shp[0], (signal_region_size * 2 * np.sqrt(2)))))))
+        input_phase = ((old_div(x**2, (old_div(shp[1], (signal_region_size * 2 * np.sqrt(2)))))) +
+                       (old_div(y**2, (old_div(shp[0], (signal_region_size * 2 * np.sqrt(2)))))))
         input_field = np.exp(1j * input_phase)
     # Normalising the input field and target intensity to 1 (doesn't have to be 1, but they have to be equal)
     input_field /= np.sqrt(np.sum(np.abs(input_field)**2))
@@ -234,12 +241,13 @@ def mraf(original_phase, target_intensity, input_field=None, mixing_ratio=0.4, s
         output_field = np.fft.fftshift(output_field)
         output_phase = np.angle(output_field)
 
-        mixed_field = signal_region * np.sqrt(target_intensity) * np.exp(1j * output_phase) + noise_region * output_field
+        mixed_field = signal_region * np.sqrt(target_intensity) * np.exp(
+            1j * output_phase) + noise_region * output_field
         mixed_field = np.fft.ifftshift(mixed_field)
 
         input_field = np.fft.ifft2(mixed_field)
         input_phase = np.angle(input_field)
-        input_field = np.sqrt(input_intensity) * np.exp(1j*input_phase)
+        input_field = np.sqrt(input_intensity) * np.exp(1j * input_phase)
         # print(np.sum(np.abs(input_field)**2), np.sum(target_intensity), np.sum(np.abs(output_field)**2))
     return original_phase + input_phase
 
@@ -258,12 +266,14 @@ def gerchberg_saxton(original_phase, target_intensity, input_field=None, iterati
     """
     assert iterations > 0
     shp = target_intensity.shape
-    target_intensity = np.fft.fftshift(target_intensity)  # this matrix is only used in the Fourier plane
+    target_intensity = np.fft.fftshift(
+        target_intensity)  # this matrix is only used in the Fourier plane
     if input_field is None:
         input_field = np.ones(shp) * np.exp(1j * np.zeros(shp))
-    input_intensity = np.abs(input_field) ** 2
+    input_intensity = np.abs(input_field)**2
     for _ in range(iterations):
-        output_field = np.fft.fft2(input_field)  # don't have to normalise since the intensities are replaced
+        output_field = np.fft.fft2(
+            input_field)  # don't have to normalise since the intensities are replaced
         output_phase = np.angle(output_field)
         output_field = np.sqrt(target_intensity) * np.exp(1j * output_phase)
 
@@ -305,7 +315,8 @@ def test_ifft_smoothness(alg_func, *args, **kwargs):
         mask = np.ones(shp, dtype=np.bool)
         mixing_ratio = 1
     elif alg_func == mraf:
-        x, y = np.ogrid[old_div(-shp[1], 2):old_div(shp[1], 2), old_div(-shp[0], 2):old_div(shp[0], 2)]
+        x, y = np.ogrid[old_div(-shp[1], 2):old_div(shp[1], 2),
+                        old_div(-shp[0], 2):old_div(shp[0], 2)]
         x, y = np.meshgrid(x, y)
         signal_region_size = 0.5
         if 'signal_region_size' in kwargs:
@@ -324,21 +335,21 @@ def test_ifft_smoothness(alg_func, *args, **kwargs):
         input_field = np.exp(1j * init_phase)
         kwargs['input_field'] = input_field
         output = old_div(np.fft.fftshift(np.fft.fft2(np.exp(1j * init_phase))), (np.prod(shp)))
-        output_int = np.abs(output) ** 2
+        output_int = np.abs(output)**2
         # print(np.sum(np.abs(output_int)), np.sum(np.abs(output_int)[mask]))
-        smth += [old_div(np.sum(np.abs(output_int - mixing_ratio*target)[mask]), np.sum(mask))]
+        smth += [old_div(np.sum(np.abs(output_int - mixing_ratio * target)[mask]), np.sum(mask))]
         outputs += [output]
 
-    fig = plt.figure(figsize=(old_div(8*shp[1],shp[0])*2, 8))
+    fig = plt.figure(figsize=(old_div(8 * shp[1], shp[0]) * 2, 8))
     gs = gridspec.GridSpec(1, 2)
     gs2 = gridspec.GridSpecFromSubplotSpec(5, 6, gs[0], 0.001, 0.001)
-    reindex = np.linspace(0, iterations-1, 30)
+    reindex = np.linspace(0, iterations - 1, 30)
     ax = None
     for indx, _gs in zip(reindex, gs2):
         indx = int(indx)
         ax = plt.subplot(_gs, sharex=ax, sharey=ax)
         ax.imshow(np.abs(outputs[indx]))
-        ax.text(shp[1]/2., 0, '%d=%.3g' % (indx, smth[indx]), ha='center', va='top', color='w')
+        ax.text(shp[1] / 2., 0, '%d=%.3g' % (indx, smth[indx]), ha='center', va='top', color='w')
         ax.set_xticklabels([])
         ax.set_yticklabels([])
     ax2 = plt.subplot(gs[1])
@@ -373,11 +384,13 @@ def test_ifft_basic(alg_func, *args, **kwargs):
 
     init_phase = np.zeros(target.shape)
     # Making an input field that focuses light on the target pattern reduces vortex creation and improves pattern
-    input_field = np.ones(shp) * np.exp(1j * 2*mask_size*np.min(shp) * ((x/np.max(x))**2+(y/np.max(y))**2))
+    input_field = np.ones(shp) * np.exp(1j * 2 * mask_size * np.min(shp) * ((x / np.max(x))**2 +
+                                                                            (y / np.max(y))**2))
     kwargs['input_field'] = input_field
     phase = alg_func(init_phase, target, *args, **kwargs)
     output = old_div(np.fft.fftshift(np.fft.fft2(np.exp(1j * phase))), (np.prod(shp)))
-    print(np.sum(np.abs(output)**2), np.sum(np.abs(output[~mask])**2), np.sum(np.abs(output[mask])**2))
+    print(np.sum(np.abs(output)**2), np.sum(np.abs(output[~mask])**2),
+          np.sum(np.abs(output[mask])**2))
     _errors = (target - np.abs(output)**2) / target
     errors = _errors[np.abs(_errors) != np.inf]
     avg = np.sqrt(np.mean(errors**2))

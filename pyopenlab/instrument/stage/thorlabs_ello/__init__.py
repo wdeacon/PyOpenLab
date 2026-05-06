@@ -4,20 +4,24 @@ Created on Fri Aug  6 16:52:49 2021
 
 @author: Hera
 """
-from pyopenlab.instrument.stage import Stage
-from pyopenlab.instrument.serial_instrument import SerialInstrument
 from functools import wraps
-import numpy as np
 import time
+
+import numpy as np
+
+from pyopenlab.instrument.serial_instrument import SerialInstrument
+from pyopenlab.instrument.stage import Stage
+
 
 def bytes_to_binary(bytearr, debug=0):
     '''
     Helper method for converting a bytearray datatype to a binary representation
     '''
-    if debug > 0: print(bytearr)
-    bytes_as_binary = [format(int(b, base=16), "#06b").replace(
-        "0b", "") for b in bytearr]
-    if debug > 0: print(bytes_as_binary)
+    if debug > 0:
+        print(bytearr)
+    bytes_as_binary = [format(int(b, base=16), "#06b").replace("0b", "") for b in bytearr]
+    if debug > 0:
+        print(bytes_as_binary)
     binary = "".join(bytes_as_binary)
     return binary
 
@@ -26,10 +30,11 @@ def twos_complement_to_int(binary, debug=0):
     '''
     Compute 2s complement of binary number representation
     '''
-    if debug > 0: print(binary)
+    if debug > 0:
+        print(binary)
     N = len(binary)
     a_N = int(binary[0])
-    return float(-a_N*2**(N-1) + int(binary[1:], base=2))
+    return float(-a_N * 2**(N - 1) + int(binary[1:], base=2))
 
 
 def int_to_hex(integer, padded_length=8, debug=0):
@@ -37,8 +42,7 @@ def int_to_hex(integer, padded_length=8, debug=0):
     Convert integer number to hexidecimal. Return value is zero-padded at the beginning
     until its length matches the value passed in "padded_length"
     '''
-    outp = (format(integer, "#0{}x".format(
-        padded_length+2)).replace("0x", "")).upper()
+    outp = (format(integer, "#0{}x".format(padded_length + 2)).replace("0x", "")).upper()
     return outp
 
 
@@ -53,20 +57,20 @@ def int_to_twos_complement(integer, padded_length=16, debug=0):
 
     #number is below zero - return twos complement representation:
     elif integer < 0:
-        if debug > 0: print("Below zero - returning twos complement")
-        integer = -1*integer
-        binary = format(integer, "0{}b".format(
-            padded_length+2)).replace("0b", "")
-        ones_complement = [str(1-int(b)) for b in str(binary)]
+        if debug > 0:
+            print("Below zero - returning twos complement")
+        integer = -1 * integer
+        binary = format(integer, "0{}b".format(padded_length + 2)).replace("0b", "")
+        ones_complement = [str(1 - int(b)) for b in str(binary)]
         ones_complement = int("".join(ones_complement))
-        twos_complement = int("0b"+str(ones_complement), base=2) + 1
+        twos_complement = int("0b" + str(ones_complement), base=2) + 1
         twos_complement = format(twos_complement, "034b").replace("0b", "")
         if debug > 0:
             print("input:", integer)
             print("binary:", binary)
             print("ones comp:", ones_complement)
             print("twos comp (int):", int(twos_complement, base=2))
-        return int("0b"+twos_complement, base=2)
+        return int("0b" + twos_complement, base=2)
 
 
 class BusDistributor(SerialInstrument):
@@ -89,20 +93,21 @@ class BusDistributor(SerialInstrument):
 
 
 def flushed(f):
+
     @wraps(f)
     def inner(self, *args, **kwargs):
         self.serial_device.flush_input_buffer()
         retval = f(self, *args, **kwargs)
         self.serial_device.flush_input_buffer()
         return retval
+
     return inner
 
 
 class ElloDevice(Stage):
 
     # default id is 0, but if multiple devices of same type connected may have others
-    VALID_DEVICE_IDs = [str(v) for v in list(
-        range(0, 11)) + ["A", "B", "C", "D", "E", "F"]]
+    VALID_DEVICE_IDs = [str(v) for v in list(range(0, 11)) + ["A", "B", "C", "D", "E", "F"]]
 
     # How much a stage sleeps (in seconds) between successive calls to .get_position.
     # Used to make blocking calls to move_absolute and move_relative.
@@ -111,7 +116,7 @@ class ElloDevice(Stage):
     # If difference between successive calls to get_position returns value
     # whose difference is less than jitter - consider stage to have stopped
     POSITION_JITTER_THRESHOLD = 0.02
-    BLOCK_TIMEOUT = 4. 
+    BLOCK_TIMEOUT = 4.
     # human readable status codes
     DEVICE_STATUS_CODES = {
         0: "OK, no error",
@@ -129,8 +134,7 @@ class ElloDevice(Stage):
         12: "Out of Range",
         13: "Over current error",
         14: "OK, no error",
-        "OutOfBounds": "Reserved"
-    }
+        "OutOfBounds": "Reserved"}
 
     def __init__(self, serial_device, device_index=0, debug=0):
         '''can be passed either a BusDistributor instance, or  "COM5"  '''
@@ -142,14 +146,12 @@ class ElloDevice(Stage):
             raise TypeError('ello device is wrong type')
         self.debug = debug
         if str(device_index) not in self.VALID_DEVICE_IDs:
-            raise ValueError(
-                "Device ID: {} is not valid!".format(device_index))
+            raise ValueError("Device ID: {} is not valid!".format(device_index))
         self.device_index = device_index
         Stage.__init__(self)
         self.ui = None
         # self.configuration = self.get_device_info()
-        
-    
+
     @flushed
     def query_device(self, query):
         '''
@@ -174,8 +176,8 @@ class ElloDevice(Stage):
 
         Method used when sending instructions to move to stage
         '''
-        pulse_per_deg = self.PULSES_PER_REVOLUTION/float(self.TRAVEL)
-        pulses = int(np.rint(angle*pulse_per_deg))
+        pulse_per_deg = self.PULSES_PER_REVOLUTION / float(self.TRAVEL)
+        pulses = int(np.rint(angle * pulse_per_deg))
         if self.debug > 0:
             print("Input angle:", angle)
             print("Pulses:", pulses)
@@ -190,7 +192,7 @@ class ElloDevice(Stage):
 
         Method used when reading data received from stage
         '''
-        return float(self.TRAVEL)*pulse_count/self.PULSES_PER_REVOLUTION
+        return float(self.TRAVEL) * pulse_count / self.PULSES_PER_REVOLUTION
 
     def _angle_to_hex_pulses(self, angle):
         '''
@@ -252,7 +254,7 @@ class ElloDevice(Stage):
         # current_angle = 1.0
 
         start = time.time()
-        
+
         while time.time() - start < self.BLOCK_TIMEOUT:
             try:
                 current_angle = self.position
@@ -262,7 +264,6 @@ class ElloDevice(Stage):
                 break
             time.sleep(self.BLOCK_SLEEPING_TIME)
             previous_angle = current_angle
-    
 
     def get_position(self, axis=None):
         raise NotImplementedError('must subclass')
@@ -295,7 +296,6 @@ class ElloDevice(Stage):
         else:
             self.move_absolute(pos)
 
-
     def get_device_info(self):
         '''
         Instruct hardware to identify itself. 
@@ -312,7 +312,7 @@ class ElloDevice(Stage):
         '''
 
         response = self.query_device("in")
-    
+
         # decode the response
         header = response[0:3]
         ell = response[3:5]
@@ -338,8 +338,7 @@ class ElloDevice(Stage):
             "firmware_release": firmware_release,
             "hardware_release": hardware_release,
             "travel": travel,
-            "pulses": pulses
-        }
+            "pulses": pulses}
         return outp
 
     def get_device_status(self):
@@ -392,7 +391,7 @@ class ElloDevice(Stage):
             None
 
         """
-        
+
         pulses_hex = self._angle_to_hex_pulses(angle)
         response = self.query_device("ma{0}".format(pulses_hex))
         header = response[0:3]
@@ -440,4 +439,3 @@ class ElloDevice(Stage):
 
     def save_new_parameters(self):
         return self.query_device('us')
-

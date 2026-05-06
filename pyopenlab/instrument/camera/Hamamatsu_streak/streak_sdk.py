@@ -1,15 +1,16 @@
 ﻿# -*- coding: utf-8 -*-
 
-from pyopenlab.instrument.visa_instrument import VisaInstrument
 import os
 import pprint
+import re
 import socket
 import struct
 import time
+
 import numpy as np
-import re
 import pyvisa as visa
 
+from pyopenlab.instrument.visa_instrument import VisaInstrument
 
 PrettyPrinter = pprint.PrettyPrinter(indent=4)
 
@@ -19,6 +20,7 @@ SLEEPING_TIME = 0.1
 
 
 class StreakError(Exception):
+
     def __init__(self, code, msg, reply):
         if isinstance(code, str):
             code = int(code)
@@ -52,7 +54,10 @@ class StreakSdk(VisaInstrument):
             get_all_parameters:  gets the values of all the parameters on startup
         """
         visa_address = 'TCPIP::%s::%d::SOCKET' % address
-        settings = dict(read_termination='\r', write_termination='\r', timeout=TIMEOUT, query_delay=SLEEPING_TIME)
+        settings = dict(read_termination='\r',
+                        write_termination='\r',
+                        timeout=TIMEOUT,
+                        query_delay=SLEEPING_TIME)
         super(StreakSdk, self).__init__(visa_address, settings)
 
         message = self.read()  # reads the default message that gets sent from RemoteEx
@@ -98,7 +103,10 @@ class StreakSdk(VisaInstrument):
             self.data_socket.close()
             del self.data_socket
 
-        settings = dict(read_termination='\r', write_termination='\r', timeout=TIMEOUT, query_delay=SLEEPING_TIME)
+        settings = dict(read_termination='\r',
+                        write_termination='\r',
+                        timeout=TIMEOUT,
+                        query_delay=SLEEPING_TIME)
 
         rm = visa.ResourceManager()
         self.instr = rm.open_resource(self._address, **settings)
@@ -144,7 +152,7 @@ class StreakSdk(VisaInstrument):
 
             # Some commands have a response (len = 3), others simply have a handshake (len = 2)
             if len(split_reply) == 2:
-                split_reply += ('', )
+                split_reply += ('',)
             error_code, command, reply = split_reply
 
             if error_code in ['4', '5']:
@@ -154,7 +162,8 @@ class StreakSdk(VisaInstrument):
                 full_reply = self.read(*args, **kwargs)
                 return self._handshake(message, full_reply, *args, **kwargs)
             elif message.split('(')[0] != command:
-                self._logger.error('Comparing this: %s \t to this: %s' % (message.split('(')[0], command))
+                self._logger.error('Comparing this: %s \t to this: %s' %
+                                   (message.split('(')[0], command))
                 raise RuntimeError('Replied command does not match')
             elif error_code == '0':
                 self._logger.debug('Handshake worked\t%s\t%s' % (command, reply))
@@ -195,124 +204,157 @@ class StreakSdk(VisaInstrument):
 
         # APPLICATION
         app_params = ['Date', 'Version', 'Directory', 'Title', 'Titlelong', 'ProgDataDir', 'type']
-        self.parameters['Application'] = {'get': 'AppInfo',
-                                          'set': None,
-                                          'info': None,
-                                          'value': {key: None for key in app_params}}
+        self.parameters['Application'] = {
+            'get': 'AppInfo',
+            'set': None,
+            'info': None,
+            'value': {
+                key: None for key in app_params}}
 
         # MAIN
-        main_params = ['ImageSize', 'Message', 'Temperature', 'GateMode', 'MCPGain', 'Mode', 'Plugin', 'Shutter',
-                       'StreakCamera', 'TimeRange']
-        self.parameters['Main'] = {'get': 'MainParamGet',
-                                   'set': None,
-                                   'info': 'MainParamInfo',
-                                   'value': {key: None for key in main_params}}
+        main_params = [
+            'ImageSize', 'Message', 'Temperature', 'GateMode', 'MCPGain', 'Mode', 'Plugin',
+            'Shutter', 'StreakCamera', 'TimeRange']
+        self.parameters['Main'] = {
+            'get': 'MainParamGet',
+            'set': None,
+            'info': 'MainParamInfo',
+            'value': {
+                key: None for key in main_params}}
 
         # GENERAL
-        gen_params = ['RestoreWindowPos', 'UserFunctions', 'ShowStreakControl', 'ShowDelay1Control',
-                      'ShowDelay2Control', 'ShowSpectrControl']
-        self.parameters['General'] = {'get': 'GenParamGet',
-                                      'set': 'GenParamSet',
-                                      'info': 'GenParamInfo',
-                                      'value': {key: None for key in gen_params}}
+        gen_params = [
+            'RestoreWindowPos', 'UserFunctions', 'ShowStreakControl', 'ShowDelay1Control',
+            'ShowDelay2Control', 'ShowSpectrControl']
+        self.parameters['General'] = {
+            'get': 'GenParamGet',
+            'set': 'GenParamSet',
+            'info': 'GenParamInfo',
+            'value': {
+                key: None for key in gen_params}}
 
         # ACQUISITION
-        acquisition_params = ['DisplayInterval', '32BitInAI', 'WriteDPCFile', 'AdditionalTimeout',
-                              'DeactivateGrbNotInUse', 'CCDGainForPC', '32BitInPC', 'MoireeReduction']
-        self.parameters['Acquisition'] = {'get': 'AcqParamGet',
-                                          'set': 'AcqParamSet',
-                                          'info': 'AcqParamInfoEx',
-                                          'value': {key: None for key in acquisition_params}}
+        acquisition_params = [
+            'DisplayInterval', '32BitInAI', 'WriteDPCFile', 'AdditionalTimeout',
+            'DeactivateGrbNotInUse', 'CCDGainForPC', '32BitInPC', 'MoireeReduction']
+        self.parameters['Acquisition'] = {
+            'get': 'AcqParamGet',
+            'set': 'AcqParamSet',
+            'info': 'AcqParamInfoEx',
+            'value': {
+                key: None for key in acquisition_params}}
 
         # CAMERA
-        setup_param = ['TimingMode', 'TriggerMode', 'TriggerSource', 'TriggerPolarity', 'ScanMode', 'Binning',
-                       'CCDArea', 'LightMode', 'Hoffs', 'HWidth', 'VOffs', 'VWidth', 'ShowGainOffset', 'NoLines',
-                       'LinesPerImage', 'ScrollingLiveDisplay', 'FrameTrigger', 'VerticalBinning', 'TapNo',
-                       'ShutterAction', 'Cooler', 'TargetTemperature', 'ContrastEnhancement', 'Offset', 'Gain',
-                       'XDirection', 'ScanSpeed', 'MechanicalShutter', 'Subtype', 'AutoDetect', 'Wait2ndFrame', 'DX',
-                       'DY', 'XOffset', 'YOffset', 'BPP', 'CameraName', 'ExposureTime', 'ReadoutTime', 'OnChipAmp',
-                       'CoolingFan', 'Cooler', 'ExtOutputPolarity', 'ExtOutputDelay', 'ExtOutputWidth',
-                       'LowLightSensitivity', 'AutomaticBundleHeight', 'CameraInfo']
+        setup_param = [
+            'TimingMode', 'TriggerMode', 'TriggerSource', 'TriggerPolarity', 'ScanMode', 'Binning',
+            'CCDArea', 'LightMode', 'Hoffs', 'HWidth', 'VOffs', 'VWidth', 'ShowGainOffset',
+            'NoLines', 'LinesPerImage', 'ScrollingLiveDisplay', 'FrameTrigger', 'VerticalBinning',
+            'TapNo', 'ShutterAction', 'Cooler', 'TargetTemperature', 'ContrastEnhancement',
+            'Offset', 'Gain', 'XDirection', 'ScanSpeed', 'MechanicalShutter', 'Subtype',
+            'AutoDetect', 'Wait2ndFrame', 'DX', 'DY', 'XOffset', 'YOffset', 'BPP', 'CameraName',
+            'ExposureTime', 'ReadoutTime', 'OnChipAmp', 'CoolingFan', 'Cooler', 'ExtOutputPolarity',
+            'ExtOutputDelay', 'ExtOutputWidth', 'LowLightSensitivity', 'AutomaticBundleHeight',
+            'CameraInfo']
         # Two parameters called Offset and Width were not included (name shadowing, must be a bug in the program or a
         # typo in the manual). Additionally, all the sensor specific parameters were not included
-        tab_param = ['Exposure', 'Gain', 'Offset', 'NrTrigger', 'Threshold', 'Threshold2', 'DoRTBackSub',
-                     'DoRTShading', 'NrExposures', 'ClearFrameBuffer', 'AmpGain', 'SMD', 'RecurNumber', 'HVoltage',
-                     'AMD', 'ASH', 'ATP', 'SOP', 'SPX', 'MCP', 'TDY', 'IntegrAfterTrig', 'SensitivityValue', 'EMG',
-                     'BGSub', 'RecurFilter', 'HightVoltage', 'StreakTrigger', 'FGTrigger', 'SensitivitySwitch',
-                     'BGOffset', 'ATN', 'SMDExtended', 'LightMode', 'ScanSpeed', 'BGDataMemory', 'SHDataMemory',
-                     'SensitivityMode', 'Sensitivity', 'Sensitivity2Mode', 'Sensitivity2', 'ContrastControl',
-                     'ContrastGain', 'ContrastOffset', 'PhotonImagingMode', 'HighDynamicRangeMode', 'RecurNumber2',
-                     'RecurFilter2', 'FrameAvgNumber', 'FrameAvg']
+        tab_param = [
+            'Exposure', 'Gain', 'Offset', 'NrTrigger', 'Threshold', 'Threshold2', 'DoRTBackSub',
+            'DoRTShading', 'NrExposures', 'ClearFrameBuffer', 'AmpGain', 'SMD', 'RecurNumber',
+            'HVoltage', 'AMD', 'ASH', 'ATP', 'SOP', 'SPX', 'MCP', 'TDY', 'IntegrAfterTrig',
+            'SensitivityValue', 'EMG', 'BGSub', 'RecurFilter', 'HightVoltage', 'StreakTrigger',
+            'FGTrigger', 'SensitivitySwitch', 'BGOffset', 'ATN', 'SMDExtended', 'LightMode',
+            'ScanSpeed', 'BGDataMemory', 'SHDataMemory', 'SensitivityMode', 'Sensitivity',
+            'Sensitivity2Mode', 'Sensitivity2', 'ContrastControl', 'ContrastGain', 'ContrastOffset',
+            'PhotonImagingMode', 'HighDynamicRangeMode', 'RecurNumber2', 'RecurFilter2',
+            'FrameAvgNumber', 'FrameAvg']
         cam_params = dict(Setup={key: None for key in setup_param},
                           Live={key: None for key in tab_param},
                           Acquire={key: None for key in tab_param},
                           AI={key: None for key in tab_param},
                           PC={key: None for key in tab_param})
-        self.parameters['Camera'] = {'get': 'CamParamGet',
-                                     'set': 'CamParamSet',
-                                     'info': 'CamParamInfoEx',
-                                     'value': cam_params}
+        self.parameters['Camera'] = {
+            'get': 'CamParamGet',
+            'set': 'CamParamSet',
+            'info': 'CamParamInfoEx',
+            'value': cam_params}
 
         # CORRECTIONS
-        bkg_param = ['BackgroundSource', 'BackFilesForAcqModes', 'GeneralFile', 'LiveFile', 'AcquireFile', 'AIFile',
-                     'Constant', 'ClipZero', 'AutoBacksub']
+        bkg_param = [
+            'BackgroundSource', 'BackFilesForAcqModes', 'GeneralFile', 'LiveFile', 'AcquireFile',
+            'AIFile', 'Constant', 'ClipZero', 'AutoBacksub']
         curv_param = ['CorrectionFile', 'AutoCurvature']
         defect_pixel_param = ['DefectCorrection', 'DefectPixelFile']
-        shading_param = ['ShadingFile', 'ShadingConstant', 'AutoShading', 'SensitivityCorrection', 'LampFile']
+        shading_param = [
+            'ShadingFile', 'ShadingConstant', 'AutoShading', 'SensitivityCorrection', 'LampFile']
         correction_params = dict(Background={key: None for key in bkg_param},
                                  Shading={key: None for key in curv_param},
                                  Curvature={key: None for key in defect_pixel_param},
                                  DefectPixel={key: None for key in shading_param})
-        self.parameters['Corrections'] = {'get': 'CorParamGet',
-                                          'set': 'CorParamSet',
-                                          'info': 'CorParamInfoEx',
-                                          'value': correction_params}
+        self.parameters['Corrections'] = {
+            'get': 'CorParamGet',
+            'set': 'CorParamSet',
+            'info': 'CorParamInfoEx',
+            'value': correction_params}
 
         # IMAGES
-        img_params = ['AcquireToSameWindow', 'DefaultZoomFactor', 'WarnWhenUnsaved', 'Calibrated', 'LowerLUTIsZero',
-                      'AutoLUT', 'AutoLUTInLive', 'AutoLUTInROI', 'HorizontalRuler', 'VerticalRuler', 'FixedITEXHeader']
-        self.parameters['Images'] = {'get': 'ImgParamGet',
-                                     'set': 'ImgParamSet',
-                                     'info': 'ImgParamGet',
-                                     'value': {key: None for key in img_params}}
+        img_params = [
+            'AcquireToSameWindow', 'DefaultZoomFactor', 'WarnWhenUnsaved', 'Calibrated',
+            'LowerLUTIsZero', 'AutoLUT', 'AutoLUTInLive', 'AutoLUTInROI', 'HorizontalRuler',
+            'VerticalRuler', 'FixedITEXHeader']
+        self.parameters['Images'] = {
+            'get': 'ImgParamGet',
+            'set': 'ImgParamSet',
+            'info': 'ImgParamGet',
+            'value': {
+                key: None for key in img_params}}
 
         # QUICK PROFILE
-        quick_profile_params = ['UseMinAsZero', 'DisplayQPOutOfImage', 'QPRelativeSpace', 'DisplayDirectionForRect',
-                                'AdjustQPHeight', 'DisplayFWHM', 'DoGaussFit', 'FWHMColor', 'FWHMSize', 'FWHMNoOfDigis']
-        self.parameters['QuickProfile'] = {'get': 'QprParamGet',
-                                           'set': 'QprParamSet',
-                                           'info': 'QprParamInfo',
-                                           'value': {key: None for key in quick_profile_params}}
+        quick_profile_params = [
+            'UseMinAsZero', 'DisplayQPOutOfImage', 'QPRelativeSpace', 'DisplayDirectionForRect',
+            'AdjustQPHeight', 'DisplayFWHM', 'DoGaussFit', 'FWHMColor', 'FWHMSize', 'FWHMNoOfDigis']
+        self.parameters['QuickProfile'] = {
+            'get': 'QprParamGet',
+            'set': 'QprParamSet',
+            'info': 'QprParamInfo',
+            'value': {
+                key: None for key in quick_profile_params}}
 
         # LUT
-        LUT_params = ['Limits', 'Cursors', 'Color', 'Inverted', 'Gamma', 'Linearity', 'Overflowcolors']
-        self.parameters['LUT'] = {'get': 'LutParamGet',
-                                  'set': 'LutParamSet',
-                                  'info': 'LutParamInfo',
-                                  'value': {key: None for key in LUT_params}}
+        LUT_params = [
+            'Limits', 'Cursors', 'Color', 'Inverted', 'Gamma', 'Linearity', 'Overflowcolors']
+        self.parameters['LUT'] = {
+            'get': 'LutParamGet',
+            'set': 'LutParamSet',
+            'info': 'LutParamInfo',
+            'value': {
+                key: None for key in LUT_params}}
 
         # SEQUENCE
-        sequence_params = ['AutoCorrectAfterSeq', 'DisplayImgDuringSequence', 'PromptBeforeStart', 'EnableStop',
-                           'Warning', 'EnableAcquireWrap', 'LoadHISSequence', 'PackHisFiles', 'NeverLoadToRam',
-                           'LiveStreamingBuffers', 'WrapPlay', 'PlayInterval', 'ProfileNo', 'CorrectionDirection',
-                           'AcquisitionMode', 'NoOfLoops', 'AcquisitionSpeed', 'AcquireInterval', 'DoAcquireWrap',
-                           'AcquireImages', 'ROIOnly', 'StoreTo', 'FirstImgToStore', 'DisplayDataOnly',
-                           'UsedHDSpaceForCheck', 'AcquireProfiles', 'FirstPrfToStore',
-                           'AutoFixpoint', 'ExcludeSample',
-                           'SampleType', 'CurrentSample', 'NumberOfSamples']
-        self.parameters['Sequence'] = {'get': 'SeqParamGet',
-                                       'set': 'SeqParamSet',
-                                       'info': 'SeqParamInfo',
-                                       'value': {key: None for key in sequence_params}}
+        sequence_params = [
+            'AutoCorrectAfterSeq', 'DisplayImgDuringSequence', 'PromptBeforeStart', 'EnableStop',
+            'Warning', 'EnableAcquireWrap', 'LoadHISSequence', 'PackHisFiles', 'NeverLoadToRam',
+            'LiveStreamingBuffers', 'WrapPlay', 'PlayInterval', 'ProfileNo', 'CorrectionDirection',
+            'AcquisitionMode', 'NoOfLoops', 'AcquisitionSpeed', 'AcquireInterval', 'DoAcquireWrap',
+            'AcquireImages', 'ROIOnly', 'StoreTo', 'FirstImgToStore', 'DisplayDataOnly',
+            'UsedHDSpaceForCheck', 'AcquireProfiles', 'FirstPrfToStore', 'AutoFixpoint',
+            'ExcludeSample', 'SampleType', 'CurrentSample', 'NumberOfSamples']
+        self.parameters['Sequence'] = {
+            'get': 'SeqParamGet',
+            'set': 'SeqParamSet',
+            'info': 'SeqParamInfo',
+            'value': {
+                key: None for key in sequence_params}}
 
         # DEVICES
-        dev_params = ['TD', 'Streak', 'Streakcamera', 'Spec', 'Spectrograph',
-                      'Del', 'Delay', 'Delaybox', 'Del1',
-                      'Del2', 'Delay2', 'DelayBox2']
-        self.parameters['Devices'] = {'get': 'DevParamGet',
-                                      'set': 'DevParamSet',
-                                      'info': 'DevParamInfoEx',
-                                      'value': {key: None for key in dev_params}}
+        dev_params = [
+            'TD', 'Streak', 'Streakcamera', 'Spec', 'Spectrograph', 'Del', 'Delay', 'Delaybox',
+            'Del1', 'Del2', 'Delay2', 'DelayBox2']
+        self.parameters['Devices'] = {
+            'get': 'DevParamGet',
+            'set': 'DevParamSet',
+            'info': 'DevParamInfoEx',
+            'value': {
+                key: None for key in dev_params}}
         self.list_dev_params()
 
     def get_parameter(self, base_name=None, sub_level=None, sub_sub_level=None):
@@ -378,7 +420,8 @@ class StreakSdk(VisaInstrument):
         be the same as those in base_name+sublevel
         :return:
         """
-        self._logger.debug('Setting parameter: %s %s %s %s' % (base_name, sub_level, sub_sub_level, value))
+        self._logger.debug('Setting parameter: %s %s %s %s' %
+                           (base_name, sub_level, sub_sub_level, value))
         assert base_name in self.parameters
         assert value is not None  # always need a value
         command = self.parameters[base_name]['set']
@@ -414,7 +457,8 @@ class StreakSdk(VisaInstrument):
         :param sub_sub_level: str
         :return:
         """
-        self._logger.debug('Getting parameter info: %s %s %s' % (base_name, sub_level, sub_sub_level))
+        self._logger.debug('Getting parameter info: %s %s %s' %
+                           (base_name, sub_level, sub_sub_level))
         assert base_name in self.parameters
         command = self.parameters[base_name]['info']
         if command is None:
@@ -428,7 +472,8 @@ class StreakSdk(VisaInstrument):
             if isinstance(sub_values, dict):
                 return_vals = dict()
                 for sub_sub_level in list(sub_values.keys()):
-                    return_vals[sub_sub_level] = self.get_parameter_info(base_name, sub_level, sub_sub_level)
+                    return_vals[sub_sub_level] = self.get_parameter_info(
+                        base_name, sub_level, sub_sub_level)
                 return return_vals
             else:
                 return self.send_command(command, sub_level, sub_sub_level)
@@ -439,6 +484,7 @@ class StreakSdk(VisaInstrument):
             return return_vals
 
     '''General commands'''
+
     def stop(self):
         """
         Stops the command currently executed. Not currently available due to the VISA communication being locked
@@ -566,7 +612,6 @@ class StreakSdk(VisaInstrument):
                     raise e
 
     '''Auxiliary devices commands'''
-
     '''Correction commands'''
 
     def do_correction(self, destination='Current', type='BacksubShadingCurvature'):
@@ -583,12 +628,14 @@ class StreakSdk(VisaInstrument):
         self.send_command('CorDoCorrection', destination, type)
 
     '''Processing commands'''
-
     '''Defect pixel tool commands'''
-
     '''Image commands'''
 
-    def save_image(self, image_index='Current', image_type='TIF', filename='DefaultImage.tif', overwrite=False,
+    def save_image(self,
+                   image_index='Current',
+                   image_type='TIF',
+                   filename='DefaultImage.tif',
+                   overwrite=False,
                    directory=None):
         """
 
@@ -644,7 +691,8 @@ class StreakSdk(VisaInstrument):
         elif len(identifiers) == 1:
             reply = self.send_command('ImgStatusGet', image_index, 'Section', identifiers[0])
         elif len(identifiers) == 2:
-            reply = self.send_command('ImgStatusGet', image_index, 'Token', identifiers[0], identifiers[1])
+            reply = self.send_command('ImgStatusGet', image_index, 'Token', identifiers[0],
+                                      identifiers[1])
         else:
             raise ValueError('Too many parameters')
 
@@ -732,10 +780,10 @@ class StreakSdk(VisaInstrument):
             iY = profile_params[2]
             iDX = profile_params[3]
             iDY = profile_params[4]
-            self.send_command('ImgDataDump', image_index, type, profile_type, iX, iY, iDX, iDY, path)
+            self.send_command('ImgDataDump', image_index, type, profile_type, iX, iY, iDX, iDY,
+                              path)
 
     '''Quick profile commands'''
-
     '''LUT commands'''
 
     def auto_lut(self):
@@ -837,21 +885,28 @@ class StreakSdk(VisaInstrument):
             raise ValueError('Capture mode not recognised')
 
 
-PARAMETER_TYPES = {0: 'Boolean', 1: 'Numeric', 2: 'List', 3: 'String', 4: 'Exposure Time', 5: 'String'}
+PARAMETER_TYPES = {
+    0: 'Boolean',
+    1: 'Numeric',
+    2: 'List',
+    3: 'String',
+    4: 'Exposure Time',
+    5: 'String'}
 
-ERROR_CODES = {0: 'Success',
-               1: 'Invalid syntax (command must be followed by parentheses and must have the correct number and type '
-                  'of parameters separated by comma)',
-               2: 'Command or Parameters are unknown.',
-               3: 'Command currently not possible',
-               4: 'A message during runtime (example: a string indicating the frame rate during live mode)',
-               5: 'Reply value of a message box. The structure of RemoteEx does not allow sending inquiry commands '
-                  'from the RemoteEx to the client. In cases where the standalone program needs to popup a message box '
-                  'to get some information from the user the RemoteEx just continues execution with the default value '
-                  'of this message box. When such case happens a string is sent to the RemoteEx Client informing it '
-                  'about this default value. ',
-               6: 'Parameter is missing',
-               7: 'Command cannot be executed',
-               8: 'An error has occurred during execution',
-               9: 'Data cannot be sent by TCP-IP',
-               10: 'Value of a parameter is out of range'}
+ERROR_CODES = {
+    0: 'Success',
+    1: 'Invalid syntax (command must be followed by parentheses and must have the correct number and type '
+       'of parameters separated by comma)',
+    2: 'Command or Parameters are unknown.',
+    3: 'Command currently not possible',
+    4: 'A message during runtime (example: a string indicating the frame rate during live mode)',
+    5: 'Reply value of a message box. The structure of RemoteEx does not allow sending inquiry commands '
+       'from the RemoteEx to the client. In cases where the standalone program needs to popup a message box '
+       'to get some information from the user the RemoteEx just continues execution with the default value '
+       'of this message box. When such case happens a string is sent to the RemoteEx Client informing it '
+       'about this default value. ',
+    6: 'Parameter is missing',
+    7: 'Command cannot be executed',
+    8: 'An error has occurred during execution',
+    9: 'Data cannot be sent by TCP-IP',
+    10: 'Value of a parameter is out of range'}

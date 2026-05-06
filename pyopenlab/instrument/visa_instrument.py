@@ -2,9 +2,13 @@
 
 __author__ = 'alansanders'
 
-from pyopenlab.instrument.message_bus_instrument import MessageBusInstrument, queried_property, queried_channel_property
-import pyvisa as visa
 from functools import partial
+
+import pyvisa as visa
+
+from pyopenlab.instrument.message_bus_instrument import MessageBusInstrument
+from pyopenlab.instrument.message_bus_instrument import queried_channel_property
+from pyopenlab.instrument.message_bus_instrument import queried_property
 
 
 class VisaInstrument(MessageBusInstrument):
@@ -59,7 +63,7 @@ class VisaInstrument(MessageBusInstrument):
             except Exception:
                 print("Buffer emptied")
                 empty_buffer = True
-                
+
     idn = queried_property('*idn?', dtype='str')
 
 

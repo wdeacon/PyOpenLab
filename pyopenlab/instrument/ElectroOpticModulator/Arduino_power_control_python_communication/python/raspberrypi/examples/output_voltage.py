@@ -9,11 +9,14 @@
 	@url https://github.com/DFRobot/DFRobot_MCP4725
 '''
 import sys
+
 sys.path.append('../')
 import time
+
 MCP4725A0_IIC_Address0				= 0x60
 MCP4725A0_IIC_Address1				= 0x61
 from DFRobot_MCP4725 import MCP4725
+
 mcp4725 = MCP4725()
 REF_VOLTAGE   = 5000
 OUTPUT_VOLTAGE = 4000

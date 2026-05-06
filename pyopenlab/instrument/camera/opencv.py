@@ -5,10 +5,11 @@ Created on Wed Jun 11 12:28:18 2014
 @author: Richard
 """
 import sys
+
 try:
     import cv2
 except ImportError:
-    explanation="""
+    explanation = """
 WARNING: could not import the Open CV library.
     
 Make sure you have installed OpenCV, and that its version matches your Python 
@@ -19,29 +20,31 @@ We are using Python %d.%d, so get the corresponding package.
     try:
         import traitsui
         import traitsui.message
-        traitsui.message.error(explanation,"OpenCV Missing", buttons=["OK"])
+        traitsui.message.error(explanation, "OpenCV Missing", buttons=["OK"])
     except Exception as e:
         print("uh oh, problem with the message...")
         print(e)
         pass
     finally:
-        raise ImportError(explanation) 
-    
-from pyopenlab.instrument.camera import Camera, CameraParameter
-    
+        raise ImportError(explanation)
+
+from pyopenlab.instrument.camera import Camera
+from pyopenlab.instrument.camera import CameraParameter
+
+
 class OpenCVCamera(Camera):
-    def __init__(self,capturedevice=0):
-        self.cap=cv2.VideoCapture(capturedevice)
-        
-        super(OpenCVCamera,self).__init__() #NB this comes after setting up the hardware
-     
-        
+
+    def __init__(self, capturedevice=0):
+        self.cap = cv2.VideoCapture(capturedevice)
+
+        super(OpenCVCamera, self).__init__()  #NB this comes after setting up the hardware
+
     def close(self):
         """Stop communication with the camera and allow it to be re-used."""
         super(OpenCVCamera, self).close()
         self.cap.release()
-        
-    def raw_snapshot(self, suppress_errors = False):
+
+    def raw_snapshot(self, suppress_errors=False):
         """Take a snapshot and return it.  Bypass filters etc."""
         with self.acquisition_lock:
             for i in range(10):
@@ -59,22 +62,22 @@ class OpenCVCamera(Camera):
             raise IOError("Dropped too many frames from camera :(")
         else:
             return False, None
-        
+
     def get_camera_parameter(self, parameter_name):
         """Get the value of a camera parameter (though you should really use the property)"""
-        return self.cap.get(getattr(cv2,parameter_name))
+        return self.cap.get(getattr(cv2, parameter_name))
+
     def set_camera_parameter(self, parameter_name, value):
         """Set the value of a camera parameter (though you should really use the property)"""
-        return self.cap.set(getattr(cv2,parameter_name), value)
+        return self.cap.set(getattr(cv2, parameter_name), value)
+
 
 # Add properties to change the camera parameters, based on OpenCV's parameters.
 # It may be wise not to do this, and to filter them instead...
 for cvname in dir(cv2):
     if cvname.startswith("CAP_PROP_"):
-        name = cvname.replace("CAP_PROP_","").lower()
-        setattr(OpenCVCamera, 
-                name, 
-                CameraParameter(cvname, doc="the camera property %s" % name))
+        name = cvname.replace("CAP_PROP_", "").lower()
+        setattr(OpenCVCamera, name, CameraParameter(cvname, doc="the camera property %s" % name))
 
 if __name__ == '__main__':
     cam = OpenCVCamera()

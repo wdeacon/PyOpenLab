@@ -1,12 +1,18 @@
 ﻿from abc import abstractmethod
 from threading import Lock
 from typing import Callable, Dict, Generic, List, TypeVar
+
 from h5py import Group
 
-from pyopenlab.measurement.action import Action, InterruptedException, MessageType, Result, Status
+from pyopenlab.measurement.action import Action
+from pyopenlab.measurement.action import InterruptedException
+from pyopenlab.measurement.action import MessageType
+from pyopenlab.measurement.action import Result
+from pyopenlab.measurement.action import Status
 
 R = TypeVar("R")
 D = TypeVar("D")
+
 
 class Sweep(Action[R], Generic[R, D]):
 
@@ -14,22 +20,21 @@ class Sweep(Action[R], Generic[R, D]):
 
         super().__init__(name, tag)
 
-        self._tag     = tag
+        self._tag = tag
         self._actions = actions
         self._current = None
-        self._lLock   = Lock()
+        self._lLock = Lock()
 
         self._listeners: List[Callable[[List[Action]], None]] = []
 
-
-    def addActionListener(self, listener: Callable[[List[Action]], None]) -> Callable[[List[Action]], None]:
+    def addActionListener(
+            self, listener: Callable[[List[Action]], None]) -> Callable[[List[Action]], None]:
         with self._lLock:
             self._listeners.append(listener)
             return listener
 
-
     def removeActionListener(self, listener: Callable[[List[Action]], None]):
-        
+
         with self._lLock:
 
             try:
@@ -37,59 +42,49 @@ class Sweep(Action[R], Generic[R, D]):
             except:
                 pass
 
-
-
     def addAction(self, action: Action[R]):
         self._actions.append(action)
         self.notifyActionListeners()
 
-
     def addActions(self, *actions: Action[R]):
         self._actions += actions
-
 
     def removeAction(self, action: Action[R]):
         self._actions.remove(action)
         self.notifyActionListeners()
 
-
     def clearActions(self):
         self._actions.clear()
         self.notifyActionListeners()
-
 
     def setActions(self, *actions: Action[R]):
         self._actions.clear()
         self._actions += actions
         self.notifyActionListeners()
 
-
     def notifyActionListeners(self):
 
-        values  = self.getValues()
+        values = self.getValues()
         actions = self.generate(values[0] if len(values) > 0 else None, self._actions)
 
         with self._lLock:
-            
+
             for listener in self._listeners:
-                
+
                 try:
                     listener(actions)
                 except:
                     pass
 
-
     def getActions(self) -> List[Action]:
         return self._actions.copy()
-    
 
     def encodeAction(self):
 
-        object            = super().encodeAction()
+        object = super().encodeAction()
         object["actions"] = [a.encodeAction() for a in self._actions]
 
         return object
-    
 
     def loadFromMap(self, map, equipment):
 
@@ -99,8 +94,6 @@ class Sweep(Action[R], Generic[R, D]):
             action = Action.loadAction(aMap, equipment)
             self.addAction(action)
 
-
-    
     @abstractmethod
     def generate(self, value: D, actions: list) -> list:
         '''This method should take a sweep value and the list of actions to perform on each sweep iteration
@@ -110,12 +103,10 @@ class Sweep(Action[R], Generic[R, D]):
            of the list for each iteration.'''
         pass
 
-    
     @abstractmethod
     def valueToString(self, value: D) -> str:
         '''This method should take a sweep value and return a string representation of it.'''
         pass
-
 
     @abstractmethod
     def prepareDataForIteration(self, tag: str, value: D, data: R) -> R:
@@ -128,7 +119,6 @@ class Sweep(Action[R], Generic[R, D]):
         '''This method should return a list of all values to be swept over.'''
         pass
 
-
     def main(self, data: R = None):
         '''Sweep actions provide their own implementation of the main method, and thus this does not require
            overriding in extending classes.'''
@@ -137,7 +127,7 @@ class Sweep(Action[R], Generic[R, D]):
 
         for value in values:
 
-            actions     = self.generate(value, self._actions)
+            actions = self.generate(value, self._actions)
             preppedData = self.prepareDataForIteration(self._tag, value, data)
 
             with self._lLock:
@@ -159,8 +149,9 @@ class Sweep(Action[R], Generic[R, D]):
 
                 self._current = action
 
-                listener = action.addMessageListener(lambda msg: self.passMessage(msg.propagate(self, value, "%s = %s" % (self._tag, self.valueToString(value)))))
-                result   = action.run(preppedData)
+                listener = action.addMessageListener(lambda msg: self.passMessage(
+                    msg.propagate(self, value, "%s = %s" % (self._tag, self.valueToString(value)))))
+                result = action.run(preppedData)
 
                 action.removeMessageListener(listener)
 
@@ -170,18 +161,15 @@ class Sweep(Action[R], Generic[R, D]):
                 if result.type == Status.INTERRUPTED:
                     raise InterruptedException()
 
-
         if len(self._errors) > 0:
             raise Exception("Errors were encountered during the sweep.")
 
-
     def interrupt(self):
-        
+
         super().interrupt()
 
         if self._current is not None:
             self._current.interrupt()
-
 
     def reset(self):
 
@@ -189,7 +177,6 @@ class Sweep(Action[R], Generic[R, D]):
 
         for action in self._actions:
             action.reset()
-
 
     def finish(self, data: R = None):
         '''It is less likely that a sweep would require a finish method, thus it is no-longer considered abstract for a sweep.
@@ -202,9 +189,8 @@ class H5Sweep(Sweep[Group, D], Generic[D]):
     def __init__(self, name: str, tag: str, actions: List[Action] = []):
         super().__init__(name, tag, actions)
 
-
     def prepareData(self, name: str, description: str, data: Group):
-        
+
         nm = "%s (%s)" % (name, self._tag)
 
         i = 1
@@ -214,7 +200,6 @@ class H5Sweep(Sweep[Group, D], Generic[D]):
 
         return data.create_group(nm)
 
-
     def prepareDataForIteration(self, tag: str, value: D, data: Group):
 
         nm = "%s = %s" % (tag, self.valueToString(value))
@@ -223,7 +208,5 @@ class H5Sweep(Sweep[Group, D], Generic[D]):
         while nm in data:
             nm = "%s = %s [%d]" % (tag, self.valueToString(value), i)
             i += 1
-        
+
         return data.create_group(nm)
-    
-    

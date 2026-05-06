@@ -17,10 +17,12 @@ Decorating a function with @background_action means that it will happen in a thr
 
 A function running in the background returns a thread object; to find the return value, you can call t.join_and_return_result() (you may want to check if the thread has finished first with t.is_alive()).
 """
-import time
-import threading
 import functools
+import threading
+import time
+
 import numpy as np
+
 
 def locked_action_decorator(wait_for_lock=True):
     """This decorates a function, to prevent it being called simultaneously from
@@ -35,6 +37,7 @@ def locked_action_decorator(wait_for_lock=True):
     This can be given as an argument to locked_action_decorator (which sets the
     default) or to the function when called (which overrides it).
     """
+
     def decorator(function):
         #the decorator is meant to be called as @locked_action_decorator()
         #so we need to return a function, which is what actually gets used
@@ -48,22 +51,28 @@ def locked_action_decorator(wait_for_lock=True):
                 self._pyopenlab_action_lock = threading.RLock()
             try:
                 if wait_for_lock:
-                    self._pyopenlab_action_lock.acquire() #this will wait until we can lock the device
-                else:    #if "wait for lock" is false, just return false if it's busy
+                    self._pyopenlab_action_lock.acquire(
+                    )  #this will wait until we can lock the device
+                else:  #if "wait for lock" is false, just return false if it's busy
                     if not self._pyopenlab_action_lock.acquire(block=False):
                         print("Could not acquire action lock, giving up.")
                         return False
                 return function(self, *args, **kwargs)
             except Exception as e:
-                raise e #don't attempt to handle errors, just pass them on
+                raise e  #don't attempt to handle errors, just pass them on
             finally:
-                self._pyopenlab_action_lock.release() #don't leave the thing locked
+                self._pyopenlab_action_lock.release()  #don't leave the thing locked
+
         return locked_action
+
     return decorator
+
+
 #you can also use @locked_action as a decorator, which uses default args.
 locked_action = locked_action_decorator()
 
-def background_action_decorator(background_by_default=True, ):
+
+def background_action_decorator(background_by_default=True,):
     """This decorates a function to run it in a background thread.  NB it does
     not lock the function: use @locked_action to do this (the two are compatible
     but you must place background_action *before* locked function, so that the
@@ -76,32 +85,45 @@ def background_action_decorator(background_by_default=True, ):
     run_in_background_thread.
     * 
     """
+
     def decorator(function):
+
         @functools.wraps(function)
         def background_action(self, *args, **kwargs):
             if background_by_default:
                 if not hasattr(self, "_pyopenlab_background_action_threads"):
                     self._pyopenlab_background_action_threads = set([])
                 t = threading.Thread()
+
                 def worker_function():
                     t.returned_value = function(self, *args, **kwargs)
                     self._pyopenlab_background_action_threads.remove(t)
-                t.run=worker_function
+
+                t.run = worker_function
                 t.host_object = self
                 self._pyopenlab_background_action_threads.add(t)
                 t.start()
-                def join_and_return_result(self): #this gets added to a thread so we can extract the return value
+
+                def join_and_return_result(
+                        self):  #this gets added to a thread so we can extract the return value
                     self.join()
                     return self.returned_value
-                t.join_and_return_result = functools.partial(join_and_return_result, t) #add method to the thread
+
+                t.join_and_return_result = functools.partial(join_and_return_result,
+                                                             t)  #add method to the thread
                 return t
             else:
                 return function(self, *args, **kwargs)
-        return background_action #this is the one that replaces the function: same signature but with added kwarg run_in_background_thread
-    return decorator #this function *returns* a decorator, i.e. syntax is @background_action()
+
+        return background_action  #this is the one that replaces the function: same signature but with added kwarg run_in_background_thread
+
+    return decorator  #this function *returns* a decorator, i.e. syntax is @background_action()
+
+
 background_action = background_action_decorator(background_by_default=True)
-backgroundable_action = background_action_decorator(background_by_default=False)  
-      
+backgroundable_action = background_action_decorator(background_by_default=False)
+
+
 def background_actions_running(obj):
     """Determine whether an object has any currently-active background actions."""
     if not hasattr(obj, "_pyopenlab_background_action_threads"):
@@ -111,10 +133,12 @@ def background_actions_running(obj):
             return True
     return False
 
+
 if __name__ == "__main__":
     import time
-    
+
     class Foo(object):
+
         @background_action
         @locked_action
         def sayhello(self):
@@ -123,25 +147,25 @@ if __name__ == "__main__":
                 time.sleep(0.1)
                 print((c), end=' ')
             return "Return Value"
+
         @background_action
         def say(self, message):
             time.sleep(1)
-            for c in message+"\n":
+            for c in message + "\n":
                 time.sleep(0.1)
                 print((c), end=' ')
             return len(message)
-        
 
     class Bar(object):
+
         def sayhello(self):
             time.sleep(1)
             for c in "Hello World!\n":
                 time.sleep(0.1)
                 print((c), end=' ')
+
         def say(self, message):
             time.sleep(1)
-            for c in message+"\n":
+            for c in message + "\n":
                 time.sleep(0.1)
                 print((c), end=' ')
-
-

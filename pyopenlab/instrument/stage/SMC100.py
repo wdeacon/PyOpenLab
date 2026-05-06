@@ -31,26 +31,32 @@ STATE_DISABLE_FROM_JOGGING = '3E'
 
 
 class SMC100ReadTimeOutException(Exception):
+
     def __init__(self):
         super(SMC100ReadTimeOutException, self).__init__('Read timed out')
 
 
 class SMC100WaitTimedOutException(Exception):
+
     def __init__(self):
         super(SMC100WaitTimedOutException, self).__init__('Wait timed out')
 
 
 class SMC100DisabledStateException(Exception):
+
     def __init__(self, state):
         super(SMC100DisabledStateException, self).__init__('Disabled state encountered: ' + state)
 
 
 class SMC100RS232CorruptionException(Exception):
+
     def __init__(self, c):
-        super(SMC100RS232CorruptionException, self).__init__('RS232 corruption detected: %s' % (hex(ord(c))))
+        super(SMC100RS232CorruptionException,
+              self).__init__('RS232 corruption detected: %s' % (hex(ord(c))))
 
 
 class SMC100InvalidResponseException(Exception):
+
     def __init__(self, cmd, resp):
         s = 'Invalid response to %s: %s' % (cmd, resp)
         super(SMC100InvalidResponseException, self).__init__(s)
@@ -73,7 +79,7 @@ class SMC100(SerialInstrument, Stage):
     methods into a stage class.
     """
 
-    def __init__(self, port, smcID=(1, ), **kwargs):
+    def __init__(self, port, smcID=(1,), **kwargs):
         """
         If backlash_compensation is False, no backlash compensation will be done.
         If silent is False, then additional output will be emitted to aid in
@@ -89,11 +95,11 @@ class SMC100(SerialInstrument, Stage):
         new controller, call reset_and_configure().
         """
         self.port_settings = dict(baudrate=57600,
-                    bytesize=8,
-                    stopbits=1,
-                    parity='N',
-                    xonxoff=True,
-                    timeout=0.050)
+                                  bytesize=8,
+                                  stopbits=1,
+                                  parity='N',
+                                  xonxoff=True,
+                                  timeout=0.050)
 
         SerialInstrument.__init__(self, port)
         Stage.__init__(self)
@@ -102,11 +108,11 @@ class SMC100(SerialInstrument, Stage):
         self.software_home = None
         self._last_sendcmd_time = 0
         if not hasattr(smcID, '__iter__'):
-            smcID = (smcID, )
+            smcID = (smcID,)
         self._smcID = list(smcID)
         self.axis_names = ()
         for id in self._smcID:
-            self.axis_names += (str(id), )
+            self.axis_names += (str(id),)
             self._send_cmd('ID', id, '?', True)  # Just testing the connection
 
     def __del__(self):
@@ -130,9 +136,9 @@ class SMC100(SerialInstrument, Stage):
         commands are EXPLICITLY REJECTED to prevent this, such as relative move.
         """
         if axes is None:
-            axes = self.axis_names #self._smcID[0]
+            axes = self.axis_names  #self._smcID[0]
         elif not hasattr(axes, '__iter__'):
-            axes = (axes, )
+            axes = (axes,)
 
         reply = ()
         for axis in axes:
@@ -167,7 +173,7 @@ class SMC100(SerialInstrument, Stage):
                     try:
                         response = self._readline()
                         if response.startswith(prefix):
-                            reply += (response[len(prefix):], )
+                            reply += (response[len(prefix):],)
                             done = True
                         else:
                             raise SMC100InvalidResponseException(command, response)
@@ -244,7 +250,7 @@ class SMC100(SerialInstrument, Stage):
         The state encountered is returned.
         """
         starttime = time.time()
-        done = [False]*len(self.axis_names)
+        done = [False] * len(self.axis_names)
         self._logger.debug('waiting for states %s' % (str(targetstates)))
         while not all(done):
             for axes in range(len(self.axis_names)):
@@ -260,8 +266,7 @@ class SMC100(SerialInstrument, Stage):
                         # return state
                     elif not ignore_disabled_states:
                         disabledstates = [
-                            STATE_DISABLE_FROM_READY,
-                            STATE_DISABLE_FROM_JOGGING,
+                            STATE_DISABLE_FROM_READY, STATE_DISABLE_FROM_JOGGING,
                             STATE_DISABLE_FROM_MOVING]
                         if state in disabledstates:
                             raise SMC100DisabledStateException(state)
@@ -283,7 +288,7 @@ class SMC100(SerialInstrument, Stage):
         self._wait_states(STATE_NOT_REFERENCED_FROM_RESET, ignore_disabled_states=True)
 
         stage = self._send_cmd('ID', '?', True)
-        self._logger.info('Found stage %s' %stage)
+        self._logger.info('Found stage %s' % stage)
 
         # enter config mode
         self._send_cmd('PW', 1)
@@ -322,9 +327,9 @@ class SMC100(SerialInstrument, Stage):
             # wait for the controller to be ready
             st = self._wait_states((STATE_READY_FROM_HOMING, STATE_READY_FROM_MOVING))
             if st == STATE_READY_FROM_MOVING:
-                self.move([0]*len(self.axis_names), **kwargs)
+                self.move([0] * len(self.axis_names), **kwargs)
         else:
-            self.move([0]*len(self.axis_names), **kwargs)
+            self.move([0] * len(self.axis_names), **kwargs)
 
     def stop(self):
         self._send_cmd('ST')
@@ -341,7 +346,7 @@ class SMC100(SerialInstrument, Stage):
             errors = int(resp[0:4], 16)
             state = resp[4:]
             assert len(state) == 2
-            reply += ([errors, state], )
+            reply += ([errors, state],)
 
         return reply
 
@@ -381,9 +386,9 @@ class SMC100(SerialInstrument, Stage):
         """
 
         if not hasattr(position_mm, '__iter__'):
-            position_mm = (position_mm, )
+            position_mm = (position_mm,)
 
-        final_pos = list(map(lambda x, y: x+y, self.software_home, position_mm))
+        final_pos = list(map(lambda x, y: x + y, self.software_home, position_mm))
 
         self.move(final_pos, **kwargs)
 
@@ -397,7 +402,7 @@ class SMC100(SerialInstrument, Stage):
         self.software_home = self.get_position()
 
     def go_software_home(self):
-        self.move_referenced([0]*len(self.axis_names))
+        self.move_referenced([0] * len(self.axis_names))
 
     def set_velocity(self, velocity):
         self._send_cmd('VA_Set', velocity)
@@ -525,7 +530,6 @@ class SMC100(SerialInstrument, Stage):
 #     def get_qt_ui(self):
 #         return SMC100UI(self)
 
-
 # class SMC100UI(QtWidgets.QWidget):
 #     def __init__(self, smc100):
 #         if isinstance(smc100, SMC100):
@@ -604,16 +608,13 @@ class SMC100(SerialInstrument, Stage):
 #     def GoSoftwareHome(self):
 #         self.SMC100.go_software_home()
 
-
 # Tests #####################################################################
 
-
-
 if __name__ == '__main__':
-    smc100 = SMC100('COM13', (1,2))
+    smc100 = SMC100('COM13', (1, 2))
     print('Axes: ', smc100.axis_names)
 
-    print(smc100.get_position()) #_mm() #get_position()
+    print(smc100.get_position())  #_mm() #get_position()
     print(smc100.get_status())
 
     smc100.show_gui()

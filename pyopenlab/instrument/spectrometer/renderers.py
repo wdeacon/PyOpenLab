@@ -4,6 +4,7 @@ from pyopenlab.ui.data_renderers import FigureRenderer
 
 
 class SpectrumRenderer(FigureRenderer):
+
     def __init__(self, h5group, parent=None):
         super(SpectrumRenderer, self).__init__(h5group, parent)
         self.wavelength = h5group['wavelength']
@@ -27,6 +28,7 @@ class SpectrumRenderer(FigureRenderer):
 
 
 class MultiSpectrumRenderer(FigureRenderer):
+
     def __init__(self, h5group, parent=None):
         super(MultiSpectrumRenderer, self).__init__(h5group, parent)
         self.wavelength = h5group['wavelength']

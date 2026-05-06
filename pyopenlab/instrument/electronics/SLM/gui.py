@@ -6,15 +6,20 @@ When a new SLM class is called, the GUI created adds any of the following to a p
 name (so the naming of these classes is not arbitrary).
 """
 from __future__ import division
+
 from builtins import str
-from past.utils import old_div
-from pyopenlab.utils.gui import QtWidgets, uic
-from pyopenlab.ui.ui_tools import UiTools
 import os
+
 import numpy as np
+from past.utils import old_div
+
+from pyopenlab.ui.ui_tools import UiTools
+from pyopenlab.utils.gui import QtWidgets
+from pyopenlab.utils.gui import uic
 
 
 class BaseUi(QtWidgets.QWidget, UiTools):
+
     def __init__(self, slm_gui, name):
         super(BaseUi, self).__init__()
         uic.loadUi(os.path.join(os.path.dirname(__file__), 'ui_%s.ui' % name), self)
@@ -32,6 +37,7 @@ class BaseUi(QtWidgets.QWidget, UiTools):
 
 
 class constantUi(BaseUi):
+
     def __init__(self, slm_gui):
         super(constantUi, self).__init__(slm_gui, 'constant')
 
@@ -55,6 +61,7 @@ class constantUi(BaseUi):
 
 
 class calibration_responsivenessUi(BaseUi):
+
     def __init__(self, slm_gui):
         super(calibration_responsivenessUi, self).__init__(slm_gui, 'calibration_responsiveness')
 
@@ -77,6 +84,7 @@ class calibration_responsivenessUi(BaseUi):
 
 
 class gratingsUi(BaseUi):
+
     def __init__(self, slm_gui):
         super(gratingsUi, self).__init__(slm_gui, 'gratings')
 
@@ -116,6 +124,7 @@ class gratingsUi(BaseUi):
 
 
 class astigmatismUi(BaseUi):
+
     def __init__(self, slm_gui):
         super(astigmatismUi, self).__init__(slm_gui, 'astigmatism')
 
@@ -191,6 +200,7 @@ class astigmatismUi(BaseUi):
 
 
 class focusUi(BaseUi):
+
     def __init__(self, slm_gui):
         super(focusUi, self).__init__(slm_gui, 'focus')
 
@@ -224,19 +234,26 @@ class focusUi(BaseUi):
 
 
 class vortexbeamUi(BaseUi):
+
     def __init__(self, slm_gui):
         super(vortexbeamUi, self).__init__(slm_gui, 'vortexbeam')
 
     def _connect(self):
         self.pushButton_flip.clicked.connect(self.flip)
 
-        self.slider_angle.valueChanged.connect(lambda: self.lineEdit_angle.setText('%g' % self.slider_angle.value()))
-        self.lineEdit_angle.textChanged.connect(lambda: self.slider_angle.setValue(int(float(self.lineEdit_angle.text()))))
+        self.slider_angle.valueChanged.connect(
+            lambda: self.lineEdit_angle.setText('%g' % self.slider_angle.value()))
+        self.lineEdit_angle.textChanged.connect(
+            lambda: self.slider_angle.setValue(int(float(self.lineEdit_angle.text()))))
 
-        self.slider_center_x.valueChanged.connect(lambda: self.lineEdit_center_x.setText('%g' % (self.slider_center_x.value()/100)))
-        self.slider_center_y.valueChanged.connect(lambda: self.lineEdit_center_y.setText('%g' % (self.slider_center_y.value()/100)))
-        self.lineEdit_center_x.textChanged.connect(lambda: self.slider_center_x.setValue(int(100*float(self.lineEdit_center_x.text()))))
-        self.lineEdit_center_y.textChanged.connect(lambda: self.slider_center_y.setValue(int(100*float(self.lineEdit_center_y.text()))))
+        self.slider_center_x.valueChanged.connect(
+            lambda: self.lineEdit_center_x.setText('%g' % (self.slider_center_x.value() / 100)))
+        self.slider_center_y.valueChanged.connect(
+            lambda: self.lineEdit_center_y.setText('%g' % (self.slider_center_y.value() / 100)))
+        self.lineEdit_center_x.textChanged.connect(
+            lambda: self.slider_center_x.setValue(int(100 * float(self.lineEdit_center_x.text()))))
+        self.lineEdit_center_y.textChanged.connect(
+            lambda: self.slider_center_y.setValue(int(100 * float(self.lineEdit_center_y.text()))))
 
         self.lineEdit_order.textChanged.connect(self.slm_gui.make)
         self.lineEdit_angle.textChanged.connect(self.slm_gui.make)
@@ -256,12 +273,15 @@ class vortexbeamUi(BaseUi):
 
 
 class multispot_gratingUi(BaseUi):
+
     def __init__(self, slm_gui):
         super(multispot_gratingUi, self).__init__(slm_gui, 'multispot_grating')
 
     def _connect(self):
-        self.slider_grating.valueChanged.connect(lambda: self.lineEdit_grating.setText('%g' % (self.slider_grating.value()/100)))
-        self.lineEdit_grating.textChanged.connect(lambda: self.slider_grating.setValue(int(100*float(self.lineEdit_grating.text()))))
+        self.slider_grating.valueChanged.connect(
+            lambda: self.lineEdit_grating.setText('%g' % (self.slider_grating.value() / 100)))
+        self.lineEdit_grating.textChanged.connect(
+            lambda: self.slider_grating.setValue(int(100 * float(self.lineEdit_grating.text()))))
 
         self.lineEdit_grating.textChanged.connect(self.slm_gui.make)
         self.lineEdit_spots.textChanged.connect(self.slm_gui.make)
@@ -273,6 +293,7 @@ class multispot_gratingUi(BaseUi):
 
 
 class linear_lutUi(BaseUi):
+
     def __init__(self, slm_gui):
         super(linear_lutUi, self).__init__(slm_gui, 'linear_lut')
 

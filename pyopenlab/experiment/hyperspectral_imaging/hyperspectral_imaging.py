@@ -1,35 +1,44 @@
 ﻿from __future__ import division
 from __future__ import print_function
-from builtins import zip
-from builtins import str
+
 from builtins import range
+from builtins import str
+from builtins import zip
+
 from past.utils import old_div
+
 __author__ = 'alansanders'
 
-from pyopenlab.experiment.scanning_experiment import ScanningExperimentHDF5, GridScanQt
-from pyopenlab.instrument.stage import Stage
-from pyopenlab.instrument.spectrometer import Spectrometer, Spectrometers
+import time
+import warnings
+
+import matplotlib
+import numpy as np
+
+from pyopenlab.experiment.scanning_experiment import GridScanQt
+from pyopenlab.experiment.scanning_experiment import ScanningExperimentHDF5
 from pyopenlab.instrument.light_sources import LightSource
 from pyopenlab.instrument.shutter import Shutter
+from pyopenlab.instrument.spectrometer import Spectrometer
+from pyopenlab.instrument.spectrometer import Spectrometers
+from pyopenlab.instrument.stage import Stage
+from pyopenlab.ui.ui_tools import UiTools
 from pyopenlab.utils.gui import *
 from pyopenlab.utils.gui import uic
-from pyopenlab.ui.ui_tools import UiTools
-import numpy as np
-import matplotlib
-import warnings
-import time
 
 matplotlib.use('Qt4Agg')
+from functools import partial
+import inspect
+from types import MethodType
+
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
-import matplotlib.gridspec as gridspec
 #from pyopenlab.ui.mpl_gui import FigureCanvasWithDeferredDraw as FigureCanvas
 from matplotlib.figure import Figure
-from functools import partial
-from types import MethodType
-import inspect
+import matplotlib.gridspec as gridspec
+import pyqtgraph as pg
+
 from pyopenlab.ui.hdf5_browser import HDF5Browser
 
-import pyqtgraph as pg
 pg.setConfigOption('background', 'w')
 pg.setConfigOption('foreground', 'k')
 
@@ -48,7 +57,7 @@ class HyperspectralScan(GridScanQt, ScanningExperimentHDF5):
         self.safe_exit = False
         self.delay = 0.
 
-        self.fig = None#Figure()
+        self.fig = None  #Figure()
         self._created = False
         self.view_wavelength = 600
         self.view_layer = 0
@@ -74,12 +83,13 @@ class HyperspectralScan(GridScanQt, ScanningExperimentHDF5):
             self.num_spectrometers = 1
 
     def set_light_source(self, light_source):
-        assert isinstance(light_source, LightSource), 'light_source must be an instance of LightSource'
+        assert isinstance(light_source,
+                          LightSource), 'light_source must be an instance of LightSource'
         self.light_source = light_source
 
     @staticmethod
     def _suffix(i):
-        return '{}'.format(i+1) if i != 0 else ''
+        return '{}'.format(i + 1) if i != 0 else ''
 
     def init_scan(self):
         # these checks are performed in case equipment is set without using the set_ method
@@ -102,12 +112,12 @@ class HyperspectralScan(GridScanQt, ScanningExperimentHDF5):
             suffix = self._suffix(i)
             spectrometer = self.spectrometer.spectrometers[i]\
                 if isinstance(self.spectrometer, Spectrometers) else self.spectrometer
-            self.data.create_dataset('wavelength'+suffix, data=spectrometer.wavelengths)
-            self.data.create_dataset('hs_image'+suffix,
+            self.data.create_dataset('wavelength' + suffix, data=spectrometer.wavelengths)
+            self.data.create_dataset('hs_image' + suffix,
                                      shape=self.grid_shape + (spectrometer.wavelengths.size,),
                                      dtype=np.float64,
                                      attrs=spectrometer.metadata)
-            self.data.create_dataset('raw_data/hs_image'+suffix,
+            self.data.create_dataset('raw_data/hs_image' + suffix,
                                      shape=self.grid_shape + (spectrometer.wavelengths.size,),
                                      dtype=np.float64,
                                      attrs=spectrometer.metadata)
@@ -133,15 +143,15 @@ class HyperspectralScan(GridScanQt, ScanningExperimentHDF5):
         time.sleep(self.delay)
         raw_spectra = self.read_spectra()
         spectra = self.process_spectra(raw_spectra)
-        self.data['raw_data/hs_image'+self._suffix(0)][indices] = raw_spectra
-        self.data['hs_image'+self._suffix(0)][indices] = spectra
-#        for i, (spectrum, raw_spectrum) in enumerate(zip(spectra, raw_spectra)):
-#            try:
-#                suffix = self._suffix(i)
-#                self.data['raw_data/hs_image'+suffix][indices] = raw_spectrum
-#                self.data['hs_image'+suffix][indices] = spectrum
-#            except Exception as e:
-#                print e
+        self.data['raw_data/hs_image' + self._suffix(0)][indices] = raw_spectra
+        self.data['hs_image' + self._suffix(0)][indices] = spectra
+        #        for i, (spectrum, raw_spectrum) in enumerate(zip(spectra, raw_spectra)):
+        #            try:
+        #                suffix = self._suffix(i)
+        #                self.data['raw_data/hs_image'+suffix][indices] = raw_spectrum
+        #                self.data['hs_image'+suffix][indices] = spectrum
+        #            except Exception as e:
+        #                print e
         self.check_for_data_request(*self.set_latest_view(*indices))
 
     def set_latest_view(self, *indices):
@@ -151,10 +161,10 @@ class HyperspectralScan(GridScanQt, ScanningExperimentHDF5):
             spectrometer = self.spectrometer.spectrometers[i]\
                 if isinstance(self.spectrometer, Spectrometers) else self.spectrometer
             w = abs(spectrometer.wavelengths - self.view_wavelength).argmin()
-            data = self.data['hs_image'+suffix]
+            data = self.data['hs_image' + suffix]
             if self.num_axes == 2:
                 latest_view = data[:, :, w]
-                spectrum = self.data['hs_image'+suffix][indices[-2], indices[-1], :]
+                spectrum = self.data['hs_image' + suffix][indices[-2], indices[-1], :]
             elif self.num_axes == 3:
                 if self.override_view_layer:
                     k = self.view_layer
@@ -163,7 +173,7 @@ class HyperspectralScan(GridScanQt, ScanningExperimentHDF5):
                     if self.view_layer != k:
                         self.view_layer = k
                 latest_view = data[k, :, :, w]
-                spectrum = self.data['hs_image'+suffix][k, indices[-2], indices[-1], :]
+                spectrum = self.data['hs_image' + suffix][k, indices[-2], indices[-1], :]
             spectrum = spectrometer.mask_spectrum(spectrum, 0.05)
             view_data += [latest_view, spectrometer.wavelengths, spectrum]
         return tuple(view_data)
@@ -173,17 +183,17 @@ class HyperspectralScan(GridScanQt, ScanningExperimentHDF5):
             return
         self.fig.clear()
         gs = gridspec.GridSpec(2, 2, hspace=0.5, wspace=0.5)
-        ax1 = self.fig.add_subplot(gs[0,0])
-        ax2 = self.fig.add_subplot(gs[0,1])
+        ax1 = self.fig.add_subplot(gs[0, 0])
+        ax2 = self.fig.add_subplot(gs[0, 1])
         for ax in (ax1, ax2):
             ax.set_xlabel('$x$')
             ax.set_ylabel('$y$')
             ax.set_aspect('equal')
-            mult = 1./self._unit_conversion[self.step_unit]
-            x, y = (mult*self.scan_axes[-1], mult*self.scan_axes[-2])
+            mult = 1. / self._unit_conversion[self.step_unit]
+            x, y = (mult * self.scan_axes[-1], mult * self.scan_axes[-2])
             ax.set_xlim(x.min(), x.max())
             ax.set_ylim(y.min(), y.max())
-        ax3 = self.fig.add_subplot(gs[1,:])
+        ax3 = self.fig.add_subplot(gs[1, :])
         ax3.set_xlabel('wavelength (nm)')
         ax3.set_ylabel('intensity (a.u.)')
         ax4 = ax3.twinx()
@@ -222,7 +232,7 @@ class HyperspectralScan(GridScanQt, ScanningExperimentHDF5):
         else:
             data = self.request_data()
         if data is not False:
-            grouped_data = [data[i:i+3] for i in range(0,len(data),3)]
+            grouped_data = [data[i:i + 3] for i in range(0, len(data), 3)]
             colours = ['r', 'b', 'g']
             for i, data_group in enumerate(grouped_data):
                 img, wavelengths, spectrum = data_group
@@ -234,7 +244,9 @@ class HyperspectralScan(GridScanQt, ScanningExperimentHDF5):
                 ax = self.fig.axes[i]
                 if not ax.collections:
                     mult = 1. / self._unit_conversion[self.step_unit]
-                    ax.pcolormesh(mult * self.scan_axes[-1], mult * self.scan_axes[-2], img,
+                    ax.pcolormesh(mult * self.scan_axes[-1],
+                                  mult * self.scan_axes[-2],
+                                  img,
                                   cmap=matplotlib.cm.afmhot)
                 else:
                     plot, = ax.collections
@@ -245,7 +257,7 @@ class HyperspectralScan(GridScanQt, ScanningExperimentHDF5):
                     ax.relim()
                     #ax.draw_artist(ax.patch)
                     #ax.draw_artist(plot)
-                ax = self.fig.axes[i+2]
+                ax = self.fig.axes[i + 2]
                 c = 'r' if i == 0 else 'b'
                 if not ax.lines:
                     ax.plot(wavelengths, spectrum, c=c)
@@ -266,7 +278,9 @@ class HyperspectralScan(GridScanQt, ScanningExperimentHDF5):
             max_exposure = 1e-3 * max([s.integration_time for s in self.spectrometer.spectrometers])
         else:
             max_exposure = 0
-            warnings.warn('No integration time as spectrometer is not a valid instance of Spectrometer or Spectrometers.')
+            warnings.warn(
+                'No integration time as spectrometer is not a valid instance of Spectrometer or Spectrometers.'
+            )
         max_travel = 100e-3
         #self.estimated_step_time = max_exposure + max_travel
         return max_exposure + max_travel
@@ -279,14 +293,17 @@ class HyperspectralScan(GridScanQt, ScanningExperimentHDF5):
         return HyperspectralScanUI(self)
 
     def on_mouse_click(self, event):
-        init_scale = old_div(self._unit_conversion[self.step_unit], self._unit_conversion[self.init_unit])
+        init_scale = old_div(self._unit_conversion[self.step_unit],
+                             self._unit_conversion[self.init_unit])
         self.init[:2] = (event.xdata * init_scale, event.ydata * init_scale)
         self.init_updated.emit(self.init)
+
     #     pos = event.scenePos()
     #     print "Image position:", self.image_plots[0].mapFromScene(pos)
 
 
 class HyperspectralScanUI(QtWidgets.QWidget, UiTools):
+
     def __init__(self, grid_scanner, parent=None):
         assert isinstance(grid_scanner, HyperspectralScan), \
             'scanner must be an instance of HyperspectralScan'
@@ -295,7 +312,7 @@ class HyperspectralScanUI(QtWidgets.QWidget, UiTools):
         uic.loadUi(os.path.join(os.path.dirname(__file__), 'hyperspectral_imaging.ui'), self)
         self.gridscanner_widget = self.replace_widget(self.main_layout, self.gridscanner_widget,
                                                       GridScanQt.get_qt_ui_cls()(self.grid_scanner))
-        self.gridscanner_widget.rate = 1./20.
+        self.gridscanner_widget.rate = 1. / 20.
 
         self.grid_scanner.fig = Figure()  # pg.GraphicsLayoutWidget()
         # self.grid_scanner.fig.scene().sigMouseClicked.connect(self.grid_scanner.on_mouse_click)
@@ -412,9 +429,11 @@ class HyperspectralScanUI(QtWidgets.QWidget, UiTools):
 
 if __name__ == '__main__':
     import sys
-    from pyopenlab.instrument.stage import DummyStage
-    from pyopenlab.instrument.spectrometer import DummySpectrometer, Spectrometers
+
     from pyopenlab import datafile
+    from pyopenlab.instrument.spectrometer import DummySpectrometer
+    from pyopenlab.instrument.spectrometer import Spectrometers
+    from pyopenlab.instrument.stage import DummyStage
 
     f = datafile.get_file()
 

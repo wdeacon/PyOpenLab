@@ -14,10 +14,10 @@ except ImportError:
     configure_path = None
 
 import numpy as np
-from thorlabs_tsi_sdk.tl_camera import TLCameraSDK, OPERATION_MODE
+from thorlabs_tsi_sdk.tl_camera import OPERATION_MODE
+from thorlabs_tsi_sdk.tl_camera import TLCameraSDK
 
 NUM_FRAMES = 10  # adjust to the desired number of frames
-
 
 with TLCameraSDK() as sdk:
     available_cameras = sdk.discover_available_cameras()
@@ -33,7 +33,6 @@ with TLCameraSDK() as sdk:
         uncomment the line below to set a region of interest (ROI) on the camera
         """
         # camera.roi = (100, 100, 600, 600)  # set roi to be at origin point (100, 100) with a width & height of 500
-
         """
         uncomment the lines below to set the gain of the camera and read it back in decibels
         """

@@ -7,12 +7,14 @@ Created on Mon Dec 05 17:41:32 2016
 A Python file that allows you to run the databrowser from cmd line on a h5 file
 """
 
-import pyopenlab
 import sys
-import pyopenlab.datafile as df
+
 import h5py
 
-file_path = sys.argv[1] #Take the file location from sys.argv list
+import pyopenlab
+import pyopenlab.datafile as df
 
-data_file = df.DataFile(file_path, mode = 'r')
-data_file.show_gui() #Show data browser
+file_path = sys.argv[1]  #Take the file location from sys.argv list
+
+data_file = df.DataFile(file_path, mode='r')
+data_file.show_gui()  #Show data browser

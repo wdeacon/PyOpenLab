@@ -1,9 +1,13 @@
 ﻿# -*- coding: utf-8 -*-
 
-from past.utils import old_div
-from pyopenlab.instrument.serial_instrument import SerialInstrument
-from serial import EIGHTBITS, PARITY_NONE, STOPBITS_ONE
 import time
+
+from past.utils import old_div
+from serial import EIGHTBITS
+from serial import PARITY_NONE
+from serial import STOPBITS_ONE
+
+from pyopenlab.instrument.serial_instrument import SerialInstrument
 
 
 class VariableRetarder(SerialInstrument):
@@ -11,7 +15,10 @@ class VariableRetarder(SerialInstrument):
     Serial control of a 3040. It does NOT provide all the functionality of the CellDrive 3000 Advanced
     Because it wants commands sent to it ending in \r, but it returns commands that end in \r\n had to rewrite the read write functions
     """
-    port_settings = dict(baudrate=38400, bytesize=EIGHTBITS, parity=PARITY_NONE, stopbits=STOPBITS_ONE,
+    port_settings = dict(baudrate=38400,
+                         bytesize=EIGHTBITS,
+                         parity=PARITY_NONE,
+                         stopbits=STOPBITS_ONE,
                          timeout=2)
     termination_character = '\r'
     termination_read = '\r\n'
@@ -140,5 +147,5 @@ class VariableRetarder(SerialInstrument):
         integer = 0
         for idx, chn in enumerate(channels):
             if chn:
-                integer += 2 ** idx
+                integer += 2**idx
         self.write('extin:%d' % integer)

@@ -5,23 +5,29 @@ Created on Wed Jun 11 12:28:18 2014
 @author: Richard Bowman
 """
 
-import pyopenlab.utils.gui #load Qt correctly - do this BEFORE traits
-from pyopenlab.utils.gui import QtCore, QtGui, QtWidgets, uic
-from pyopenlab.ui.ui_tools import UiTools
-import threading
-import numpy as np
-import traceback
-import os
 import datetime
+import os
+import threading
 import time
-from PIL import Image
+import traceback
 import warnings
-import pyqtgraph as pg
-from pyqtgraph.graphicsItems.GradientEditorItem import Gradients
 from weakref import WeakSet
 
+import numpy as np
+from PIL import Image
+import pyqtgraph as pg
+from pyqtgraph.graphicsItems.GradientEditorItem import Gradients
+
 from pyopenlab.instrument import Instrument
-from pyopenlab.utils.notified_property import NotifiedProperty, DumbNotifiedProperty, register_for_property_changes
+from pyopenlab.ui.ui_tools import UiTools
+from pyopenlab.utils.gui import QtCore
+from pyopenlab.utils.gui import QtGui
+from pyopenlab.utils.gui import QtWidgets
+from pyopenlab.utils.gui import uic
+import pyopenlab.utils.gui  # load Qt correctly - do this BEFORE traits
+from pyopenlab.utils.notified_property import DumbNotifiedProperty
+from pyopenlab.utils.notified_property import NotifiedProperty
+from pyopenlab.utils.notified_property import register_for_property_changes
 
 
 class CameraParameter(NotifiedProperty):
@@ -39,6 +45,7 @@ class CameraParameter(NotifiedProperty):
     not valid).  This behaviour can be disabled by setting read_back to False
     in the constructor.
     """
+
     def __init__(self, parameter_name, doc=None, read_back=True):
         """Create a property that reads and writes the given parameter.
         
@@ -47,15 +54,15 @@ class CameraParameter(NotifiedProperty):
         """
         if doc is None:
             doc = "Adjust the camera parameter '{0}'".format(parameter_name)
-        super(CameraParameter, self).__init__(fget=self.fget, 
-                                                      fset=self.fset, 
-                                                      doc=doc,
-                                                      read_back=read_back)
+        super(CameraParameter, self).__init__(fget=self.fget,
+                                              fset=self.fset,
+                                              doc=doc,
+                                              read_back=read_back)
         self.parameter_name = parameter_name
-        
+
     def fget(self, obj):
         return obj.get_camera_parameter(self.parameter_name)
-            
+
     def fset(self, obj, value):
         obj.set_camera_parameter(self.parameter_name, value)
 
@@ -70,43 +77,43 @@ class Camera(Instrument):
     If your camera also supports video streaming (for live view, for example)
     you should override     
     """
-    
+
     video_priority = DumbNotifiedProperty(False)
     filename = DumbNotifiedProperty('snapshot_%d')
     """Set video_priority to True to avoid disturbing the video stream when
     taking images.  raw_snapshot may ignore the setting, but get_image and by
     extension rgb_image and gray_image will honour it."""
-    
+
     parameters = None
-    
-    filter_function = None  
+
+    filter_function = None
     """This function is run on the image before it's displayed in live view.  
     It should accept, and return, an RGB image as its argument."""
-    
+
     def __init__(self):
-        super(Camera,self).__init__()
-        self.acquisition_lock = threading.Lock()    
+        super(Camera, self).__init__()
+        self.acquisition_lock = threading.Lock()
         self._latest_frame_update_condition = threading.Condition()
         self._live_view = False
         self._frame_counter = 0
         # Ensure camera parameters get saved in the metadata.  You may want to override this in subclasses
         # to remove junk (e.g. if some of the parameters are meaningless)
-#        self.metadata_property_names = self.metadata_property_names + tuple(self.camera_parameter_names())
-        self.metadata_property_names = tuple(self.metadata_property_names) + tuple(self.camera_parameter_names())
- #       self.filename = 'snapshot_%d'
+        #        self.metadata_property_names = self.metadata_property_names + tuple(self.camera_parameter_names())
+        self.metadata_property_names = tuple(self.metadata_property_names) + tuple(
+            self.camera_parameter_names())
+#       self.filename = 'snapshot_%d'
 
     def __del__(self):
         self.close()
 #        super(Camera,self).__del__() #apparently not...?
+
     def close(self):
         """Stop communication with the camera and allow it to be re-used.
         
         override in subclass if you want to shut down hardware."""
         self.live_view = False
-        
-    
-    def get_next_frame(self, timeout=60, discard_frames=0, 
-                       assert_live_view=True, raw=True):
+
+    def get_next_frame(self, timeout=60, discard_frames=0, assert_live_view=True, raw=True):
         """Wait for the next frame to arrive and return it.
         
         This function is mostly intended for acquiring frames from a video
@@ -140,23 +147,23 @@ class Camera(Instrument):
             target_frame = self._frame_counter + 1 + discard_frames
             expiry_time = time.time() + timeout
             while self._frame_counter != target_frame and time.time() < expiry_time:
-                self._latest_frame_update_condition.wait(timeout) #wait for a new frame
+                self._latest_frame_update_condition.wait(timeout)  #wait for a new frame
             if time.time() >= expiry_time:
                 raise IOError("Timed out waiting for a fresh frame from the video stream.")
             if raw:
                 return self.latest_raw_frame
             else:
                 return self.latest_frame
-        
+
     def raw_snapshot(self):
         """Take a snapshot and return it.  No filtering or conversion."""
         raise NotImplementedError("Cameras must subclass raw_snapshot!")
-        return True, np.zeros((640,480,3),dtype=np.uint8)
-        
+        return True, np.zeros((640, 480, 3), dtype=np.uint8)
+
     def get_image(self):
         print("Warning: get_image is deprecated, use raw_image() instead.")
         return self.raw_image()
-        
+
     def raw_image(self, bundle_metadata=False, update_latest_frame=False):
         """Take an image from the camera, respecting video priority.
         
@@ -173,50 +180,50 @@ class Camera(Instrument):
             self.latest_raw_frame = frame
         # return it as an ArrayWithAttrs including self.metadata, if requested
         return self.bundle_metadata(frame, bundle_metadata)
-            
+
     def color_image(self, **kwargs):
         """Get a colour image (bypass filtering, etc.)
         
         Additional keyword arguments are passed to raw_image."""
         frame = self.raw_image(**kwargs)
         try:
-            assert frame.shape[2]==3
+            assert frame.shape[2] == 3
             return frame
         except:
             try:
-                assert len(frame.shape)==2
-                gray_frame = np.vstack((frame,)*3) #turn gray into color by duplicating!
+                assert len(frame.shape) == 2
+                gray_frame = np.vstack((frame,) * 3)  #turn gray into color by duplicating!
                 if hasattr(frame, "attrs"):
                     return ArrayWithAttrs(gray_frame, attrs=frame.attrs)
                 else:
                     return gray_frame
             except:
                 raise Exception("Couldn't convert the camera's raw image to colour.")
-        
+
     def gray_image(self, **kwargs):
         """Get a colour image (bypass filtering, etc.)
         
         Additional keyword arguments are passed to raw_image."""
         frame = self.raw_image(**kwargs)
         try:
-            assert len(frame.shape)==2
+            assert len(frame.shape) == 2
             return frame
         except:
             try:
-                assert frame.shape[2]==3
+                assert frame.shape[2] == 3
                 return np.mean(frame, axis=2, dtype=frame.dtype)
             except:
                 raise Exception("Couldn't convert the camera's raw image to grayscale.")
-                
+
     def save_raw_image(self, update_latest_frame=True, attrs={}):
         """Save an image to the default place in the default HDF5 file."""
-        d=self.create_dataset(self.filename, 
-                              data=self.raw_image(
-                                  bundle_metadata=True,
-                                  update_latest_frame=update_latest_frame))
+        d = self.create_dataset(self.filename,
+                                data=self.raw_image(bundle_metadata=True,
+                                                    update_latest_frame=update_latest_frame))
         d.attrs.update(attrs)
-    
+
     _latest_raw_frame = None
+
     @NotifiedProperty
     def latest_raw_frame(self):
         """The last frame acquired by the camera.  
@@ -227,6 +234,7 @@ class Camera(Instrument):
         fresh frame, use raw_image().  Setting this property will update any
         preview widgets that are in use."""
         return self._latest_raw_frame
+
     @latest_raw_frame.setter
     def latest_raw_frame(self, frame):
         """Set the latest raw frame, and update the preview widget if any."""
@@ -234,10 +242,10 @@ class Camera(Instrument):
             self._latest_raw_frame = frame
             self._frame_counter += 1
             self._latest_frame_update_condition.notify_all()
-        
+
         # TODO: use the NotifiedProperty to do this with less code?
         self.update_widgets()
-    
+
     def update_widgets(self):
         """Iterates over the preview widgets and updates them. It's a good method to override in subclasses"""
         if self._preview_widgets is not None:
@@ -255,8 +263,7 @@ class Camera(Instrument):
             return self.filter_function(self.latest_raw_frame)
         else:
             return self.latest_raw_frame
-    
-    
+
     def update_latest_frame(self, frame=None):
         """Take a new frame and store it as the "latest frame"
         
@@ -269,15 +276,15 @@ class Camera(Instrument):
         Unless you need the filtered image, you should probably use 
         raw_image, color_image or gray_image.
         """
-        if frame is None: 
+        if frame is None:
             frame = self.color_image()
         if frame is not None:
             self.latest_raw_frame = frame
-            
+
             return self.latest_frame
         else:
-            print("Failed to get an image from the camera")    
-    
+            print("Failed to get an image from the camera")
+
     def camera_parameter_names(self):
         """Return a list of names of parameters that may be set/read.
         
@@ -297,30 +304,35 @@ class Camera(Instrument):
         for p in dir(self.__class__):
             try:
                 if isinstance(getattr(self.__class__, p), CameraParameter):
-                    getattr(self,p)
+                    getattr(self, p)
                     p_list.append(p)
             except:
                 try:
-                    delattr(self.__class__,p)
+                    delattr(self.__class__, p)
                 except:
                     pass
                 pass
         return p_list
-   #     return [p for p in dir(self.__class__)
-    #              if isinstance(getattr(self.__class__, p), CameraParameter)]
-    
+
+
+#     return [p for p in dir(self.__class__)
+#              if isinstance(getattr(self.__class__, p), CameraParameter)]
+
     def get_camera_parameter(self, parameter_name):
         """Return the named property from the camera"""
         raise NotImplementedError("You must override get_camera_parameter to use it")
+
     def set_camera_parameter(self, parameter_name, value):
         """Return the named property from the camera"""
         raise NotImplementedError("You must override set_camera_parameter to use it")
-    
+
     _live_view = False
+
     @NotifiedProperty
     def live_view(self):
         """Whether the camera is currently streaming and displaying video"""
         return self._live_view
+
     @live_view.setter
     def live_view(self, live_view):
         """Turn live view on and off.
@@ -329,9 +341,9 @@ class Camera(Instrument):
         default implementation just repeatedly takes snapshots, but subclasses
         are encouraged to override that behaviour by starting/stopping a stream
         and using a callback function to update self.latest_raw_frame."""
-        if live_view==True:
+        if live_view == True:
             if self._live_view:
-                return # do nothing if it's going already.
+                return  # do nothing if it's going already.
             print("starting live view thread")
             try:
                 self._frame_counter = 0
@@ -339,19 +351,20 @@ class Camera(Instrument):
                 self._live_view_thread = threading.Thread(target=self._live_view_function)
                 self._live_view_thread.start()
                 self._live_view = True
-            except AttributeError as e: #if any of the attributes aren't there
+            except AttributeError as e:  #if any of the attributes aren't there
                 print("Error:", e)
         else:
             if not self._live_view:
-                return # do nothing if it's not running.
+                return  # do nothing if it's not running.
             print("stopping live view thread")
             try:
                 self._live_view_stop_event.set()
                 self._live_view_thread.join()
-                del(self._live_view_stop_event, self._live_view_thread)
+                del (self._live_view_stop_event, self._live_view_thread)
                 self._live_view = False
             except AttributeError:
                 raise Exception("Tried to stop live view but it doesn't appear to be running!")
+
     def _live_view_function(self):
         """This function should only EVER be executed by _live_view_changed.
         
@@ -363,8 +376,9 @@ class Camera(Instrument):
             success, frame = self.raw_snapshot()
             if success:
                 self.update_latest_frame(frame)
-            
+
     legacy_click_callback = None
+
     def set_legacy_click_callback(self, function):
         """Set a function to be called when the image is clicked.
         
@@ -375,8 +389,9 @@ class Camera(Instrument):
         if self._preview_widgets is not None:
             for w in self._preview_widgets:
                 w.add_legacy_click_callback(self.legacy_click_callback)
-            
+
     _preview_widgets = None
+
     def get_preview_widget(self):
         """A Qt Widget that can be used as a viewfinder for the camera.
         
@@ -391,15 +406,15 @@ class Camera(Instrument):
         if self.legacy_click_callback is not None:
             new_widget.add_legacy_click_callback(self.legacy_click_callback)
         return new_widget
-    
+
     def get_control_widget(self):
         """Return a widget that contains the camera controls but no image."""
         return CameraControlWidget(self)
-        
+
     def get_parameters_widget(self):
         """Return a widget that controls the camera's settings."""
         return CameraParametersWidget(self)
-        
+
     def get_qt_ui(self, control_only=False, parameters_only=False):
         """Create a QWidget that controls the camera.
         
@@ -412,18 +427,18 @@ class Camera(Instrument):
             return self.get_parameters_widget(self)
         else:
             return CameraUI(self)
-            
-        
-        
+
+
 class CameraUI(QtWidgets.QWidget):
     """Generic user interface for a camera."""
+
     def __init__(self, camera):
         assert isinstance(camera, Camera), "instrument must be a Camera"
         #TODO: better checking (e.g. assert camera has color_image, gray_image methods)
         super(CameraUI, self).__init__()
-        self.camera=camera
-        
-        # Set up the UI        
+        self.camera = camera
+
+        # Set up the UI
         self.setWindowTitle(self.camera.__class__.__name__)
         layout = QtWidgets.QVBoxLayout()
         # The image display goes at the top of the window
@@ -435,92 +450,98 @@ class CameraUI(QtWidgets.QWidget):
         #layout.setContentsMargins(5,5,5,5)
         layout.setSpacing(5)
         self.setLayout(layout)
-        
+
+
 class CameraControlWidget(QtWidgets.QWidget, UiTools):
     """Controls for a camera (these are the really generic ones)"""
+
     def __init__(self, camera, auto_connect=True):
         assert isinstance(camera, Camera), "instrument must be a Camera"
         #TODO: better checking (e.g. assert camera has color_image, gray_image methods)
         super(CameraControlWidget, self).__init__()
-        self.camera=camera
-        self.load_ui_from_file(__file__,"camera_controls_generic.ui")
-        if auto_connect==True:
+        self.camera = camera
+        self.load_ui_from_file(__file__, "camera_controls_generic.ui")
+        if auto_connect == True:
             self.auto_connect_by_name(controlled_object=self.camera, verbose=False)
-        
+
     def snapshot(self):
         """Take a new snapshot and display it."""
         self.camera.raw_image(update_latest_frame=True)
-    
+
     def save_to_data_file(self):
-        self.camera.save_raw_image(
-            attrs={'description':self.description_lineedit.text()})
-        
+        self.camera.save_raw_image(attrs={'description': self.description_lineedit.text()})
+
     def save_jpeg(self):
         cur_img = self.camera.color_image()
         fname, _ = QtWidgets.QFileDialog.getSaveFileName(
-                                caption = "Select JPEG filename",
-                                directory = os.path.join(os.getcwd(),datetime.date.today().strftime("%Y-%m-%d.jpg")),
-                                filter = "Images (*.jpg *.jpeg)",
-                            )
+            caption="Select JPEG filename",
+            directory=os.path.join(os.getcwd(),
+                                   datetime.date.today().strftime("%Y-%m-%d.jpg")),
+            filter="Images (*.jpg *.jpeg)",
+        )
         j = Image.fromarray(cur_img)
         j.save(fname)
-        
+
     def edit_camera_parameters(self):
         """Pop up a camera parameters dialog box."""
         self.camera_parameters_widget = self.camera.get_parameters_widget()
         self.camera_parameters_widget.show()
-        
+
     description = DumbNotifiedProperty("Description...")
-        
+
     def __del__(self):
         pass
+
 
 class CameraParametersTableModel(QtCore.QAbstractTableModel):
     """Class to manage a Qt table of a camera's parameters.
     
     With thanks to http://stackoverflow.com/questions/11736560/edit-table-in-
     pyqt-using-qabstracttablemodel"""
+
     def __init__(self, camera, parent=None):
         super(CameraParametersTableModel, self).__init__(parent)
         self.camera = camera
         self.parameter_names = self.camera.camera_parameter_names()
-        for parameter_name in self.parameter_names[:]:   #Added to prevent properties the camera does not posses from trying to appear in the list of parameters
+        for parameter_name in self.parameter_names[:]:  #Added to prevent properties the camera does not posses from trying to appear in the list of parameters
             try:
                 getattr(self.camera, parameter_name)
             except:
                 self.parameter_names.remove(parameter_name)
-        
+
         # Here, we register to get a callback if any of the parameters change
         # so that we stay in sync with the camera.
-        self._callback_functions = dict()       
+        self._callback_functions = dict()
         for i, pn in enumerate(self.parameter_names):
             callback = self.callback_to_update_row(i)
             register_for_property_changes(self.camera, pn, callback)
             self._callback_functions[pn] = callback
-    
+
     def callback_to_update_row(self, i):
         """Return a callback function that refreshes the i-th parameter."""
+
         def callback(value=None):
             index = self.createIndex(i, 1)
             self.dataChanged.emit(index, index)
+
         return callback
-    
+
     def rowCount(self, parent):
         return len(self.parameter_names)
-    
+
     def columnCount(self, parent):
         return 2
-    
+
     def data(self, index, role=QtCore.Qt.DisplayRole):
         "Return the data for the table - property names left, values right."
         if not index.isValid() or role != QtCore.Qt.DisplayRole:
-            return None    
+            return None
         parameter_name = self.parameter_names[index.row()]
         if index.column() == 0:
             return parameter_name
         else:
             return getattr(self.camera, parameter_name)
-    
+
     def headerData(self, i, orientation, role=QtCore.Qt.DisplayRole):
         "Return data for the headers."
         if role == QtCore.Qt.DisplayRole:
@@ -529,29 +550,30 @@ class CameraParametersTableModel(QtCore.QAbstractTableModel):
             else:
                 return None
         return None
-    
+
     def setData(self, index, value, role=QtCore.Qt.DisplayRole):
         """If the value is changed, update the corresponding property."""
         assert index.column() == 1, "Can only edit second column!"
         parameter_name = self.parameter_names[index.row()]
         try:
-            float(value) # make sure the input is valid
+            float(value)  # make sure the input is valid
         except:
             return False
         setattr(self.camera, parameter_name, float(value))
-        self.dataChanged.emit(index, index) # signal that the data has changed.
+        self.dataChanged.emit(index, index)  # signal that the data has changed.
         return True
-        
+
     def flags(self, index):
         "Return flags to tell Qt that only the second column is editable."
         if index.column() == 1:
-            return (QtCore.Qt.ItemIsEditable | QtCore.Qt.ItemIsEnabled | 
-                    QtCore.Qt.ItemIsSelectable)
+            return (QtCore.Qt.ItemIsEditable | QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable)
         else:
             return QtCore.Qt.ItemIsEnabled
-    
+
+
 class CameraParametersWidget(QtWidgets.QWidget, UiTools):
     """An editable table that controls a camera's acquisition parameters."""
+
     def __init__(self, camera, *args, **kwargs):
         super(CameraParametersWidget, self).__init__(*args, **kwargs)
         self.camera = camera
@@ -561,30 +583,34 @@ class CameraParametersWidget(QtWidgets.QWidget, UiTools):
         self.table_view.setCornerButtonEnabled(False)
         self.table_view.resizeColumnsToContents()
         self.table_view.horizontalHeader().setStretchLastSection(True)
-        
+
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(self.table_view)
         self.setLayout(layout)
 
+
 class PreviewViewBox(pg.ViewBox):
     """A pyqtgraph ViewBox for use in the preview widget."""
+
     def suggestPadding(self, axis):
         """Return a value to use for the padding on a given axis.
         
         We always return zero so the image, by default, fills the window."""
         return 0
-        
+
+
 class PreviewImageItem(pg.ImageItem):
     legacy_click_callback = None
     click_callback_signal = QtCore.Signal(np.ndarray)
+
     def mouseClickEvent(self, ev):
         """Handle a mouse click on the image."""
         if ev.button() == QtCore.Qt.LeftButton:
             pos = np.array(ev.pos())
             if self.legacy_click_callback is not None:
-        #        size = np.array(self.image.shape[:2])
-     #           point = pos/size
-      #          self.legacy_click_callback(point[1], point[0])
+                #        size = np.array(self.image.shape[:2])
+                #           point = pos/size
+                #          self.legacy_click_callback(point[1], point[0])
                 self.legacy_click_callback(int(pos[1]), int(pos[0]))
                 # print(pos)
                 ev.accept()
@@ -592,22 +618,23 @@ class PreviewImageItem(pg.ImageItem):
                 pass
         else:
             super(PreviewImageItem, self).mouseClickEvent(ev)
-    
+
 
 class CameraPreviewWidget(pg.GraphicsView):
     """A Qt Widget to display the live feed from a camera."""
     update_data_signal = QtCore.Signal(np.ndarray)
-    
+
     def __init__(self):
         super(CameraPreviewWidget, self).__init__()
-        
+
         self.image_item = PreviewImageItem()
-        self.view_box   = PreviewViewBox(lockAspect=1.0, invertY=True)
+        self.view_box = PreviewViewBox(lockAspect=1.0, invertY=True)
         self.view_box.addItem(self.image_item)
-        self.view_box.setBackgroundColor([128,128,128,255])
+        self.view_box.setBackgroundColor([128, 128, 128, 255])
         self.setCentralWidget(self.view_box)
-        self.crosshair = {'h_line': pg.InfiniteLine(pos=0,angle=0),
-                          'v_line': pg.InfiniteLine(pos=0,angle=90),}
+        self.crosshair = {
+            'h_line': pg.InfiniteLine(pos=0, angle=0),
+            'v_line': pg.InfiniteLine(pos=0, angle=90),}
         for item in list(self.crosshair.values()):
             self.view_box.addItem(item)
         self._image_shape = ()
@@ -624,27 +651,28 @@ class CameraPreviewWidget(pg.GraphicsView):
         # forced floating-point for anything that isn't a u8, and assumed u8
         # wants to be displayed raw.  You can always use filter_function to
         # tweak the brightness/contrast.
-        if len(newimage.shape)==2:
+        if len(newimage.shape) == 2:
             newimage = newimage.transpose()
-        elif len(newimage.shape)==3:
-            newimage = newimage.transpose((1,0,2))
-        if newimage.dtype =="uint8":
+        elif len(newimage.shape) == 3:
+            newimage = newimage.transpose((1, 0, 2))
+        if newimage.dtype == "uint8":
             self.image_item.setImage(newimage, autoLevels=False)
         else:
             self.image_item.setImage(newimage.astype(float))
         if newimage.shape != self._image_shape:
             self._image_shape = newimage.shape
-            self.set_crosshair_centre((newimage.shape[1]/2.0, newimage.shape[0]/2.0))
+            self.set_crosshair_centre((newimage.shape[1] / 2.0, newimage.shape[0] / 2.0))
+
     def update_image(self, newimage):
         """Update the image displayed in the preview widget."""
         # NB compared to previous versions, pyqtgraph flips in y, hence the
         # funny slice on the next line.
-        self.update_data_signal.emit(newimage) # ToDo: understand 
-        
+        self.update_data_signal.emit(newimage)  # ToDo: understand
+
     def add_legacy_click_callback(self, function):
         """Add an old-style (coordinates in fractions-of-an-image) callback."""
         self.image_item.legacy_click_callback = function
-    
+
     def set_crosshair_centre(self, pos):
         """Move the crosshair to centre on a given pixel coordinate."""
         self.crosshair['h_line'].setValue(pos[0])
@@ -655,31 +683,38 @@ class DummyCamera(Camera):
     """A version of the Camera code  """
     exposure = CameraParameter("exposure", "The exposure time in ms.")
     gain = CameraParameter("gain", "The gain in units of bananas.")
+
     def __init__(self):
         super(DummyCamera, self).__init__()
-        self._camera_parameters = {'exposure':40, 'gain':1}
+        self._camera_parameters = {'exposure': 40, 'gain': 1}
+
     def raw_snapshot(self):
         """Returns a True, stating a succesful snapshot, followed by a (100,100)
         picture randomly generated image"""
-        ran = np.random.random((100,100,3))
+        ran = np.random.random((100, 100, 3))
         return True, (ran * 255.9).astype(np.uint8)
+
     def get_camera_parameter(self, name):
         """Pull a camera paramter of key "name"  from a hidden dictionary"""
         return self._camera_parameters[name]
+
     def set_camera_parameter(self, name, value):
         """Set a camera paramter of key "name"  from a hidden dictionary"""
         self._camera_parameters[name] = value
-    def print_numbers(self,a = 5.0,b = 10):
+
+    def print_numbers(self, a=5.0, b=10):
         """A print numbers test function"""
         print(a, b)
-    def print_strs(self,a= 'hello'):
+
+    def print_strs(self, a='hello'):
         """Print a str test function"""
         print(a)
-    def print_array(self,a = np.array([1, 2, 3, 4])):
+
+    def print_array(self, a=np.array([1, 2, 3, 4])):
         """Test Function for printing an array of values"""
         print(a)
 
 
 if __name__ == '__main__':
     cam = DummyCamera()
-    g=cam.show_gui(blocking=False, dark=True)
+    g = cam.show_gui(blocking=False, dark=True)

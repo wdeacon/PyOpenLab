@@ -9,9 +9,12 @@ Created on Tue Jul 14 18:50:08 2015
 @author: wmd22
 """
 from time import sleep
+
 import numpy as np
-import pyopenlab.instrument.visa_instrument as vi
 import pyvisa
+
+import pyopenlab.instrument.visa_instrument as vi
+
 
 class Lockin_SR810(vi.VisaInstrument):
     """Software control for the Stanford Research Systems SR844 Lockin
@@ -41,21 +44,21 @@ class Lockin_SR810(vi.VisaInstrument):
         self.write('ICPL 0')
         self.ch_list = {}
         self.sens_list = {}
-        self.time_list = {0:10e-6, # time constant given in sec
-                          1:30e-6,
-                          2:100e-6,
-                          3:300e-6, 
-                          4:1e-3,
-                          5:3e-3,
-                          6:0.01,
-                          7:0.03,
-                          8:0.1,
-                          9:0.300,
-                          10:1,
-                          11:3,
-                          12:10,
-                          13:30,
-                                     }
+        self.time_list = {
+            0: 10e-6,  # time constant given in sec
+            1: 30e-6,
+            2: 100e-6,
+            3: 300e-6,
+            4: 1e-3,
+            5: 3e-3,
+            6: 0.01,
+            7: 0.03,
+            8: 0.1,
+            9: 0.300,
+            10: 1,
+            11: 3,
+            12: 10,
+            13: 30,}
         self.filter_list = {}
         print('lockin connected successfully')
         return
@@ -79,7 +82,7 @@ class Lockin_SR810(vi.VisaInstrument):
         """
         variables = self.query('SNAP? ' + channels)
         variables = variables.split(',')
-        variables = [ float(i) for i in variables ]
+        variables = [float(i) for i in variables]
         return variables
 
     def measure_X(self):
@@ -151,8 +154,7 @@ class Lockin_SR810(vi.VisaInstrument):
                         14              1 Vrms / +13 dBm
         """
         num = self.int_query('SENS?')
-        return (
-         num, self.sens_list[num])
+        return (num, self.sens_list[num])
 
     def set_sens(self, i):
         self.write('SENS%s' % i)
@@ -197,8 +199,7 @@ class Lockin_SR810(vi.VisaInstrument):
                         17      30 ks
         """
         num = self.int_query('OFLT?')
-        return (
-         num, self.time_list[num])
+        return (num, self.time_list[num])
 
     def set_time_constant(self, i):
         self.write('OFLT' + str(i))
@@ -217,7 +218,8 @@ class Lockin_SR810(vi.VisaInstrument):
                 self.time_constant = list(self.time_list.keys())[i]
                 return True
 
-        print('Setting integration time failed. ' + str(integrationtime) + ' is not in self.time_list')
+        print('Setting integration time failed. ' + str(integrationtime) +
+              ' is not in self.time_list')
         return False
 
     def get_line_filter(self):
@@ -274,8 +276,7 @@ class Lockin_SR810(vi.VisaInstrument):
                         4       24 dB 
         """
         num = self.int_query('OFSL?')
-        return (
-         num, self.filter_list[num])
+        return (num, self.filter_list[num])
 
     def set_filter(self, i):
         self.write('OFSL%s' % i)
@@ -300,12 +301,14 @@ class Lockin_SR810(vi.VisaInstrument):
         return self.float_query('PHAS?')
 
     phase = property(get_phase, set_phase)
-    
+
     def set_harmonic(self, harmonic):
         self.write('HARM' + str(harmonic))
         print('HARM' + str(harmonic))
+
     def get_harmonic(self, harmonic):
         return self.int_query('HARM?')
+
     harmonic = property(get_harmonic, set_harmonic)
 
     def autosens(self):
@@ -315,14 +318,20 @@ class Lockin_SR810(vi.VisaInstrument):
             wide_res(int):  The new wide reserve (high = 0, normal = 1, low noise = 2)
             close_res(int): The new close reserve (high = 0, normal = 1, low noise = 2)
         """
-        testmax = np.max([np.abs(self.measure_R()), np.abs(self.measure_X()), np.abs(self.measure_Y())])
+        testmax = np.max([
+            np.abs(self.measure_R()),
+            np.abs(self.measure_X()),
+            np.abs(self.measure_Y())])
         try:
             Lowersense = self.sens_list[(self.sensitivity[0] - 1)]
         except KeyError:
             Lowersense = 0.0
         else:
             while testmax > self.sensitivity[1] or testmax < Lowersense:
-                testmax = np.max([np.abs(self.measure_R()), np.abs(self.measure_X()), np.abs(self.measure_Y())])
+                testmax = np.max([
+                    np.abs(self.measure_R()),
+                    np.abs(self.measure_X()),
+                    np.abs(self.measure_Y())])
                 try:
                     Lowersense = self.sens_list[(self.sensitivity[0] - 1)]
                 except KeyError:
@@ -343,17 +352,18 @@ class Lockin_SR810(vi.VisaInstrument):
         sens = self.sensitivity
         wide_res = self.wide_res
         close_res = self.close_res
-        return (
-         sens, wide_res, close_res)
+        return (sens, wide_res, close_res)
 
     def get_harmonic(self):
-        num = self.int_query("HARM?");
+        num = self.int_query("HARM?")
         return num
-    def set_harmonic(self,i):
-        self.write("HARM%s" %i)
-        
+
+    def set_harmonic(self, i):
+        self.write("HARM%s" % i)
+
     harmonic = property(get_harmonic, set_harmonic)
-    
+
+
 if __name__ == '__main__':
     #testlockin = Lockin_SR844()
     testlockin = Lockin_SR810(address='GPIB0::8::INSTR')

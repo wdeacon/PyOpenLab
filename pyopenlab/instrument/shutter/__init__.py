@@ -1,12 +1,19 @@
 ﻿__author__ = 'alansanders'
 
-from pyopenlab.instrument import Instrument
-from pyopenlab.utils.gui import QtCore, QtGui, QtWidgets, get_qt_app, uic
-from pyopenlab.ui.ui_tools import UiTools, QuickControlBox
+import contextlib
 import os
 import time
-from pyopenlab.utils.notified_property import DumbNotifiedProperty, register_for_property_changes
-import contextlib
+
+from pyopenlab.instrument import Instrument
+from pyopenlab.ui.ui_tools import QuickControlBox
+from pyopenlab.ui.ui_tools import UiTools
+from pyopenlab.utils.gui import get_qt_app
+from pyopenlab.utils.gui import QtCore
+from pyopenlab.utils.gui import QtGui
+from pyopenlab.utils.gui import QtWidgets
+from pyopenlab.utils.gui import uic
+from pyopenlab.utils.notified_property import DumbNotifiedProperty
+from pyopenlab.utils.notified_property import register_for_property_changes
 
 
 class Shutter(Instrument):
@@ -27,6 +34,7 @@ class Shutter(Instrument):
     the state of the shutter in software) subclass `ShutterWithEmulatedRead`
     and make sure you call its `__init__` method in your initialisation code.
     """
+
     def __init__(self):
         super(Shutter, self).__init__()
 
@@ -41,8 +49,9 @@ class Shutter(Instrument):
             else:
                 self.state = "Closed"
         except NotImplementedError:
-            raise NotImplementedError("This shutter has no way to toggle!""")
-        
+            raise NotImplementedError("This shutter has no way to toggle!"
+                                      "")
+
     @contextlib.contextmanager
     def hold(self, state="Open", default_state="Closed"):
         """Hold the shutter in a given state (for use in a `with` block).
@@ -69,7 +78,7 @@ class Shutter(Instrument):
             yield
         finally:
             self.state = oldstate
-            
+
     def expose(self, time_in_seconds):
         """Open the shutter for a specified time, then close again.
         
@@ -84,36 +93,38 @@ class Shutter(Instrument):
 
     def get_state(self):
         """Whether the shutter is 'Open' or 'Closed'."""
-        raise NotImplementedError("This shutter has no way to get its state!""")
+        raise NotImplementedError("This shutter has no way to get its state!"
+                                  "")
 
     def set_state(self, value):
         """Set the shutter to be either 'Open' or 'Closed'."""
-        raise NotImplementedError("This shutter has no way to set its state!""")
-        
+        raise NotImplementedError("This shutter has no way to set its state!"
+                                  "")
+
     def open_shutter(self):
         """Open the shutter."""
         self._set_state_proxy("Open")
-    
+
     def close_shutter(self):
         """Close the shutter."""
         self._set_state_proxy("Closed")
 
-    # This slightly ugly hack means it's not necessary to redefine the 
+    # This slightly ugly hack means it's not necessary to redefine the
     # state property every time it's subclassed.
     def _get_state_proxy(self):
         """The state of the shutter - should either be "Open" or "Closed"."""
         return self.get_state()
-        
+
     def _set_state_proxy(self, state):
         self.set_state(state)
-        self._last_set_state = state.title() # Remember what state we're in
-        
+        self._last_set_state = state.title()  # Remember what state we're in
+
     state = property(_get_state_proxy, _set_state_proxy)
-    
+
     def is_open(self):
         """Return `True` if the shutter is open."""
         return self.state.title() == "Open"
-        
+
     def is_closed(self):
         """Return `True` if the shutter is closed."""
         return self.state.title() == "Closed"
@@ -121,6 +132,7 @@ class Shutter(Instrument):
     def get_qt_ui(self):
         """Return a graphical interface for the shutter."""
         return ShutterUI(self)
+
 
 class ShutterWithEmulatedRead(Shutter):
     """A shutter class that keeps track in software of whether it's open.
@@ -135,51 +147,56 @@ class ShutterWithEmulatedRead(Shutter):
     `ShutterWithEmulatedRead.__init__()` as it closes the shutter to start
     with.
     """
+
     def __init__(self):
         """Initialise the shutter to the closed position."""
         self._last_set_state = 'Closed'
         self.state = "Closed"
-    
+
     def get_state(self):
         """Whether the shutter is Open or Closed."""
         return self._last_set_state
-    
+
 
 class ShutterUI(QtWidgets.QWidget, UiTools):
+
     def __init__(self, shutter, parent=None):
         assert isinstance(shutter, Shutter), 'instrument must be a Shutter'
         self.shutter = shutter
         super(ShutterUI, self).__init__(parent)
         uic.loadUi(os.path.join(os.path.dirname(__file__), 'shutter.ui'), self)
-        self.auto_connect_by_name(controlled_object = self.shutter,verbose = False)
+        self.auto_connect_by_name(controlled_object=self.shutter, verbose=False)
+
     #    self.state.stateChanged.connect(self.on_change)
 
     def on_change(self):
         self.shutter.toggle()
 
+
 class DummyShutter(Shutter):
     """A stub class to simulate a shutter"""
     _open = DumbNotifiedProperty(False)
+
     def __init__(self):
         """Create a dummy shutter object"""
         self._open = False
         super(DummyShutter, self).__init__()
-        
+
     def toggle(self):
         """toggle the state of the shutter"""
         self._open = not self._open
-    
+
     def get_state(self):
         """Return the state of the shutter, a string reading 'open' or 'closed'"""
         return "Open" if self._open else "Closed"
-        
+
     def set_state(self, value):
         """Set the state of the shutter (to open or closed)"""
         if isinstance(value, str):
             self._open = (value.lower() == "open")
         elif isinstance(value, bool):
             self._open = value
-        
+
 
 if __name__ == '__main__':
     import sys
@@ -189,8 +206,8 @@ if __name__ == '__main__':
     state_peek = QuickControlBox(title="Internal State")
     state_peek.add_checkbox("_open", title="Shutter Open")
     state_peek.auto_connect_by_name(controlled_object=shutter)
-    state_peek.show()    
-    
+    state_peek.show()
+
     ui = shutter.get_qt_ui()
     ui.show()
     sys.exit(app.exec_())

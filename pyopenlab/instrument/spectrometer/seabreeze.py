@@ -30,18 +30,30 @@ Contents:
 @author: Richard Bowman (rwb27)
 """
 import ctypes
-from ctypes import byref, c_int, c_ulong, c_double
-import numpy as np
-import threading
-from pyopenlab.instrument import Instrument
-from pyopenlab.utils.gui import QtCore, QtGui, QtWidgets, uic
-from pyopenlab.instrument.spectrometer import Spectrometer, Spectrometers, SpectrometerControlUI, SpectrometerDisplayUI, SpectrometerUI
-import os
-import h5py
-import inspect
+from ctypes import byref
+from ctypes import c_double
+from ctypes import c_int
+from ctypes import c_ulong
 import datetime
-from pyopenlab.utils.array_with_attrs import ArrayWithAttrs
+import inspect
+import os
+import threading
+
+import h5py
+import numpy as np
+
 from pyopenlab.datafile import DataFile
+from pyopenlab.instrument import Instrument
+from pyopenlab.instrument.spectrometer import Spectrometer
+from pyopenlab.instrument.spectrometer import SpectrometerControlUI
+from pyopenlab.instrument.spectrometer import SpectrometerDisplayUI
+from pyopenlab.instrument.spectrometer import Spectrometers
+from pyopenlab.instrument.spectrometer import SpectrometerUI
+from pyopenlab.utils.array_with_attrs import ArrayWithAttrs
+from pyopenlab.utils.gui import QtCore
+from pyopenlab.utils.gui import QtGui
+from pyopenlab.utils.gui import QtWidgets
+from pyopenlab.utils.gui import uic
 
 try:
     seabreeze = ctypes.cdll.seabreeze
@@ -100,6 +112,7 @@ def shutdown_seabreeze():
 
 
 class OceanOpticsError(Exception):
+
     def __init__(self, code):
         self.code = code
 
@@ -114,7 +127,7 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
     spectrometer you want, starting at 0.  It has traits, so you can call up a
     GUI to control the spectrometer with s.configure_traits."""
 
-    metadata_property_names = Spectrometer.metadata_property_names+ ("tec_temperature",)
+    metadata_property_names = Spectrometer.metadata_property_names + ("tec_temperature",)
 
     @staticmethod
     def shutdown_seabreeze():
@@ -166,18 +179,16 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
         self._isOpen = False
         self._open()
         super(OceanOpticsSpectrometer, self).__init__()
-        self.get_API_version() 
+        self.get_API_version()
         self._minimum_integration_time = None
         self.integration_time = self.minimum_integration_time
         self._tec_enabled = True
         self.enable_tec = True
-        
+
         self._file = inspect.getfile(self.__class__)
-        
+
         # https://bugs.python.org/issue12920 getfile fails when running the script directly,
         # or when using IPython after script execution
-    
-        
 
     def __del__(self):
         self._close()
@@ -206,13 +217,17 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
 
     def open_config_file(self):
         if self._config_file is None:
-            
+
             d = os.path.dirname(self._file)
-            self._config_file = DataFile(h5py.File(os.path.join(d, self.model_name+'_'+self.serial_number+'_config.h5'), 'a'))
+            self._config_file = DataFile(
+                h5py.File(
+                    os.path.join(d, self.model_name + '_' + self.serial_number + '_config.h5'),
+                    'a'))
             self._config_file.attrs['date'] = datetime.datetime.now().strftime("%H:%M %d/%m/%y")
         return self._config_file
 
     config_file = property(open_config_file)
+
     def get_API_version(self):
         N = 32  # make a buffer for the DLL to return a string into
         s = ctypes.create_string_buffer(N)
@@ -222,7 +237,7 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
             self.API_ver = 2
         except:
             self.API_ver = 1
-        check_error(e)        
+        check_error(e)
 
     def get_model_name(self):
         if self._model_name is None:
@@ -278,12 +293,15 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
         """Set the integration time"""
         e = ctypes.c_int()
         if milliseconds < self.minimum_integration_time:
-            raise ValueError("Cannot set integration time below %d microseconds" % self.minimum_integration_time)
+            raise ValueError("Cannot set integration time below %d microseconds" %
+                             self.minimum_integration_time)
         if self.API_ver == 1:
-            seabreeze.seabreeze_set_integration_time(self.index, byref(e), c_ulong(int(milliseconds * 1000)))
+            seabreeze.seabreeze_set_integration_time(self.index, byref(e),
+                                                     c_ulong(int(milliseconds * 1000)))
         if self.API_ver == 2:
-            seabreeze.seabreeze_set_integration_time_microsec(self.index, byref(e), c_ulong(int(milliseconds * 1000)))
-        
+            seabreeze.seabreeze_set_integration_time_microsec(self.index, byref(e),
+                                                              c_ulong(int(milliseconds * 1000)))
+
         check_error(e)
         self._latest_integration_time = milliseconds
 
@@ -294,9 +312,11 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
         if self._minimum_integration_time is None:
             e = ctypes.c_int()
             if self.API_ver == 1:
-                min_time = seabreeze.seabreeze_get_minimum_integration_time_micros(self.index, byref(e))
+                min_time = seabreeze.seabreeze_get_minimum_integration_time_micros(
+                    self.index, byref(e))
             if self.API_ver == 2:
-                min_time = seabreeze.seabreeze_get_min_integration_time_microsec(self.index, byref(e))   
+                min_time = seabreeze.seabreeze_get_min_integration_time_microsec(
+                    self.index, byref(e))
             check_error(e)
             self._minimum_integration_time = min_time / 1000.
         return self._minimum_integration_time
@@ -334,13 +354,13 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
             for i in range(100):
                 temperature = read_tec_temperature(self.index, byref(e))
                 check_error(e)
-                if temperature==temperature_0:
+                if temperature == temperature_0:
                     break
                 else:
-                    temperature_0=temperature
-                if i==99:
-                    self.log('Temperature reading inconsitent after 100 attmpets','WARN')
-           
+                    temperature_0 = temperature
+                if i == 99:
+                    self.log('Temperature reading inconsitent after 100 attmpets', 'WARN')
+
             return temperature
         except OceanOpticsError as error:
             print(error)
@@ -391,7 +411,8 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
         N = seabreeze.seabreeze_get_formatted_spectrum_length(self.index, byref(e))
         with self._comms_lock:
             spectrum_carray = (c_double * N)()  # this should create a c array of doubles, length N
-            seabreeze.seabreeze_get_formatted_spectrum(self.index, byref(e), byref(spectrum_carray), N)
+            seabreeze.seabreeze_get_formatted_spectrum(self.index, byref(e), byref(spectrum_carray),
+                                                       N)
         check_error(e)  # throw an exception if something went wrong
         new_spectrum = np.array(list(spectrum_carray))
 
@@ -400,7 +421,7 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
         else:
             return new_spectrum
 
-    def get_qt_ui(self, control_only=False, display_only = False):
+    def get_qt_ui(self, control_only=False, display_only=False):
         """Return a Qt Widget for controlling the spectrometer.
 
         If control_only is true, this will not contain a graph of the spectrum.
@@ -415,35 +436,41 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
     def get_control_widget(self):
         """Convenience function """
         return self.get_qt_ui(control_only=True)
-        
+
     def get_preview_widget(self):
         """Convenience function """
         return self.get_qt_ui(display_only=True)
 
+
 class OceanOpticsControlUI(SpectrometerControlUI):
+
     def __init__(self, spectrometer):
-        assert isinstance(spectrometer, OceanOpticsSpectrometer), 'spectrometer must be an OceanOpticsSpectrometer'
-        super(OceanOpticsControlUI, self).__init__(spectrometer,os.path.join(os.path.dirname(__file__),'ocean_optics_controls.ui'))
-#        self.tec_temperature.setValidator(QtGui.QDoubleValidator())
+        assert isinstance(
+            spectrometer,
+            OceanOpticsSpectrometer), 'spectrometer must be an OceanOpticsSpectrometer'
+        super(OceanOpticsControlUI,
+              self).__init__(spectrometer,
+                             os.path.join(os.path.dirname(__file__), 'ocean_optics_controls.ui'))
+        #        self.tec_temperature.setValidator(QtGui.QDoubleValidator())
         # self.tec_temperature.textChanged.connect(self.check_state)
         # self.tec_temperature.textChanged.connect(self.update_param)
         # self.tec_temperature.setText(str(spectrometer.tec_temperature))
-        try: 
+        try:
             self.spectrometer.get_tec_temperature()
             tec = True
         except AttributeError as e:
             print(e, 'removing cooling functionality')
             tec = False
         if tec:
-            
+
             self.set_tec_temperature_pushButton.clicked.connect(self.gui_set_tec_temperature)
             self.read_tec_temperature_pushButton.clicked.connect(self.gui_read_tec_tempeature)
             self.enable_tec.stateChanged.connect(self.update_enable_tec)
             self.enable_tec.setChecked(self.spectrometer.enable_tec)
-            initial_temperature = np.round(self.spectrometer.tec_temperature, decimals = 1)
+            initial_temperature = np.round(self.spectrometer.tec_temperature, decimals=1)
             self.tec_temperature_lcdNumber.display(float(initial_temperature))
             self.set_tec_temperature_LineEdit.setText(str(initial_temperature))
-            self.update_enable_tec(0) # sometimes helps enable cooling
+            self.update_enable_tec(0)  # sometimes helps enable cooling
             self.update_enable_tec(1)
         else:
             self.set_tec_temperature_pushButton.setVisible(False)
@@ -451,7 +478,7 @@ class OceanOpticsControlUI(SpectrometerControlUI):
             self.enable_tec.setVisible(False)
             self.tec_temperature_lcdNumber.setVisible(False)
             self.set_tec_temperature_LineEdit.setVisible(False)
-            
+
     def update_param(self, value):
         sender = self.sender()
         if sender.validator() is not None:
@@ -468,13 +495,13 @@ class OceanOpticsControlUI(SpectrometerControlUI):
                 self.spectrometer.tec_temperature = float(value)
             except ValueError:
                 pass
-    
+
     def gui_set_tec_temperature(self):
         self.spectrometer.tec_temperature = float(self.set_tec_temperature_LineEdit.text().strip())
-    
+
     def gui_read_tec_tempeature(self):
         self.tec_temperature_lcdNumber.display(float(self.spectrometer.tec_temperature))
-    
+
     def update_enable_tec(self, state):
         if state == QtCore.Qt.Checked:
             self.spectrometer.enable_tec = True
@@ -482,10 +509,10 @@ class OceanOpticsControlUI(SpectrometerControlUI):
             self.spectrometer.enable_tec = False
 
 
-
 def main():
-    from pyopenlab.instrument.spectrometer import Spectrometers
     import sys
+
+    from pyopenlab.instrument.spectrometer import Spectrometers
     from pyopenlab.utils.gui import get_qt_app
 
     try:
@@ -500,10 +527,10 @@ def main():
             if s.model_name in ["QE65000", "QE-PRO"]:
                 s.set_tec_temperature = -20
             s.read()
- #       app = get_qt_app()
- #       ui = spectrometers.get_qt_ui()
- #       ui.show()
- #       sys.exit(app.exec_()) #this is the "long way" of running a GUI
+#       app = get_qt_app()
+#       ui = spectrometers.get_qt_ui()
+#       ui.show()
+#       sys.exit(app.exec_()) #this is the "long way" of running a GUI
         spectrometers.show_gui()  # the "short way" of running a GUI
     except OceanOpticsError as error:
         print("An error occurred with the spectrometer: %s" % error)
@@ -514,6 +541,8 @@ def main():
         except:  # of course, if there's no spectrometer this will fail, hence the error handling
             shutdown_seabreeze()  # reset things if we've had errors
             print("The spectrometer did not close cleanly. SeaBreeze has been reset.")
+
+
 # to alter max/min: s.spectrum_plot.value_mapper.range.high=0.01
 
 # example code:
@@ -522,7 +551,7 @@ if __name__ == "__main__":
     # spec1 = OceanOpticsSpectrometer(1)
     # # spec1.show_gui(blocking = False)
     spec2 = OceanOpticsSpectrometer(0)
-    spec2.show_gui(blocking = False)
+    spec2.show_gui(blocking=False)
 #    main()
-    # specs = Spectrometers([spec1, spec2])
-    # specs.show_gui(blocking = False)
+# specs = Spectrometers([spec1, spec2])
+# specs.show_gui(blocking = False)

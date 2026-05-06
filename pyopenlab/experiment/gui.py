@@ -6,9 +6,15 @@ Basic GUI methods for the Experiment class.
 from __future__ import print_function
 
 from builtins import object
-from pyopenlab.experiment import Experiment, ExperimentStopped
-from pyopenlab.utils.gui import QtCore, QtGui, QtWidgets
-from pyopenlab.ui.ui_tools import UiTools, QuickControlBox
+
+from pyopenlab.experiment import Experiment
+from pyopenlab.experiment import ExperimentStopped
+from pyopenlab.ui.ui_tools import QuickControlBox
+from pyopenlab.ui.ui_tools import UiTools
+from pyopenlab.utils.gui import QtCore
+from pyopenlab.utils.gui import QtGui
+from pyopenlab.utils.gui import QtWidgets
+
 
 class ExperimentGuiMixin(object):
     """This class will add a basic GUI to an experiment, showing logs & data.
@@ -17,42 +23,47 @@ class ExperimentGuiMixin(object):
     to be overridden with useful settings for the experiment, for example 
     using a QuickControlBox.
     """
+
     def get_qt_ui(self):
         """Create a Qt Widget representing the experiment."""
         return ExperimentWidget(self)
-    
+
     def get_data_widget(self):
         """Create a QWidget that shows the latest data"""
         return DataWidget(self)
-    
+
     def get_log_widget(self):
         """A widget that displays logs in a scrolling display."""
         return LogWidget(self)
-        
+
     def get_control_widget(self):
         """Return a widget that controls the experiment's settings."""
         return QuickControlBox()
 
+
 class ExperimentWithGui(Experiment, ExperimentGuiMixin):
     """Experiment class, extended to have a basic GUI including logs & data."""
-    pass #see the mixin for what happens here...
-    
+    pass  #see the mixin for what happens here...
+
+
 class LogWidget(QuickControlBox):
     """A widget for displaying the logs from an Experiment."""
+
     def __init__(self, experiment):
         """Create a widget to display an experiment's logs."""
         self.experiment = experiment
         super(LogWidget, self).__init__()
-        
+
         self.text_edit = QtWidgets.QPlainTextEdit()
         self.text_edit.setReadOnly(True)
         self.layout().addRow(self.text_edit)
         self.add_button("clear", title="Clear Logs")
         self.auto_connect_by_name()
-        
+
     def clear(self):
         """Clear the text box, and the logs of the experiment."""
         self.experiment.log_messages = ""
+
 
 class QProgressDialogWithDeferredUpdate(QtWidgets.QProgressDialog):
     """A QProcessDialog that can have its value updated from a background thread."""
@@ -83,10 +94,11 @@ class ExperimentWithProgressBar(Experiment):
     """
     progress_maximum = None
     progress_minimum = 0
+
     def prepare_to_run(self, *args, **kwargs):
         """Set up the experiment.  Must be overridden to set self.progress_maximum"""
         if self.progress_maximum is not None:
-            return # If progress_maximum has been set elsewhere, that's ok...
+            return  # If progress_maximum has been set elsewhere, that's ok...
         raise NotImplementedError("Experiments with progress bars must set self.progress_maximum"
                                   "in the prepare_to_run method.")
 
@@ -96,20 +108,20 @@ class ExperimentWithProgressBar(Experiment):
         This method replaces `Experiment.start()` and is blocking; it can safely be called
         from a Qt signal from a button.
         """
-     #   self.prepare_to_run(*args, **kwargs)
+        #   self.prepare_to_run(*args, **kwargs)
         if self.progress_maximum is None:
             raise NotImplementedError("self.progress_maximum was not set - this is necessary.")
-        self._progress_bar = QProgressDialogWithDeferredUpdate(
-                                                   self.__class__.__name__,
-                                                   "Abort",
-                                                   self.progress_minimum,
-                                                   self.progress_maximum)
+        self._progress_bar = QProgressDialogWithDeferredUpdate(self.__class__.__name__, "Abort",
+                                                               self.progress_minimum,
+                                                               self.progress_maximum)
         self._progress_bar.show()
         self._progress_bar.setAutoClose(True)
         self._progress_bar.canceled.disconnect()
         self._progress_bar.canceled.connect(self.stop_and_cancel_dialog)
         self._experiment_thread = self.run_in_background(*args, **kwargs)
-   #     self._progress_bar.exec_()
+
+
+#     self._progress_bar.exec_()
 
     def stop_and_cancel_dialog(self):
         """Abort the experiment and cancel the dialog once done."""
@@ -127,12 +139,15 @@ class ExperimentWithProgressBar(Experiment):
         try:
             self._progress_bar.setValueLater(progress)
         except AttributeError:
-            print("Error setting progress bar to {} (are you running via run_modally()?)".format(progress))
+            print("Error setting progress bar to {} (are you running via run_modally()?)".format(
+                progress))
         if self._stop_event.is_set():
             raise ExperimentStopped()
 
+
 class RunFunctionWithProgressBar(ExperimentWithProgressBar):
     """An Experiment object that simply runs a function modally"""
+
     def __init__(self, target, progress_maximum=None, *args, **kwargs):
         super(RunFunctionWithProgressBar, self).__init__(*args, **kwargs)
         self.target = target
@@ -142,8 +157,10 @@ class RunFunctionWithProgressBar(ExperimentWithProgressBar):
     def run(self, *args, **kwargs):
         print("running function {}".format(self.target))
         #, update_progress=self.update_progress,
-        self.target(update_progress=self.update_progress,*args, **kwargs)
-        self.update_progress(self.progress_maximum) # Ensure the progress dialog closes unless we're aborted.
+        self.target(update_progress=self.update_progress, *args, **kwargs)
+        self.update_progress(
+            self.progress_maximum)  # Ensure the progress dialog closes unless we're aborted.
+
 
 def run_function_modally(function, progress_maximum, *args, **kwargs):
     """Create a temporary ExperimentWithProgressBar and run it modally.
@@ -157,6 +174,6 @@ def run_function_modally(function, progress_maximum, *args, **kwargs):
     Positional and keyword arguments are passed through, the only other argument needed is
     progress_maximum, which sets the final value of progress.
     """
- #   function(*args, **kwargs)
+    #   function(*args, **kwargs)
     e = RunFunctionWithProgressBar(function, progress_maximum=progress_maximum)
     e.run_modally(*args, **kwargs)

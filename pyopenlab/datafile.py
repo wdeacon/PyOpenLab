@@ -10,20 +10,24 @@ This module provides the DataFile class, a subclass of h5py's File class with a 
 
 __author__ = "rwb27"
 
-import h5py
+import datetime
 import os
 import os.path
-import datetime
 import re
 import sys
+
+import h5py
+
 try:
     from collections import Sequence
 except ImportError:
     from collections.abc import Sequence
-import pyopenlab.utils.version
+
 import numpy as np
-from pyopenlab.utils.show_gui_mixin import ShowGUIMixin
+
 from pyopenlab.utils.array_with_attrs import DummyHDF5Group
+from pyopenlab.utils.show_gui_mixin import ShowGUIMixin
+import pyopenlab.utils.version
 
 
 def attributes_from_dict(group_or_dataset, dict_of_attributes):
@@ -34,7 +38,9 @@ def attributes_from_dict(group_or_dataset, dict_of_attributes):
             try:
                 attrs[key] = value
             except TypeError:
-                print("Warning, metadata {0}='{1}' can't be saved in HDF5.  Saving with str()".format(key, value))
+                print(
+                    "Warning, metadata {0}='{1}' can't be saved in HDF5.  Saving with str()".format(
+                        key, value))
                 attrs[key] = str(value)
     #group_or_dataset.attrs.update(dict_of_attributes) #We can't do this - we'd lose the error handling.
 
@@ -66,10 +72,11 @@ def get_filename(data_dir, basename='data', fformat='.h5'):
     """Creates a dated directory path and returns a file name to open a file there."""
     date = datetime.datetime.now()
     output_dir = os.path.join(data_dir, str(date.year),
-                              '{:02d}'.format(date.month)+'. '+date.strftime('%b'),
+                              '{:02d}'.format(date.month) + '. ' + date.strftime('%b'),
                               '{:02d}'.format(date.day))
-    if not os.path.exists(output_dir): os.makedirs(output_dir)
-    file_path = os.path.join(output_dir,basename+fformat)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    file_path = os.path.join(output_dir, basename + fformat)
     return file_path
 
 
@@ -77,19 +84,23 @@ def get_unique_filename(data_dir, basename='data', fformat='.h5'):
     """Creates a dated directory path and returns a unique file name to open a file there."""
     date = datetime.datetime.now()
     output_dir = os.path.join(data_dir, str(date.year),
-                              '{:02d}'.format(date.month)+'. '+date.strftime('%b'),
-                              '{:02d}'.format(date.day), basename+'s')
-    if not os.path.exists(output_dir): os.makedirs(output_dir)
+                              '{:02d}'.format(date.month) + '. ' + date.strftime('%b'),
+                              '{:02d}'.format(date.day), basename + 's')
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
     unique_id = 1
-    file_path = os.path.join(output_dir,basename+'_'+str(unique_id)+fformat)
+    file_path = os.path.join(output_dir, basename + '_' + str(unique_id) + fformat)
     while os.path.exists(file_path):
         unique_id += 1
-        file_path = os.path.join(output_dir,basename+'_'+str(unique_id)+fformat)
+        file_path = os.path.join(output_dir, basename + '_' + str(unique_id) + fformat)
     return file_path
 
 
-def get_file(destination='local', rel_path='Desktop/Data',
-             basename='data', fformat='.h5', set_current=True):
+def get_file(destination='local',
+             rel_path='Desktop/Data',
+             basename='data',
+             fformat='.h5',
+             set_current=True):
     """Convenience function to quickly get a current DataFile object."""
     data_dir = get_data_dir(destination, rel_path)
     fname = get_filename(data_dir, basename, fformat)
@@ -97,7 +108,7 @@ def get_file(destination='local', rel_path='Desktop/Data',
     if set_current:
         f.make_current()
     return f
-    
+
 
 def transpose_datafile(data_set):
     ''' A function that opens a datafile, transposes and resaves'''
@@ -105,7 +116,8 @@ def transpose_datafile(data_set):
     transposed_datafile = np.copy(data_set[...].T)
     file_name = data_set.name.split('/')[-1]
     del parent[file_name]
-    parent.create_dataset(file_name,data = transposed_datafile)
+    parent.create_dataset(file_name, data=transposed_datafile)
+
 
 def wrap_h5py_item(item):
     """Wrap an h5py object: groups are returned as Group objects, datasets are unchanged."""
@@ -115,10 +127,12 @@ def wrap_h5py_item(item):
     else:
         return item  # for now, don't bother wrapping datasets
 
+
 def ensure_str(str_or_bytes):
     if type(str_or_bytes) in (bytes, np.bytes_):
         return str_or_bytes.decode()
     return str(str_or_bytes)
+
 
 def sort_by_timestamp(hdf5_group):
     """a quick function for sorting hdf5 groups (or files or dictionarys...) by timestamp """
@@ -129,16 +143,19 @@ def sort_by_timestamp(hdf5_group):
 
             time_stamp_str = ensure_str(value.attrs['creation_timestamp'])
             try:
-                time_stamp_float = datetime.datetime.strptime(time_stamp_str,"%Y-%m-%dT%H:%M:%S.%f")
+                time_stamp_float = datetime.datetime.strptime(time_stamp_str,
+                                                              "%Y-%m-%dT%H:%M:%S.%f")
             except ValueError:
-                time_stamp_str =  time_stamp_str+'.0'
-                time_stamp_float = datetime.datetime.strptime(time_stamp_str,"%Y-%m-%dT%H:%M:%S.%f")
+                time_stamp_str = time_stamp_str + '.0'
+                time_stamp_float = datetime.datetime.strptime(time_stamp_str,
+                                                              "%Y-%m-%dT%H:%M:%S.%f")
             time_stamps.append(time_stamp_float)
         keys = np.array(keys)[np.argsort(time_stamps)]
     except KeyError:
         keys.sort(key=lambda n: n.split('_')[-1] if '_' in n else n)
     items_lists = [(key, hdf5_group[key]) for key in keys]
     return items_lists
+
 
 class Group(h5py.Group, ShowGUIMixin):
     """HDF5 Group, a collection of datasets and subgroups.
@@ -148,12 +165,12 @@ class Group(h5py.Group, ShowGUIMixin):
 
     def __getitem__(self, key):
         item = super(Group, self).__getitem__(key)  # get the dataset or group
-        return wrap_h5py_item(item) #wrap as a Group if necessary
-        
+        return wrap_h5py_item(item)  #wrap as a Group if necessary
+
     @property
     def parent(self):
         """Return the group to which this object belongs."""
-        return wrap_h5py_item(super(Group,self).parent)
+        return wrap_h5py_item(super(Group, self).parent)
 
     def find_unique_name(self, name):
         """Find a unique name for a subgroup or dataset in this group.
@@ -179,9 +196,11 @@ class Group(h5py.Group, ShowGUIMixin):
         come in alphabetical order, so 10 comes before 2).  `name` is the
         name passed in without the _0 suffix.
         """
-        items = [wrap_h5py_item(v) for k, v in list(self.items())
-                 if k.startswith(name)  # only items that start with `name`
-                 and re.match(r"_*(\d+)$", k[len(name):])]  # and end with numbers
+        items = [
+            wrap_h5py_item(v)
+            for k, v in list(self.items())
+            if k.startswith(name)  # only items that start with `name`
+            and re.match(r"_*(\d+)$", k[len(name):])]  # and end with numbers
         return sorted(items, key=h5_item_number)
 
     def count_numbered_items(self, name):
@@ -210,7 +229,7 @@ class Group(h5py.Group, ShowGUIMixin):
         an error if the desired name exists already.
         """
         if auto_increment and name is not None:
-            name = self.find_unique_name(name) #name is None if creating via the dict interface
+            name = self.find_unique_name(name)  #name is None if creating via the dict interface
         g = super(Group, self).create_group(name)
         if timestamp:
             g.attrs.create('creation_timestamp', datetime.datetime.now().isoformat().encode())
@@ -222,8 +241,17 @@ class Group(h5py.Group, ShowGUIMixin):
         """Return a subgroup, creating it if it does not exist."""
         return Group(super(Group, self).require_group(name).id)  # wrap the returned group
 
-    def create_dataset(self, name, auto_increment=True, shape=None, dtype=None,
-                       data=None, attrs=None, timestamp=True,autoflush = True, *args, **kwargs):
+    def create_dataset(self,
+                       name,
+                       auto_increment=True,
+                       shape=None,
+                       dtype=None,
+                       data=None,
+                       attrs=None,
+                       timestamp=True,
+                       autoflush=True,
+                       *args,
+                       **kwargs):
         """Create a new dataset, optionally with an auto-incrementing name.
 
         :param name: the name of the new dataset
@@ -237,23 +265,31 @@ class Group(h5py.Group, ShowGUIMixin):
 
         Further arguments are passed to h5py.Group.create_dataset.
         """
-        if auto_increment and name is not None: #name is None if we are creating via the dict interface
+        if auto_increment and name is not None:  #name is None if we are creating via the dict interface
             name = self.find_unique_name(name)
         dset = super(Group, self).create_dataset(name, shape, dtype, data, *args, **kwargs)
         if timestamp:
             dset.attrs.create('creation_timestamp', datetime.datetime.now().isoformat().encode())
-        if hasattr(data, "attrs"): #if we have an ArrayWithAttrs, use the attrs!
+        if hasattr(data, "attrs"):  #if we have an ArrayWithAttrs, use the attrs!
             attributes_from_dict(dset, data.attrs)
         if attrs is not None:
             attributes_from_dict(dset, attrs)  # quickly set the attributes
-        if autoflush==True:
+        if autoflush == True:
             dset.file.flush()
         return dset
 
-    create_dataset.__doc__ += '\n\n'+h5py.Group.create_dataset.__doc__
+    create_dataset.__doc__ += '\n\n' + h5py.Group.create_dataset.__doc__
 
-    def require_dataset(self, name, auto_increment=True, shape=None, dtype=None, data=None, attrs=None, timestamp=True,
-                        *args, **kwargs):
+    def require_dataset(self,
+                        name,
+                        auto_increment=True,
+                        shape=None,
+                        dtype=None,
+                        data=None,
+                        attrs=None,
+                        timestamp=True,
+                        *args,
+                        **kwargs):
         """Require a new dataset, optionally with an auto-incrementing name."""
         if name not in self:
             dset = self.create_dataset(name, auto_increment, shape, dtype, data, attrs, timestamp,
@@ -262,18 +298,42 @@ class Group(h5py.Group, ShowGUIMixin):
             dset = self[name]
         return dset
 
-    def create_resizable_dataset(self, name, shape=(0,), maxshape=(None,), auto_increment=True, dtype=None, attrs=None, timestamp=True,
-                                 *args, **kwargs):
+    def create_resizable_dataset(self,
+                                 name,
+                                 shape=(0,),
+                                 maxshape=(None,),
+                                 auto_increment=True,
+                                 dtype=None,
+                                 attrs=None,
+                                 timestamp=True,
+                                 *args,
+                                 **kwargs):
         """See create_dataset documentation"""
-        return self.create_dataset(name, auto_increment, shape, dtype, attrs, timestamp,
-                                   maxshape=maxshape, chunks=True, *args, **kwargs)
+        return self.create_dataset(name,
+                                   auto_increment,
+                                   shape,
+                                   dtype,
+                                   attrs,
+                                   timestamp,
+                                   maxshape=maxshape,
+                                   chunks=True,
+                                   *args,
+                                   **kwargs)
 
-    def require_resizable_dataset(self, name, shape=(0,), maxshape=(None,), auto_increment=True, dtype=None, attrs=None, timestamp=True,
-                                  *args, **kwargs):
+    def require_resizable_dataset(self,
+                                  name,
+                                  shape=(0,),
+                                  maxshape=(None,),
+                                  auto_increment=True,
+                                  dtype=None,
+                                  attrs=None,
+                                  timestamp=True,
+                                  *args,
+                                  **kwargs):
         """Create a resizeable dataset, or return the dataset if it exists."""
         if name not in self:
-            dset = self.create_resizable_dataset(name, shape, maxshape, auto_increment, dtype, attrs, timestamp,
-                                                 *args, **kwargs)
+            dset = self.create_resizable_dataset(name, shape, maxshape, auto_increment, dtype,
+                                                 attrs, timestamp, *args, **kwargs)
         else:
             dset = self[name]
         return dset
@@ -286,21 +346,24 @@ class Group(h5py.Group, ShowGUIMixin):
         """Append the given data to an existing dataset, creating it if it doesn't exist."""
         if name not in self:
             if hasattr(value, 'shape'):
-                shape = (0,)+value.shape
-                maxshape = (None,)+value.shape
+                shape = (0,) + value.shape
+                maxshape = (None,) + value.shape
             elif isinstance(value, Sequence):
                 shape = (0, len(value))
                 maxshape = (None, len(value))  # tuple(None for i in shape)
             else:
-                shape=(0,)
+                shape = (0,)
                 maxshape = (None,)
-            dset = self.require_dataset(name, shape=shape, dtype=dtype,
-                                        maxshape=maxshape, chunks=True)
+            dset = self.require_dataset(name,
+                                        shape=shape,
+                                        dtype=dtype,
+                                        maxshape=maxshape,
+                                        chunks=True)
         else:
             dset = self[name]
         index = dset.shape[0]
-        dset.resize(index+1,0)
-        dset[index,...] = value
+        dset.resize(index + 1, 0)
+        dset[index, ...] = value
 
     def get_qt_ui(self):
         """Return a file browser widget for this group."""
@@ -313,10 +376,11 @@ class Group(h5py.Group, ShowGUIMixin):
     def basename(self):
         """Return the last part of self.name, i.e. just the final component of the path."""
         return self.name.rsplit("/", 1)[-1]
-        
+
     def timestamp_sorted_items(self):
         """Return a sorted list of items """
         return sort_by_timestamp(self)
+
 
 class DataFile(Group):
     """Represent an HDF5 file object.
@@ -325,8 +389,13 @@ class DataFile(Group):
     change in the future...
     """
 
-    def __init__(self, name, mode='a', save_version_info=False,
-                 update_current_group=True, *args, **kwargs):
+    def __init__(self,
+                 name,
+                 mode='a',
+                 save_version_info=False,
+                 update_current_group=True,
+                 *args,
+                 **kwargs):
         """Open or create an HDF5 file.
 
         :param name: The filename/path of the HDF5 file to open or create, or an h5py File object
@@ -345,34 +414,34 @@ class DataFile(Group):
         with information about the current module and system.
         """
         if isinstance(name, h5py.Group):
-            f = name #if it's already an open file, just use it
+            f = name  #if it's already an open file, just use it
         else:
             f = h5py.File(name, mode, *args, **kwargs)  # open the file
             try:
                 f = h5py.File(name, mode, *args, **kwargs)
             except OSError as e:
-                print("problem opening file", e)            
-                if os.path.getsize(name) < 100 and mode == 'a': #1kB/10
-                    os.remove(name) # dirty hack to work around mode=a not working
-                                        # if the file is empty
+                print("problem opening file", e)
+                if os.path.getsize(name) < 100 and mode == 'a':  #1kB/10
+                    os.remove(name)  # dirty hack to work around mode=a not working
+                    # if the file is empty
                 else:
                     raise e
                 f = h5py.File(name, mode, *args, **kwargs)
-        
-        
-        
-        super(DataFile, self).__init__(f.id)  # initialise a Group object with the root group of the file (saves re-wrapping all the functions for File)
+
+        super(DataFile, self).__init__(
+            f.id
+        )  # initialise a Group object with the root group of the file (saves re-wrapping all the functions for File)
         if save_version_info and self.file.mode != 'r':
             #Save version information if needed
-            n=0
+            n = 0
             while "version_info_%04d" % n in self.attrs:
                 n += 1
             try:
-                self.attrs.create("version_info_%04d" % n, np.string_(pyopenlab.utils.version.version_info_string()))
+                self.attrs.create("version_info_%04d" % n,
+                                  np.string_(pyopenlab.utils.version.version_info_string()))
             except:
-               print("Error: could not save version information")
+                print("Error: could not save version information")
         self.update_current_group = update_current_group
-        
 
     def flush(self):
         self.file.flush()
@@ -384,20 +453,22 @@ class DataFile(Group):
         """Set this as the default location for all new data."""
         global _current_datafile
         _current_datafile = self
-        
+
     @property
     def filename(self):
         """ Returns the filename (full path) of the current datafile """
         return self.file.filename
-     
+
     @property
     def dirname(self):
         """ Returns the path of the datafolder the current datafile is in"""
         return os.path.dirname(self.file.filename)
 
+
 _current_datafile = None
 
-def current(create_if_none=True, create_if_closed=True, mode='a',working_directory = None):
+
+def current(create_if_none=True, create_if_closed=True, mode='a', working_directory=None):
     """Return the current data file, creating one if it does not exist.
 
     Arguments:
@@ -423,8 +494,8 @@ def current(create_if_none=True, create_if_closed=True, mode='a',working_directo
 
     if _current_datafile is None and create_if_none:
         print("No current data file, attempting to create...")
-        if working_directory==None:
-            working_directory=os.getcwd()
+        if working_directory == None:
+            working_directory = os.getcwd()
         try:  # we try to pop up a Qt file dialog
             import pyopenlab.utils.gui
             from pyopenlab.utils.gui import QtGui
@@ -432,7 +503,8 @@ def current(create_if_none=True, create_if_closed=True, mode='a',working_directo
             app = pyopenlab.utils.gui.get_qt_app()  # ensure Qt is running
             fname = QtWidgets.QFileDialog.getSaveFileName(
                 caption="Select Data File",
-                directory=os.path.join(working_directory, datetime.date.today().strftime("%Y-%m-%d.h5")),
+                directory=os.path.join(working_directory,
+                                       datetime.date.today().strftime("%Y-%m-%d.h5")),
                 filter="HDF5 Data (*.h5 *.hdf5)",
                 options=QtWidgets.QFileDialog.DontConfirmOverwrite,
             )
@@ -472,13 +544,15 @@ def set_current(datafile, **kwargs):
         print("opening file: ", datafile)
         _current_datafile = DataFile(datafile, **kwargs)  # open a new datafile
         return _current_datafile
-        
+
+
 def set_temporary_current_datafile():
     """Create a temporary datafile, for testing purposes."""
     pyopenlab.log("WARNING: using a temporary file")
     print("WARNING: using a file in memory as the current datafile.  DATA WILL NOT BE SAVED.")
     df = h5py.File("temporary_file.h5", driver='core', backing_store=False)
     return set_current(df)
+
 
 def close_current():
     """Close the current datafile"""
@@ -487,8 +561,12 @@ def close_current():
             _current_datafile.close()
         except:
             print("Error closing the data file")
+
+
 _current_group = None
 _use_current_group = False
+
+
 def set_current_group(selected_object):
     '''Grabs the currently selected group, using the parent group if a dataset is selected.
     This only works if the datafile the group resides in is the current datafile'''
@@ -498,25 +576,27 @@ def set_current_group(selected_object):
             potential_group = list(selected_object.values())[0]
         else:
             potential_group = selected_object
-        if type(selected_object) == Group or type(selected_object)==h5py.Group:
-            _current_group =  wrap_h5py_item(selected_object)
+        if type(selected_object) == Group or type(selected_object) == h5py.Group:
+            _current_group = wrap_h5py_item(selected_object)
         else:
             _current_group = wrap_h5py_item(potential_group.parent)
     except AttributeError:
         _current_group = current()
 
-def open_file(set_current_bool = True,mode = 'a'):
+
+def open_file(set_current_bool=True, mode='a'):
     """Open an existing data file"""
     global _current_datafile
     try:  # we try to pop up a Qt file dialog
         import pyopenlab.utils.gui
-        from pyopenlab.utils.gui import QtGui,QtWidgets
+        from pyopenlab.utils.gui import QtGui
+        from pyopenlab.utils.gui import QtWidgets
         app = pyopenlab.utils.gui.get_qt_app()  # ensure Qt is running
         fname = QtWidgets.QFileDialog.getOpenFileName(
             caption="Select Existing Data File",
             directory=os.path.join(os.getcwd()),
             filter="HDF5 Data (*.h5 *.hdf5)",
-#            options=qtgui.QFileDialog.DontConfirmOverwrite,
+            #            options=qtgui.QFileDialog.DontConfirmOverwrite,
         )
         if not isinstance(fname, str):
             fname = fname[0]  # work around version-dependent Qt behaviour :(
@@ -525,27 +605,29 @@ def open_file(set_current_bool = True,mode = 'a'):
             if set_current_bool == True:
                 set_current(fname, mode=mode)
             else:
-                return DataFile(fname,mode = mode )
+                return DataFile(fname, mode=mode)
         else:
             print("Cancelled by the user.")
     except Exception as e:
-            print("File dialog went wrong :(")
-            print(e)
+        print("File dialog went wrong :(")
+        print(e)
 
     return _current_datafile  # if there is a file return it
 
-def create_file(set_current_bool = False,mode = 'a'):
+
+def create_file(set_current_bool=False, mode='a'):
     """Create a data file"""
     global _current_datafile
     try:  # we try to pop up a Qt file dialog
         import pyopenlab.utils.gui
-        from pyopenlab.utils.gui import QtGui,QtWidgets
+        from pyopenlab.utils.gui import QtGui
+        from pyopenlab.utils.gui import QtWidgets
         app = pyopenlab.utils.gui.get_qt_app()  # ensure Qt is running
         fname = QtWidgets.QFileDialog.getSaveFileName(
             caption="Select Existing Data File",
             directory=os.path.join(os.getcwd()),
             filter="HDF5 Data (*.h5 *.hdf5)",
-#            options=qtgui.QFileDialog.DontConfirmOverwrite,
+            #            options=qtgui.QFileDialog.DontConfirmOverwrite,
         )
         if not isinstance(fname, str):
             fname = fname[0]  # work around version-dependent Qt behaviour :(
@@ -554,12 +636,12 @@ def create_file(set_current_bool = False,mode = 'a'):
             if set_current_bool == True:
                 set_current(fname, mode=mode)
             else:
-                return DataFile(fname,mode = mode )
+                return DataFile(fname, mode=mode)
         else:
             print("Cancelled by the user.")
     except Exception as e:
-            print("File dialog went wrong :(")
-            print(e)
+        print("File dialog went wrong :(")
+        print(e)
 
     return _current_datafile  # if there is a file return it
 

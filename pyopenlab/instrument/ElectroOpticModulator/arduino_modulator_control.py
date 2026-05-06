@@ -32,22 +32,26 @@ int lock_time=1000;
 
 """
 
-from pyopenlab.ui.ui_tools import QuickControlBox
-from pyopenlab.instrument.serial_instrument import SerialInstrument
-import numpy as np
-import matplotlib.pyplot as plt
-from time import sleep
 from random import shuffle
+from time import sleep
+
+import matplotlib.pyplot as plt
+import numpy as np
+
 from pyopenlab.analysis.curve_fitting import my_curve_fit
 from pyopenlab.analysis.find_index import find_index
+from pyopenlab.instrument.serial_instrument import SerialInstrument
+from pyopenlab.ui.ui_tools import QuickControlBox
+
 
 def fit_func(x, *params):
-    F=np.zeros(x.shape)
-    P=np.array([])
+    F = np.zeros(x.shape)
+    P = np.array([])
     for value in params:
-        P=np.append(P,value)
-    F=P[0]*(1+np.sin(P[1]*x+P[2]))+P[3]    
+        P = np.append(P, value)
+    F = P[0] * (1 + np.sin(P[1] * x + P[2])) + P[3]
     return F
+
 
 # def find_setpoint(x,y):
 #     ind1 = find_index(y,np.max(y))[0][0]
@@ -55,59 +59,62 @@ def fit_func(x, *params):
 #     x_value = np.round((x[ind1]+x[ind2])/2)
 #     return x_value
 
+
 class Modulator(SerialInstrument):
     termination_character = '\n'
-    s_mark='<'
-    e_mark='>'
-    legal_input=[ 'GVI', #:get_Vin() 
-                 'ST', #set_target(); 
-                 'SVO', #set_Vout();
-                 'GVO', #get_Vout;  
-                 'IL', #:is_locked; 
-                 'SL', # start_locking();
-                 'SL0', # start_locking() down slope;
-                 'SL1', # start_locking() up slope;
-                 'QL', # quit_locking;
-                 'SS', #:set_step;
-                 'GS', #:get_step
-                 'GT', #:get_target; 
-                 'SIT', #: set_input_tolerance; 
-                 'GIT', #: get_input_tolerance;
-                 ]
-        
-    port_settings = {'baudrate': 9600,
-                     'timeout': 0.05}
-    def __init__(self, port=None): # initialize communication and set device to zero
+    s_mark = '<'
+    e_mark = '>'
+    legal_input = [
+        'GVI',  #:get_Vin() 
+        'ST',  #set_target(); 
+        'SVO',  #set_Vout();
+        'GVO',  #get_Vout;  
+        'IL',  #:is_locked; 
+        'SL',  # start_locking();
+        'SL0',  # start_locking() down slope;
+        'SL1',  # start_locking() up slope;
+        'QL',  # quit_locking;
+        'SS',  #:set_step;
+        'GS',  #:get_step
+        'GT',  #:get_target; 
+        'SIT',  #: set_input_tolerance; 
+        'GIT',  #: get_input_tolerance;
+    ]
+
+    port_settings = {'baudrate': 9600, 'timeout': 0.05}
+
+    def __init__(self, port=None):  # initialize communication and set device to zero
         SerialInstrument.__init__(self, port)
-        
-    def correct_input(self, command): # check legal input
-        if (command in self.legal_input): 
+
+    def correct_input(self, command):  # check legal input
+        if (command in self.legal_input):
             return True
         else:
             return False
-       
-    def get_property(self,command, report_success=False): # get parameter
+
+    def get_property(self, command, report_success=False):  # get parameter
         if self.correct_input(command):
-            return self.query(self.s_mark+command+self.e_mark)
-        else: 
+            return self.query(self.s_mark + command + self.e_mark)
+        else:
             print('wrong command')
 
-    def set_property(self, command,value): # set state
+    def set_property(self, command, value):  # set state
         if self.correct_input(command):
-            self.write(self.s_mark+command+':'+str(value)+self.e_mark)
-    
+            self.write(self.s_mark + command + ':' + str(value) + self.e_mark)
+
     def flush_buffer(self, *args, **kwargs):
         out = super().query(*args, **kwargs)
         self.log(out, 'info')
         while self.readline() != '':
             pass
         print('finished flushing buffer' + str(self.readline()))
-        return out            
-    
-#    
-    
-    # def get_Vin(self):
-    #     return self.get_property('GVI')
+        return out
+
+#
+
+# def get_Vin(self):
+#     return self.get_property('GVI')
+
     def get_Vin(self):
         """
         adapted from serial bus instrument / query 
@@ -117,23 +124,24 @@ class Modulator(SerialInstrument):
         with self.communications_lock:
             self.flush_input_buffer()
             self.write('<GVI>')
-            data=''
-            while data=='':
+            data = ''
+            while data == '':
                 data = self.readline()
-            data=data[0:data.find(termination)]
+            data = data[0:data.find(termination)]
             return float(data)
-    
+
     def get_target(self):
         return self.get_property('GT')
+
     def set_target(self):
         self.set_property('ST')
         print('target set to value: ')
         return self.get_target()
-    
+
     # def get_Vout(self):
     #     output = self.get_property('GVO')
     #     return float(output)
-    
+
     def get_Vout(self):
         """
         adapted from serial bus instrument / query 
@@ -143,57 +151,56 @@ class Modulator(SerialInstrument):
         with self.communications_lock:
             self.flush_input_buffer()
             self.write('<GVO>')
-            data=''
-            while data=='':
+            data = ''
+            while data == '':
                 data = self.readline()
-            data=data[0:data.find(termination)]
+            data = data[0:data.find(termination)]
             return float(data)
 
-
-    
-    def set_Vout(self,Vout):
-        if Vout>=0 and Vout<=5000:
-            self.set_property(command = 'SVO',value = Vout)
+    def set_Vout(self, Vout):
+        if Vout >= 0 and Vout <= 5000:
+            self.set_property(command='SVO', value=Vout)
             output = self.get_Vout()
-            print('voltage set to:'+str(output)+'mV')
-        else: print('volatege not set, must be >=0 and <=5000')
-        
+            print('voltage set to:' + str(output) + 'mV')
+        else:
+            print('volatege not set, must be >=0 and <=5000')
+
     def is_locked(self):
         return self.get_property('IL') == 'True'
-    
+
     def start_lock(self):
-         self.write(self.s_mark+'SL'+self.e_mark)
-         
-    def start_lock_0(self): #down slope
-          self.write(self.s_mark+'SL0'+self.e_mark)
-          
-    def start_lock_1(self): #up slope
-          self.write(self.s_mark+'SL1'+self.e_mark)
-    
+        self.write(self.s_mark + 'SL' + self.e_mark)
+
+    def start_lock_0(self):  #down slope
+        self.write(self.s_mark + 'SL0' + self.e_mark)
+
+    def start_lock_1(self):  #up slope
+        self.write(self.s_mark + 'SL1' + self.e_mark)
+
     # def start_lock(self, slope = 0):
     #     self.write(self.s_mark+'SL'+f':{slope}'+self.e_mark)
-    
+
     def stop_lock(self):
-        self.write(self.s_mark+'QL'+self.e_mark)
-    
-    def set_step(self,value):
-        if value>=0 and value<=1000:
-            self.set_property('SS',value)
-        else: print('step out of bounds')
-        
+        self.write(self.s_mark + 'QL' + self.e_mark)
+
+    def set_step(self, value):
+        if value >= 0 and value <= 1000:
+            self.set_property('SS', value)
+        else:
+            print('step out of bounds')
+
     def get_step(self):
         return float(self.get_property('GS'))
-    
-    
+
     def get_input_tolerance(self):
         return float(self.get_property('GIT'))
-    
-    def set_input_tolerance(self,value):
-        if value>0 and value<100:
-            self.set_property('SIT',value)
-      
-    def sweep(self,start=100,stop=5000,num_of_steps=30,do_shuffle = True,prnt = False):
-        Vout_vec=np.linspace(start,stop,num_of_steps)
+
+    def set_input_tolerance(self, value):
+        if value > 0 and value < 100:
+            self.set_property('SIT', value)
+
+    def sweep(self, start=100, stop=5000, num_of_steps=30, do_shuffle=True, prnt=False):
+        Vout_vec = np.linspace(start, stop, num_of_steps)
         if do_shuffle:
             shuffle(Vout_vec)
         Vin = []
@@ -203,56 +210,58 @@ class Modulator(SerialInstrument):
             Vin.append(self.get_Vin())
         if prnt:
             plt.figure()
-            plt.scatter(Vout_vec,Vin)
+            plt.scatter(Vout_vec, Vin)
         if do_shuffle:
-           Vin = [a for junk,a in sorted(zip(Vout_vec,Vin))]
-           Vout_vec=sorted(Vout_vec)
-        return np.array(Vout_vec),np.array(Vin)
-        
-    def sweep_and_setpoint(self,do_shuffle = True,prnt = False):
+            Vin = [a for junk, a in sorted(zip(Vout_vec, Vin))]
+            Vout_vec = sorted(Vout_vec)
+        return np.array(Vout_vec), np.array(Vin)
+
+    def sweep_and_setpoint(self, do_shuffle=True, prnt=False):
         self.stop_lock()
-        x,y = self.sweep(start=100,stop=5000,num_of_steps=30,do_shuffle = do_shuffle,prnt = prnt)
-        calc_params, yfit, Rsquared = my_curve_fit(fit_func, 
-                                                   x,
-                                                   y,
-                                                   [40,1/5000,1000,20] # fit for Bessel
-                                                   )
-        x_fake = np.linspace(np.min(x),2*np.max(x),2000)
-        y_fake = fit_func(x_fake,calc_params)
-        ind1 = find_index(y_fake,np.max(y_fake))[0][0]
-        ind2 = find_index(y_fake,np.min(y_fake))[0][0]
+        x, y = self.sweep(start=100, stop=5000, num_of_steps=30, do_shuffle=do_shuffle, prnt=prnt)
+        calc_params, yfit, Rsquared = my_curve_fit(
+            fit_func,
+            x,
+            y,
+            [40, 1 / 5000, 1000, 20]  # fit for Bessel
+        )
+        x_fake = np.linspace(np.min(x), 2 * np.max(x), 2000)
+        y_fake = fit_func(x_fake, calc_params)
+        ind1 = find_index(y_fake, np.max(y_fake))[0][0]
+        ind2 = find_index(y_fake, np.min(y_fake))[0][0]
         period = np.abs(calc_params[1])
-        quarter_period = 3.1415/(2*period)
-        setpoint = np.round(x_fake[ind2]-quarter_period)
+        quarter_period = 3.1415 / (2 * period)
+        setpoint = np.round(x_fake[ind2] - quarter_period)
         slope = 0
         if setpoint > 5000 or setpoint < 0:
             # for i in range(len(x)):
             #     if y[i] > 0:
             #         break
             # setpoint = (x[-1] - x[i])/2 + x[i]
-            setpoint = np.round(x_fake[ind2]+quarter_period)
+            setpoint = np.round(x_fake[ind2] + quarter_period)
             self.set_Vout(setpoint)
             print(setpoint)
-            
-            self.start_lock_1() #up slope
+
+            self.start_lock_1()  #up slope
         else:
-            self.start_lock_0() #down slope
+            self.start_lock_0()  #down slope
         self.set_Vout(setpoint)
-        
+
         # self.start_lock(slope)
-        
+
         if prnt:
             plt.figure()
-            plt.scatter(x,y)
+            plt.scatter(x, y)
             # plt.scatter(setpoint,1, linewidth = 10)
-            plt.plot(x_fake,y_fake)
-            plt.scatter(setpoint,fit_func(setpoint,calc_params))
-        
-        return x,y,setpoint,x_fake,y_fake, period
-        
+            plt.plot(x_fake, y_fake)
+            plt.scatter(setpoint, fit_func(setpoint, calc_params))
+
+        return x, y, setpoint, x_fake, y_fake, period
+
     # def get_qt_ui(self):
     #     """Return a graphical interface for the lamp slider."""
     #     return MagnetUI(self)
+
 
 # class MagnetUI(QuickControlBox):
 #     def __init__(self, Magnet):
@@ -266,7 +275,7 @@ class Modulator(SerialInstrument):
 #%%
 if __name__ == '__main__':
     modulator = Modulator('COM10')
-    
+
     # magnet._logger.setLevel('INFO')
     # ui = magnet.show_gui(False)
     # ui.show()

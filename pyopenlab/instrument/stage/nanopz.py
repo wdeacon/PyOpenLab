@@ -6,45 +6,48 @@ Created on Tue Jul 21 10:22:28 2015
 """
 from __future__ import print_function
 
-import pyopenlab.instrument.serial_instrument as si
-from pyopenlab.instrument.stage import Stage
-import serial
 import time
 
+import serial
+
+import pyopenlab.instrument.serial_instrument as si
+from pyopenlab.instrument.stage import Stage
+
+ERROR_CODE = {
+    '0': 'No error',
+    '2': 'Driver fault (thermal shut down)',
+    '6': 'Unknown command',
+    '7': 'Parameter out of range',
+    '8': 'No motor connected',
+    '26': 'Positive software limit detected',
+    '27': 'Negative software limit detected',
+    '38': 'Command parameter missing',
+    '50': 'Communication overflow',
+    '213': 'Motor not enabled',
+    '214': 'Invalid axis',
+    '226': 'Command not allowed during motion',
+    '227': 'Command not allowed',
+    '240': 'Jog wheel over speed'}
 
 
-ERROR_CODE = {'0': 'No error',
-              '2': 'Driver fault (thermal shut down)',
-              '6': 'Unknown command',
-              '7': 'Parameter out of range',
-              '8': 'No motor connected',
-              '26': 'Positive software limit detected',
-              '27': 'Negative software limit detected',
-              '38': 'Command parameter missing',
-              '50': 'Communication overflow',
-              '213': 'Motor not enabled',
-              '214': 'Invalid axis',
-              '226': 'Command not allowed during motion',
-              '227': 'Command not allowed',
-              '240': 'Jog wheel over speed'
-              }
+class NanoPZ(si.SerialInstrument, Stage):
 
-class NanoPZ(si.SerialInstrument,Stage):
-    def __init__(self, port=None,controllerNOM ="1"):
+    def __init__(self, port=None, controllerNOM="1"):
         self.port_settings = {
-                    'baudrate':19200,
-                    'bytesize':serial.EIGHTBITS,
-                    'parity':serial.PARITY_NONE,
-                    'stopbits':serial.STOPBITS_ONE,
-                    'timeout':1, #wait at most one second for a response
-                    'writeTimeout':1, #similarly, fail if writing takes >1s
-                    'xonxoff':True, 'rtscts':False, 'dsrdtr':False,
-                    }
-        si.SerialInstrument.__init__(self,port=port)
+            'baudrate': 19200,
+            'bytesize': serial.EIGHTBITS,
+            'parity': serial.PARITY_NONE,
+            'stopbits': serial.STOPBITS_ONE,
+            'timeout': 1,  #wait at most one second for a response
+            'writeTimeout': 1,  #similarly, fail if writing takes >1s
+            'xonxoff': True,
+            'rtscts': False,
+            'dsrdtr': False,}
+        si.SerialInstrument.__init__(self, port=port)
         self.termination_character = '\r'
         self.stepsize = 10
-        if controllerNOM<10:
-            controllerNOM = "0%s" %controllerNOM
+        if controllerNOM < 10:
+            controllerNOM = "0%s" % controllerNOM
         self.controllerNOM = controllerNOM
         self.motor_on()
 
@@ -87,36 +90,36 @@ class NanoPZ(si.SerialInstrument,Stage):
             self._send_command("PR{0}".format(pos))
         else:
             self._logger.warn('NanoPZ does not have absolute moving')
-        
+
     # def move_rel(self,value):
     #     self.write("{0}PR{1}".format(self.controllerNOM, value))
-    
-    def move_step(self,direction):
-        self.move_rel(direction*self.stepsize)
-        
+
+    def move_step(self, direction):
+        self.move_rel(direction * self.stepsize)
+
     def motor_on(self):
         self._send_command("MO")
-        
+
     def get_position(self, axis=None):
-        return self.query("{0}TP?".format(self.controllerNOM))[len("{0}TP?")-1:]
-        
+        return self.query("{0}TP?".format(self.controllerNOM))[len("{0}TP?") - 1:]
+
     def set_zero(self):
         self._send_command("OR")
-        
-    def lower_limit(self,value):
-        if value <0:
+
+    def lower_limit(self, value):
+        if value < 0:
             self._send_command("SL{0}".format(value))
         else:
-            print("The lower Limit must be less than 0, current lower limit = ",self.query("{0}SL?".format(self.controllerNOM)))
-            
-    def upper_limit(self,value):
-        if value >0:
+            print("The lower Limit must be less than 0, current lower limit = ",
+                  self.query("{0}SL?".format(self.controllerNOM)))
+
+    def upper_limit(self, value):
+        if value > 0:
             self._send_command("SR{0}".format(value))
         else:
-            print("The upper Limit must be greater than 0, current upper limit = ",self.query("{0}SR?".format(self.controllerNOM)))
+            print("The upper Limit must be greater than 0, current upper limit = ",
+                  self.query("{0}SR?".format(self.controllerNOM)))
 
 
-        
 if __name__ == '__main__':
-    teststage = NanoPZ(port = "COM25")
-        
+    teststage = NanoPZ(port="COM25")

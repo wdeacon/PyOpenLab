@@ -5,9 +5,9 @@ Created on Fri Aug  6 16:52:49 2021
 @author: Hera
 """
 
-from pyopenlab.utils.notified_property import NotifiedProperty
-from pyopenlab.ui.ui_tools import QuickControlBox
 from pyopenlab.instrument.stage.thorlabs_ello import ElloDevice
+from pyopenlab.ui.ui_tools import QuickControlBox
+from pyopenlab.utils.notified_property import NotifiedProperty
 
 
 class Ell6(ElloDevice):
@@ -24,15 +24,15 @@ class Ell6(ElloDevice):
 
     def set_position(self, pos):
         assert 0 <= pos < self.positions
-        
+
         while pos > self._position:
             self.move_forward()
         while pos < self._position:
             self.move_backward()
-        
+
     def get_position(self):
         return self._position
-   
+
     position = NotifiedProperty(get_position, set_position)
 
     def get_qt_ui(self):
@@ -49,9 +49,10 @@ class Ell6(ElloDevice):
     def move_backward(self):
         self.query_device('bw')
         self._position -= 1
-    
+
 
 class ELL6UI(QuickControlBox):
+
     def __init__(self, instr):
         super().__init__('ELL6')
         self.add_spinbox('position', vmin=0, vmax=1)

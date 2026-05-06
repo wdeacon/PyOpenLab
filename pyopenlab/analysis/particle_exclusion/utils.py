@@ -10,7 +10,8 @@ from pathlib import Path
 def save_rejected(rejected, path=None, overwrite=False):
     '''saves an iterable of particle names. by default it loads the previous .txt
     and saves the union of the new and previous ones'''
-    if path is None: path = Path()
+    if path is None:
+        path = Path()
     existing = set() if overwrite else load_rejected(path)
     with open(path / 'rejected.txt', 'w') as f:
         f.truncate(0)

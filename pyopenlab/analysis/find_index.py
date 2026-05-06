@@ -8,6 +8,7 @@ for an np array data_array find the inde whose value data_array[index] is closes
 """
 import numpy as np
 
-def find_index(data_array, number):    
-    result=np.where(np.abs(data_array-number) == np.min(np.abs(data_array-number)))
+
+def find_index(data_array, number):
+    result = np.where(np.abs(data_array - number) == np.min(np.abs(data_array - number)))
     return result

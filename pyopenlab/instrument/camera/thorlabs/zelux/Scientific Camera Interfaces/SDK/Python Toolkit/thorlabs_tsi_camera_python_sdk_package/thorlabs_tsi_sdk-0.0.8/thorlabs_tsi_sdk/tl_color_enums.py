@@ -6,6 +6,7 @@ from enum import IntEnum
 
 
 class __CTypesEnum(IntEnum):
+
     @classmethod
     def from_param(cls, obj):
         return int(obj)

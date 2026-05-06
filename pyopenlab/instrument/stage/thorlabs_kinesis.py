@@ -16,10 +16,12 @@ It also uses the excellent ``pythonnet`` package to get access to the .NET API.
 This is by far the least painful way to get Kinesis to work nicely as it 
 avoids the low-level faffing about.
 """
-from pyopenlab.instrument.stage import Stage
-import clr
 import sys
 import time
+
+import clr
+
+from pyopenlab.instrument.stage import Stage
 
 clr.AddReference("System")
 from System import Decimal  # System is part of the .NET framework, which clr provides
@@ -37,10 +39,12 @@ DeviceManagerCLI.DeviceManagerCLI.BuildDeviceList()
 # list the serial numbers of the Kinesis-recognised devices connected
 # devices = DeviceManagerCLI.DeviceManagerCLI.GetDeviceList()
 
+
 def list_devices():
     """Return a list of Kinesis serial numbers"""
     DeviceManagerCLI.DeviceManagerCLI.BuildDeviceList()
     return DeviceManagerCLI.DeviceManagerCLI.GetDeviceList()
+
 
 """KCUBE"""
 clr.AddReference("Thorlabs.MotionControl.KCube.DCServoCLI")
@@ -48,7 +52,7 @@ import Thorlabs.MotionControl.KCube.DCServoCLI as KcubeDCServoCLI
 
 
 class KCube(Stage):
-    axis_names = ('theta', )
+    axis_names = ('theta',)
 
     def __init__(self, serial_number):
         super(Stage, self).__init__()
@@ -72,7 +76,7 @@ import Thorlabs.MotionControl.TCube.DCServoCLI as TcubeDCServoCLI
 
 
 class TCube(Stage):
-    axis_names = ('theta', )
+    axis_names = ('theta',)
 
     def __init__(self, serial_number):
         super(Stage, self).__init__()
@@ -89,12 +93,14 @@ class TCube(Stage):
     def get_position(self, axis=None):
         return float(self.device.Position.ToString())
 
+
 """Benchtop Piezo
 
 Currently tested with BCP203 (may not be correct)
 """
 clr.AddReference("Thorlabs.MotionControl.Benchtop.PiezoCLI")
 import Thorlabs.MotionControl.Benchtop.PiezoCLI as BenchtopPiezoCLI
+
 
 class BenchtopPiezo(Stage):
     axis_names = None
@@ -108,17 +114,17 @@ class BenchtopPiezo(Stage):
         self.device = BenchtopPiezoCLI.BenchtopPiezo.CreateBenchtopPiezo(serial_number)
         self.connect()
         super(Stage, self).__init__()
-    
+
     def connect(self):
         """Initialise communications, populate channel list, etc."""
         self.device.Connect(self._serial_number)
         self.connected = True
         assert len(self.channels) == 0, "Error connecting: we've already initialised channels!"
         for i in range(self.device.ChannelCount):
-            chan = self.device.GetChannel(i+1) # Kinesis channels are one-indexed
+            chan = self.device.GetChannel(i + 1)  # Kinesis channels are one-indexed
             chan.WaitForSettingsInitialized(5000)
-            chan.StartPolling(250) # getting the voltage only works if you poll!
-            time.sleep(0.5) # ThorLabs have this in their example...
+            chan.StartPolling(250)  # getting the voltage only works if you poll!
+            time.sleep(0.5)  # ThorLabs have this in their example...
             chan.EnableDevice()
             # I don't know if the lines below are necessary or not - but removing them
             # may or may not work...
@@ -148,10 +154,11 @@ class BenchtopPiezo(Stage):
 
     def set_output_voltages(self, voltages):
         """Set the output voltage"""
-        assert len(voltages) == len(self.channels), "You must specify exactly one voltage per channel"
-        for chan, v in zip (self.channels, voltages):
+        assert len(voltages) == len(
+            self.channels), "You must specify exactly one voltage per channel"
+        for chan, v in zip(self.channels, voltages):
             chan.SetOutputVoltage(Decimal(v))
-    
+
     def get_output_voltages(self):
         """Retrieve the output voltages as a list of floating-point numbers"""
         return [Decimal.ToDouble(chan.GetOutputVoltage()) for chan in self.channels]
@@ -165,7 +172,7 @@ class BenchtopPiezo(Stage):
                 self.move_axis(p, ax, relative=relative)
         else:
             self.move_axis(pos, axis, relative=relative)
-    
+
     def move_axis(self, pos, axis, relative=False):
         """Move one axis (currently in volts)"""
         chan = self.select_axis(self.channels, axis)
@@ -180,4 +187,3 @@ class BenchtopPiezo(Stage):
         else:
             chan = self.select_axis(self.channels, axis)
             return Decimal.ToDouble(chan.GetOutputVoltage())
-

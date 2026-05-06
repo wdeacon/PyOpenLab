@@ -8,52 +8,58 @@ system to display the datasets.  See `pyopenlab.ui.data_renderers` for that.
 
 __author__ = 'Alan Sanders, Will Deacon, Richard Bowman'
 
-import pyopenlab
-from pyopenlab.utils.gui import QtCore, QtWidgets
+import h5py
 import matplotlib
 import numpy as np
-import h5py
+
+import pyopenlab
+from pyopenlab.utils.gui import QtCore
+from pyopenlab.utils.gui import QtWidgets
 
 try:
     from matplotlib.backends.qt_compat import is_pyqt5
-except (AttributeError, ImportError): 
+except (AttributeError, ImportError):
     from matplotlib.backends.qt_compat import QT_API
+
     def is_pyqt5():
         return (QT_API[:5] == 'PyQt5')
+
 
 if is_pyqt5():
     matplotlib.use('Qt5Agg')
 else:
     matplotlib.use('Qt4Agg')
 
+import datetime
+import functools
+import os
+import subprocess
+
+import pyopenlab.datafile as df
 from pyopenlab.ui.data_renderers import suitable_renderers
 from pyopenlab.ui.ui_tools import UiTools
-import functools
 from pyopenlab.utils.array_with_attrs import DummyHDF5Group
-import pyopenlab.datafile as df
-
-import subprocess
-import os
-import datetime
-
 
 # base, widget = uic.loadUiType(os.path.join(os.path.dirname(__file__), 'hdf5_browser.ui'))
 
+
 class HDF5ItemViewer(QtWidgets.QWidget, UiTools):
     """A Qt Widget for visualising one HDF5 element (group or dataset)."""
-    def __init__(self, 
-                 item=None, 
-                 parent=None, 
-                 figure_widget=None,
-                 show_controls=True, 
-                 show_refresh=True,
-                 show_default_button=True,
-                 show_copy=True,
-                 renderer_combobox=None,
-                 refresh_button=None,
-                 copy_button=None,
-                 default_button=None,
-                 ):
+
+    def __init__(
+        self,
+        item=None,
+        parent=None,
+        figure_widget=None,
+        show_controls=True,
+        show_refresh=True,
+        show_default_button=True,
+        show_copy=True,
+        renderer_combobox=None,
+        refresh_button=None,
+        copy_button=None,
+        default_button=None,
+    ):
         """Create a viewer widget for any dataset or datagroup object
         
         Arguments:
@@ -79,32 +85,32 @@ class HDF5ItemViewer(QtWidgets.QWidget, UiTools):
             rendererinstead of creating one.
         """
         super(HDF5ItemViewer, self).__init__(parent)
-        
-        if figure_widget is None: 
+
+        if figure_widget is None:
             self.figure_widget = QtWidgets.QWidget()
         else:
             self.figure_widget = figure_widget
-            
-        if renderer_combobox is None:       
+
+        if renderer_combobox is None:
             self.renderer_combobox = QtWidgets.QComboBox()
         else:
             self.renderer_combobox = renderer_combobox
-        self.renderer_combobox.activated[int].connect(self.renderer_selected)        
-        
+        self.renderer_combobox.activated[int].connect(self.renderer_selected)
+
         if refresh_button is None:
             self.refresh_button = QtWidgets.QPushButton()
             self.refresh_button.setText("Refresh Figure")
         else:
             self.refresh_button = refresh_button
         self.refresh_button.clicked.connect(self.refresh)
-        
+
         if default_button is None:
             self.default_button = QtWidgets.QPushButton()
             self.default_button.setText("Default Renderer")
         else:
             self.default_button = default_button
         self.default_button.clicked.connect(self.default_renderer)
-        
+
         if copy_button is None:
             self.copy_button = QtWidgets.QPushButton()
             self.copy_button.setText("Copy Figure")
@@ -115,11 +121,11 @@ class HDF5ItemViewer(QtWidgets.QWidget, UiTools):
 
         self.setLayout(QtWidgets.QVBoxLayout())
         self.layout().addWidget(self.figure_widget, stretch=1)
-        self.layout().setContentsMargins(0,0,0,0)
-        
+        self.layout().setContentsMargins(0, 0, 0, 0)
+
         self.renderers = list()
-        
-        if show_controls: # this part may be broken
+
+        if show_controls:  # this part may be broken
             hb = QtWidgets.QHBoxLayout()
             hb.addWidget(self.renderer_combobox, stretch=1)
             if show_refresh:
@@ -129,78 +135,78 @@ class HDF5ItemViewer(QtWidgets.QWidget, UiTools):
             if show_default_button:
                 hb.addWidget(self.default_button, stretch=0)
             self.layout().addLayout(hb, stretch=0)
-        
+
     _data = None
-        
+
     @property
     def data(self):
         """The dataset or group we are displaying"""
         return self._data
-        
+
     @data.setter
     def data(self, newdata):
         if newdata is None:
             return None
-        
+
         self._data = newdata
 
         # When data changes, update the list of renderers
-        
+
         renderers = suitable_renderers(self.data)
         combobox = self.renderer_combobox
-        previous_selection = combobox.currentIndex() # remember previous choice
-        try:#Attempt to keep the same range
+        previous_selection = combobox.currentIndex()  # remember previous choice
+        try:  #Attempt to keep the same range
             previous_view_rect = self.figure_widget.figureWidget.viewRect()
         except AttributeError:
             previous_view_rect = None
-            
+
         combobox.clear()
         for i, renderer in enumerate(renderers):
             combobox.addItem(renderer.__name__, renderer)
-            
-        # Attempt to keep the same renderer as we had before - or use the 
+
+        # Attempt to keep the same renderer as we had before - or use the
         # "best" one.  NB setting the current index will trigger the renderer
         # to be created in renderer_selected
         try:
             if previous_selection == 0:
-                raise ValueError() # if we didn't choose the last renderer, just
-                            # pick the best one.  Otherwise, try to use the same
-                            # renderer as we used before
+                raise ValueError()  # if we didn't choose the last renderer, just
+                # pick the best one.  Otherwise, try to use the same
+                # renderer as we used before
             else:
                 index = renderers.index(self.renderer.__class__)
                 combobox.setCurrentIndex(index)
                 try:
                     self.renderer_selected(index)
                 except Exception as e:
-                    print('The selected renderer failed becasue',e)
+                    print('The selected renderer failed becasue', e)
 
         except ValueError:
             combobox.setCurrentIndex(0)
             self.renderer_selected(0)
         if previous_view_rect != None:
             try:
-                self.figure_widget.figureWidget.setRange(previous_view_rect, padding=0)                                      
+                self.figure_widget.figureWidget.setRange(previous_view_rect, padding=0)
             except AttributeError:
                 pass
-    
+
     _renderer = None
-    
+
     def default_renderer(self):
         self.renderer_combobox.setCurrentIndex(0)
         self.renderer_selected(0)
         self.refresh()
-    
+
     @property
     def renderer(self):
         """The data renderer currently in use in the widget"""
         return self._renderer
-        
+
     @renderer.setter
     def renderer(self, new_renderer):
         self._renderer = new_renderer
         # Replace the current renderer in the GUI with the new one:
         self.figure_widget = self.replace_widget(self.layout(), self.figure_widget, new_renderer)
-    
+
     def renderer_selected(self, index):
         """Change the figure widget to use the selected renderer."""
         # The class of the renderer is stored as the combobox data
@@ -210,16 +216,17 @@ class HDF5ItemViewer(QtWidgets.QWidget, UiTools):
         except TypeError:
             # If the box is empty (e.g. it's just been cleared) use a blank widget
             self.renderer = QtWidgets.QWidget()
-        
+
     def refresh(self):
         """Re-render the data, using the current renderer (if it is still appropriate)"""
         self.data = self.data
 
-    
     def CopyActivated(self):
         """Copy an image of the currently-displayed figure."""
         ## TO DO: move this to the HDF5 viewer
         print('yes')
+
+
 #        try:
 #            Pixelmap = QtGui.QPixmap.grabWidget(self.figure_widget)
 #        except Exception as e:
@@ -235,38 +242,39 @@ def split_number_from_name(name):
         return (basename, int(name[len(basename):-1]))
     except:
         return (basename, -1)
-        
-        
+
+
 def igorOpen(dataset):
     """Open the currently-selected item in Igor Pro. If this is not working check your IGOR path!"""
     igorpath = '"C:\\Program Files (x86)\\WaveMetrics\\Igor Pro Folder\\Igor.exe"'
-    igortmpfile = os.path.dirname(os.path.realpath(__file__))+'\Igor'
-    igortmpfile=igortmpfile.replace("\\","\\\\")
+    igortmpfile = os.path.dirname(os.path.realpath(__file__)) + '\Igor'
+    igortmpfile = igortmpfile.replace("\\", "\\\\")
     print(igortmpfile)
     open(igortmpfile, 'w').close()
     print("attempting to open {} in Igor".format(dataset))
-    if isinstance(dataset,h5py.Dataset):
+    if isinstance(dataset, h5py.Dataset):
         dset = dataset
         data = np.asarray(dset[...])
 
         if data.ndim == 2:
             # RWB: why do we do this?  Why not just use a 2D text file and skip rescaling??
             from PIL import Image
-            rescaled = ((2**16/ data.max()) * (data - data.min())).astype(np.uint8)
+            rescaled = ((2**16 / data.max()) * (data - data.min())).astype(np.uint8)
 
             im = Image.fromarray(rescaled.transpose())
-            im.save(igortmpfile+'.tif')
+            im.save(igortmpfile + '.tif')
 
-            command='/X "ImageLoad/T=tiff/N= h5Data'+' \"'+ igortmpfile+'.tif\""'
-            subprocess.Popen(igorpath+' '+command)
+            command = '/X "ImageLoad/T=tiff/N= h5Data' + ' \"' + igortmpfile + '.tif\""'
+            subprocess.Popen(igorpath + ' ' + command)
         else:
             print(dataset)
-            np.savetxt(igortmpfile+'.txt', data, header=dataset.name)
-            subprocess.Popen( igorpath+' '+ igortmpfile+'.txt')
+            np.savetxt(igortmpfile + '.txt', data, header=dataset.name)
+            subprocess.Popen(igorpath + ' ' + igortmpfile + '.txt')
 
 
 class HDF5TreeItem(object):
     """A simple class to represent items in an HDF5 tree"""
+
     def __init__(self, data_file, parent, name, row):
         """Create a new item for an HDF5 tree
 
@@ -293,6 +301,7 @@ class HDF5TreeItem(object):
         return self.name.rsplit('/')[-1]
 
     _has_children = None
+
     @property
     def has_children(self):
         """Whether or not this item has children"""
@@ -302,6 +311,7 @@ class HDF5TreeItem(object):
         return self._has_children
 
     _children = None
+
     @property
     def children(self):
         """Children of the current item (as HDF5TreeItems)"""
@@ -312,7 +322,7 @@ class HDF5TreeItem(object):
             try:
                 time_stamps = []
                 for value in self.data_file[self.name].values():
-                   
+
                     try:
                         time_stamp_str = value.attrs['creation_timestamp']
                     except AttributeError:
@@ -321,20 +331,23 @@ class HDF5TreeItem(object):
                         time_stamp_str = '2021-01-01T01:01:01.000001'
                     #if type(time_stamp_str) is bytes:
                     if isinstance(time_stamp_str, bytes):
-                        time_stamp_str = time_stamp_str.decode() #b'somestring'.decode('UTF-8')
+                        time_stamp_str = time_stamp_str.decode()  #b'somestring'.decode('UTF-8')
                     #print(time_stamp_str)
                     try:
-                        time_stamp_float = datetime.datetime.strptime(time_stamp_str, "%Y-%m-%dT%H:%M:%S.%f")
+                        time_stamp_float = datetime.datetime.strptime(time_stamp_str,
+                                                                      "%Y-%m-%dT%H:%M:%S.%f")
                     except ValueError:
-                        time_stamp_str =  time_stamp_str+'.0'
-                        time_stamp_float = datetime.datetime.strptime(time_stamp_str,"%Y-%m-%dT%H:%M:%S.%f")
+                        time_stamp_str = time_stamp_str + '.0'
+                        time_stamp_float = datetime.datetime.strptime(time_stamp_str,
+                                                                      "%Y-%m-%dT%H:%M:%S.%f")
                     time_stamps.append(time_stamp_float)
                 keys = np.array(keys)[np.argsort(time_stamps)]
             except KeyError:
                 keys.sort(key=split_number_from_name)
-            
-            self._children = [HDF5TreeItem(self.data_file, self, self.name.rstrip("/") + "/" + k, i)
-                              for i, k in enumerate(keys)]
+
+            self._children = [
+                HDF5TreeItem(self.data_file, self,
+                             self.name.rstrip("/") + "/" + k, i) for i, k in enumerate(keys)]
         return self._children
 
     def purge_children(self):
@@ -342,9 +355,9 @@ class HDF5TreeItem(object):
         try:
             if self._children is not None:
                 for child in self._children:
-                    child.purge_children() # We must delete them all the way down!
+                    child.purge_children()  # We must delete them all the way down!
                     self._children.remove(child)
-                    del child # Not sure if this is needed...
+                    del child  # Not sure if this is needed...
                 self._children = None
             self._has_children = None
         except:
@@ -353,16 +366,18 @@ class HDF5TreeItem(object):
     @property
     def h5item(self):
         """The underlying HDF5 item for this tree item."""
-        assert self.name in self.data_file, "Error, {} is no longer a valid HDF5 item".format(self.name)
+        assert self.name in self.data_file, "Error, {} is no longer a valid HDF5 item".format(
+            self.name)
         return self.data_file[self.name]
 
     def __del__(self):
         self.purge_children()
 
+
 def print_tree(item, prefix=""):
     """Recursively print the HDF5 tree for debug purposes"""
     if len(prefix) > 16:
-        return # recursion guard
+        return  # recursion guard
     print(prefix + item.basename)
     if item.has_children:
         for child in item.children:
@@ -375,6 +390,7 @@ class HDF5ItemModel(QtCore.QAbstractItemModel):
     It loads the file as the tree is expanded for speed - in the future it might implement sanity checks to
     abort loading very long folders.
     """
+
     def __init__(self, data_group):
         """Represent an HDF5 group to a QTreeView or similar.
         :type data_group: pyopenlab.datafile.Group
@@ -382,13 +398,14 @@ class HDF5ItemModel(QtCore.QAbstractItemModel):
         super(HDF5ItemModel, self).__init__()
         self.root_item = None
         self.data_group = data_group
-        
+
     _data_group = None
+
     @property
     def data_group(self):
         """The HDF5 group object we're representing"""
         return self._data_group
-    
+
     @data_group.setter
     def data_group(self, new_data_group):
         """Set the data group represented by the model"""
@@ -493,7 +510,7 @@ class HDF5ItemModel(QtCore.QAbstractItemModel):
 
         This will set the HDF5ItemModel as the tree's model (data source), and in the future
         may set up context menus, etc. as appropriate."""
-        treeview.setModel(self) # Make the tree view use this object as its model
+        treeview.setModel(self)  # Make the tree view use this object as its model
         # Set up a callback to allow us to customise the context menu
         treeview.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         treeview.customContextMenuRequested.connect(functools.partial(self.context_menu, treeview))
@@ -509,13 +526,13 @@ class HDF5ItemModel(QtCore.QAbstractItemModel):
             actions[operation] = menu.addAction(operation)
         action = menu.exec_(treeview.viewport().mapToGlobal(position))
 
-
         if action == actions['Refresh tree']:
             self.refresh_tree()
 
 
 class HDF5TreeWidget(QtWidgets.QTreeView):
     """A TreeView for looking at an HDF5 tree"""
+
     def __init__(self, datafile, **kwargs):
         """Create a TreeView widget that views the contents of an HDF5 tree.
 
@@ -536,8 +553,8 @@ class HDF5TreeWidget(QtWidgets.QTreeView):
         return self.model.selected_h5item_from_view(self)
 
     def __del__(self):
-        del self.model # is this needed?  I'm never sure...
-        
+        del self.model  # is this needed?  I'm never sure...
+
 
 class HDF5Browser(QtWidgets.QWidget, UiTools):
     """A Qt Widget for fbrowsing an HDF5 file and graphing the data.
@@ -546,33 +563,34 @@ class HDF5Browser(QtWidgets.QWidget, UiTools):
     def __init__(self, data_file, parent=None):
         super(HDF5Browser, self).__init__(parent)
         self.data_file = df.DataFile(data_file)
-        self.treeWidget = HDF5TreeWidget(data_file,
-                                         parent=self)
-        self.selection_model = self.treeWidget.selectionModel() 
+        self.treeWidget = HDF5TreeWidget(data_file, parent=self)
+        self.selection_model = self.treeWidget.selectionModel()
         self.selection_model.selectionChanged.connect(self.selection_changed)
-        self.viewer = HDF5ItemViewer(parent=self, 
-                                     show_controls=True,
-                                     )
-        self.refresh_tree_button = QtWidgets.QPushButton() #Create a refresh button
+        self.viewer = HDF5ItemViewer(
+            parent=self,
+            show_controls=True,
+        )
+        self.refresh_tree_button = QtWidgets.QPushButton()  #Create a refresh button
         self.refresh_tree_button.setText("Refresh Tree")
-        
+
         #adding the refresh button
-        self.treelayoutwidget = QtWidgets.QWidget()     #construct a widget which can then contain the refresh button and the tree
+        self.treelayoutwidget = QtWidgets.QWidget(
+        )  #construct a widget which can then contain the refresh button and the tree
         self.treelayoutwidget.setLayout(QtWidgets.QVBoxLayout())
         self.treelayoutwidget.layout().addWidget(self.treeWidget)
-        self.treelayoutwidget.layout().addWidget(self.refresh_tree_button) 
-        
+        self.treelayoutwidget.layout().addWidget(self.refresh_tree_button)
+
         self.refresh_tree_button.clicked.connect(self.treeWidget.model.refresh_tree)
 
         splitter = QtWidgets.QSplitter()
-        splitter.addWidget(self.treelayoutwidget)       #Add newly constructed widget (treeview and button) to the splitter
+        splitter.addWidget(self.treelayoutwidget
+                           )  #Add newly constructed widget (treeview and button) to the splitter
         splitter.addWidget(self.viewer)
         self.setLayout(QtWidgets.QHBoxLayout())
         self.layout().addWidget(splitter)
 
-
     def sizeHint(self):
-        return QtCore.QSize(1024,768)
+        return QtCore.QSize(1024, 768)
 
     def selection_changed(self, selected, deselected):
         """Callback function to update the displayed item when the tree selection changes."""
@@ -583,29 +601,25 @@ class HDF5Browser(QtWidgets.QWidget, UiTools):
                 df.set_current_group(self.treeWidget.selected_h5item())
 
         except Exception as e:
-            
+
             print(e, 'That could be corrupted')
-         
-            
 
     def __del__(self):
         pass  # self.data_file.close()
-    
-             
+
+
 if __name__ == '__main__':
-    
+
     from pyopenlab.utils.gui import get_qt_app
 
     app = get_qt_app()
-    with h5py.File('test.h5', 'w') as data_file: 
+    with h5py.File('test.h5', 'w') as data_file:
         data_file.create_dataset('dset1', data=np.linspace(-1, 1, 100))
-        data_file.create_dataset('dset2', data=np.linspace(-1, 1, 100) ** 3)
+        data_file.create_dataset('dset2', data=np.linspace(-1, 1, 100)**3)
         g = data_file.create_group('group1')
-        g.create_dataset('dset2', data=np.linspace(-1, 1, 100) ** 2)
+        g.create_dataset('dset2', data=np.linspace(-1, 1, 100)**2)
         g = g.create_group('group2')
         g.create_dataset('dset3', data=np.linspace(-1, 1, 100).reshape(10, 10))
         ui = HDF5Browser(df.DataFile(data_file))
         ui.show()
         app.exec_()
-        
-

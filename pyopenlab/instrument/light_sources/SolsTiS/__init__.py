@@ -15,18 +15,21 @@ __author__: Yago
 from __future__ import print_function
 
 from future import standard_library
+
 standard_library.install_aliases()
 from builtins import str
-from past.builtins import basestring
-from pyopenlab.utils.gui import QtWidgets, QtCore, uic
-from pyopenlab.instrument import Instrument
-
 import collections
 import json
 import os
 import socket
 import time
 
+from past.builtins import basestring
+
+from pyopenlab.instrument import Instrument
+from pyopenlab.utils.gui import QtCore
+from pyopenlab.utils.gui import QtWidgets
+from pyopenlab.utils.gui import uic
 
 BUFFER_SIZE = 1000
 TIMEOUT = 10.
@@ -44,7 +47,7 @@ class SolsTiSParseFail(Exception):
 
 
 class SolsTiS(Instrument):
-    metadata_property_names = ('laser_status', )
+    metadata_property_names = ('laser_status',)
 
     def __init__(self, address, **kwargs):
         """
@@ -56,7 +59,7 @@ class SolsTiS(Instrument):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.settimeout(TIMEOUT)
         self.socket.connect(address)
-       
+
         self.computerIP = socket.gethostbyname(socket.gethostname())
 
         self.laser_status = {}
@@ -81,21 +84,15 @@ class SolsTiS(Instrument):
         """
         if parameters is None:
             self.current_message = {
-                "message":
-                    {
-                        "transmission_id": [self._transmission_id],
-                        "op": operation
-                    }
-            }
+                "message": {
+                    "transmission_id": [self._transmission_id],
+                    "op": operation}}
         else:
             self.current_message = {
-                "message":
-                    {
-                        "transmission_id": [self._transmission_id],
-                        "op": operation,
-                        "parameters": parameters
-                    }
-            }
+                "message": {
+                    "transmission_id": [self._transmission_id],
+                    "op": operation,
+                    "parameters": parameters}}
 
         self.socket.send(json.dumps(self.current_message))
 
@@ -110,7 +107,8 @@ class SolsTiS(Instrument):
             if isinstance(status, str):
                 self._logger.debug(operation + ': ' + status)
             else:
-                self._logger.debug(operation + ': ' + id_dictionary.get(operation, {})['status'][status[0]])
+                self._logger.debug(operation + ': ' +
+                                   id_dictionary.get(operation, {})['status'][status[0]])
 
     def read_message(self):
         """
@@ -121,7 +119,8 @@ class SolsTiS(Instrument):
         if len(self.current_reply.split('{')) != len(self.current_reply.split('}')):
             self._logger.warn('You have not read a full number of messages')
 
-        self.message_in_history.append(json.loads('{' + self.current_reply.lstrip('{').split('}{')[-1]))
+        self.message_in_history.append(
+            json.loads('{' + self.current_reply.lstrip('{').split('}{')[-1]))
 
         if self.message_in_history[-1]['message']['op'] == 'parse_fail':
             raise SolsTiSParseFail(self.message_in_history[-1])
@@ -179,7 +178,8 @@ class SolsTiS(Instrument):
         self.send_command("etalon_lock_status")
 
         if self.message_in_history[-1]['message']['parameters']['status'][0] == 0:
-            self.laser_status['etalon_lock'] = self.message_in_history[-1]['message']['parameters']['condition']
+            self.laser_status['etalon_lock'] = self.message_in_history[-1]['message']['parameters'][
+                'condition']
 
     def cavity_lock(self, val):
         if val not in ['off', 'on']:
@@ -194,7 +194,8 @@ class SolsTiS(Instrument):
         self.send_command("cavity_lock_status")
 
         if self.message_in_history[-1]['message']['parameters']['status'][0] == 0:
-            self.laser_status['ref_cavity_lock'] = self.message_in_history[-1]['message']['parameters']['condition']
+            self.laser_status['ref_cavity_lock'] = self.message_in_history[-1]['message'][
+                'parameters']['condition']
 
     def system_status(self):
         self.send_command("get_status")
@@ -225,6 +226,7 @@ class SolsTiS(Instrument):
 
 
 class SolsTiSUI(QtWidgets.QWidget):
+
     def __init__(self, solstis):
         assert isinstance(solstis, SolsTiS), "instrument must be a SolsTiS"
         super(SolsTiSUI, self).__init__()
@@ -248,7 +250,8 @@ class SolsTiSUI(QtWidgets.QWidget):
         # ADD A SEcTION THAT CHECKS THAT THE ETALON VOLTAGE DOESN'T GO TOO FAR AWAY
         if self.checkBoxSolsTiSEtalonLock.isChecked():
             self.SolsTisLockThread = SolsTiSLockThread(self.SolsTiS)
-            self.SolsTisLockThread.connect(self.SolsTisLockThread, self.SolsTisLockThread.signal, self.SolsTiSReLock)
+            self.SolsTisLockThread.connect(self.SolsTisLockThread, self.SolsTisLockThread.signal,
+                                           self.SolsTiSReLock)
             self.SolsTisLockThread.start()
 
     def SolsTiSReLock(self):
@@ -290,8 +293,10 @@ class SolsTiSUI(QtWidgets.QWidget):
 
     def updateGUI(self):
         self.lineEditSolsTiSWL.setText(str(self.SolsTiS.laser_status['wavelength']))
-        self.checkBoxSolsTiSCavityLock.setChecked(self.SolsTiS.laser_status['cavity_lock'] in ['on'])
-        self.checkBoxSolsTiSEtalonLock.setChecked(self.SolsTiS.laser_status['etalon_lock'] in ['on'])
+        self.checkBoxSolsTiSCavityLock.setChecked(
+            self.SolsTiS.laser_status['cavity_lock'] in ['on'])
+        self.checkBoxSolsTiSEtalonLock.setChecked(
+            self.SolsTiS.laser_status['etalon_lock'] in ['on'])
 
     def SolsTiSMonitor(self):
         '''
@@ -300,7 +305,8 @@ class SolsTiSUI(QtWidgets.QWidget):
         '''
         if self.SolsTiSMonitorThread is None:
             self.SolsTiSMonitorThread = SolsTiSStatusThread(self.SolsTiS)
-            self.SolsTiSMonitorThread.connect(self.SolsTiSMonitorThread, self.SolsTiSMonitorThread.signal,
+            self.SolsTiSMonitorThread.connect(self.SolsTiSMonitorThread,
+                                              self.SolsTiSMonitorThread.signal,
                                               self.SolsTiSupdatestatus)
             self.SolsTiSMonitorThread.start()
         elif not self.SolsTiSMonitorThread.isRunning():
@@ -322,11 +328,17 @@ class SolsTiSUI(QtWidgets.QWidget):
         And display that dictionary as a table
         :return:
         '''
-        relevant_properties = {'C. lock': 'cavity_lock', 'E. lock': 'etalon_lock', 'T': 'temperature',
-                               'R. volt.': 'resonator_voltage', 'E. volt.': 'etalon_voltage',
-                               'wvl': 'wavelength', 'Out': 'output_monitor'}
-        display_dicc = {new_key: self.SolsTiS.laser_status[relevant_properties[new_key]] for new_key in
-                        list(relevant_properties.keys())}
+        relevant_properties = {
+            'C. lock': 'cavity_lock',
+            'E. lock': 'etalon_lock',
+            'T': 'temperature',
+            'R. volt.': 'resonator_voltage',
+            'E. volt.': 'etalon_voltage',
+            'wvl': 'wavelength',
+            'Out': 'output_monitor'}
+        display_dicc = {
+            new_key: self.SolsTiS.laser_status[relevant_properties[new_key]]
+            for new_key in list(relevant_properties.keys())}
         self.tableWidget.setRowCount(len(relevant_properties))
         row = 0
         for key in list(display_dicc.keys()):
@@ -339,6 +351,7 @@ class SolsTiSUI(QtWidgets.QWidget):
 
 
 class SolsTiSLockThread(QtCore.QThread):
+
     def __init__(self, solstis):
         QtCore.QThread.__init__(self)
         self.SolsTiS = solstis
@@ -360,6 +373,7 @@ class SolsTiSLockThread(QtCore.QThread):
 
 
 class SolsTiSStatusThread(QtCore.QThread):
+
     def __init__(self, solstis):
         QtCore.QThread.__init__(self)
         self.SolsTiS = solstis
@@ -379,6 +393,7 @@ class SolsTiSStatusThread(QtCore.QThread):
 
 
 def download_logs():
+
     def perdelta(start, end, delta):
         return_list = []
         curr = start
@@ -386,15 +401,19 @@ def download_logs():
             # yield curr
             return_list.append(curr)
             curr += delta
-        return [(int(x.strftime('%d')), int(x.strftime('%m')), int(x.strftime('%y'))) for x in return_list]
+        return [(int(x.strftime('%d')), int(x.strftime('%m')), int(x.strftime('%y')))
+                for x in return_list]
 
     '''NOT GENERAL
 
     Script that can be used to download the logs created by automatic logging in the laser
     '''
-    import urllib.request, urllib.error, urllib.parse
     # import numpy as np
-    from datetime import date, timedelta
+    from datetime import date
+    from datetime import timedelta
+    import urllib.error
+    import urllib.parse
+    import urllib.request
 
     url_name = 'http://172.24.37.153/FS/FLASH0/M_Squared/Logs/log_%d_%d_%d_%d.txt'
 
@@ -404,7 +423,6 @@ def download_logs():
     # years = [15, 16]
 
     # nums = [(153,18,8,16), (222,24,6,16), (222,23,6,16)]
-
 
     all_logs = []
     list_dates = perdelta(date(2016, 7, 12), date(2016, 11, 4), timedelta(days=1))
@@ -448,31 +466,86 @@ def download_logs():
     return all_logs
 
 
-ERROR_CODE = {1: 'JSON parsing, invalid start, wrong IP',
-              2: '"message" string missing',
-              3: '"transmission_id" string missing',
-              4: 'No transmission id value',
-              5: '"op" string missing',
-              6: 'No op name',
-              7: 'Operation not recognised',
-              8: '"parameters" string missing',
-              9: 'Invalid parameter tag of value'}
-id_dictionary = {'move_wave_t': {'status': {0: 'Successful', 1: 'Failed', 2: 'Out of range'}},
-                 'poll_move_wave_t': {'status': {0: 'Tuning completed', 1: 'Tuning in progress', 2: 'Tuning failed'}},
-                 'stop_move_wave_t': {'status': {0: 'Completed'}},
-                 'tune_etalon': {'status': {0: 'Completed', 1: 'Out of range', 2: 'Failed'}},
-                 'tune_cavity': {'status': {0: 'Completed', 1: 'Out of range', 2: 'Failed'}},
-                 'fine_tune_cavity': {'status': {0: 'Completed', 1: 'Out of range', 2: 'Failed'}},
-                 'tune_resonator': {'status': {0: 'Completed', 1: 'Out of range', 2: 'Failed'}},
-                 'fine_tune_resonator': {'status': {0: 'Completed', 1: 'Out of range', 2: 'Failed'}},
-                 'etalon_lock': {'status': {0: 'Completed', 1: 'Failed'}},
-                 'etalon_lock_status': {'status': {0: 'Completed', 1: 'Failed'}},
-                 'cavity_lock': {'status': {0: 'Completed', 1: 'Failed'}},
-                 'cavity_lock_status': {'status': {0: 'Completed', 1: 'Failed'}},
-                 'get_status': {'status': {0: 'Completed', 1: 'Failed'}},
-                 'set_wave_m' : {'status':{0:"success",1:"no link",2:"out of range",3:"unknown error"}},
-                 'poll_wave_m': {'status': {0: 'Tuning completed', 1: 'Tuning in progress', 2: 'Tuning failed'}}
-                 }
+ERROR_CODE = {
+    1: 'JSON parsing, invalid start, wrong IP',
+    2: '"message" string missing',
+    3: '"transmission_id" string missing',
+    4: 'No transmission id value',
+    5: '"op" string missing',
+    6: 'No op name',
+    7: 'Operation not recognised',
+    8: '"parameters" string missing',
+    9: 'Invalid parameter tag of value'}
+id_dictionary = {
+    'move_wave_t': {
+        'status': {
+            0: 'Successful',
+            1: 'Failed',
+            2: 'Out of range'}},
+    'poll_move_wave_t': {
+        'status': {
+            0: 'Tuning completed',
+            1: 'Tuning in progress',
+            2: 'Tuning failed'}},
+    'stop_move_wave_t': {
+        'status': {
+            0: 'Completed'}},
+    'tune_etalon': {
+        'status': {
+            0: 'Completed',
+            1: 'Out of range',
+            2: 'Failed'}},
+    'tune_cavity': {
+        'status': {
+            0: 'Completed',
+            1: 'Out of range',
+            2: 'Failed'}},
+    'fine_tune_cavity': {
+        'status': {
+            0: 'Completed',
+            1: 'Out of range',
+            2: 'Failed'}},
+    'tune_resonator': {
+        'status': {
+            0: 'Completed',
+            1: 'Out of range',
+            2: 'Failed'}},
+    'fine_tune_resonator': {
+        'status': {
+            0: 'Completed',
+            1: 'Out of range',
+            2: 'Failed'}},
+    'etalon_lock': {
+        'status': {
+            0: 'Completed',
+            1: 'Failed'}},
+    'etalon_lock_status': {
+        'status': {
+            0: 'Completed',
+            1: 'Failed'}},
+    'cavity_lock': {
+        'status': {
+            0: 'Completed',
+            1: 'Failed'}},
+    'cavity_lock_status': {
+        'status': {
+            0: 'Completed',
+            1: 'Failed'}},
+    'get_status': {
+        'status': {
+            0: 'Completed',
+            1: 'Failed'}},
+    'set_wave_m': {
+        'status': {
+            0: "success",
+            1: "no link",
+            2: "out of range",
+            3: "unknown error"}},
+    'poll_wave_m': {
+        'status': {
+            0: 'Tuning completed',
+            1: 'Tuning in progress',
+            2: 'Tuning failed'}}}
 
 if __name__ == '__main__':
     laser = SolsTiS('172.24.37.153')

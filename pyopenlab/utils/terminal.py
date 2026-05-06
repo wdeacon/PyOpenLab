@@ -1,16 +1,19 @@
 ﻿# -*- coding: utf-8 -*-
 
-from qtconsole.rich_jupyter_widget import RichJupyterWidget
+import os
+import sys
+
+from IPython.lib import guisupport
 from qtconsole.inprocess import QtInProcessKernelManager
+from qtconsole.rich_jupyter_widget import RichJupyterWidget
+
 # from IPython.qt.console.rich_ipython_widget import RichIPythonWidget
 # from IPython.qt.inprocess import QtInProcessKernelManager
 from pyopenlab.utils.gui import QtCore
-import sys
-import os
-from IPython.lib import guisupport
 
 
 class Ipython():
+
     def __init__(self, scripts_path=''):
         self.kernel_manager = QtInProcessKernelManager()
         self.kernel_manager.start_kernel()
@@ -43,8 +46,8 @@ class Ipython():
     def show(self):
         self.control.show()
 
-        self.control.setWindowState(
-            self.control.windowState() & ~QtCore.Qt.WindowMinimized | QtCore.Qt.WindowActive)
+        self.control.setWindowState(self.control.windowState() & ~QtCore.Qt.WindowMinimized |
+                                    QtCore.Qt.WindowActive)
         self.control.activateWindow()
 
     def stop(self):
@@ -118,4 +121,3 @@ class QIPythonWidget(RichJupyterWidget):
             self._execute('run -i %s' % scriptpath, False)
         except Exception as e:
             print('Failed because ', e)
-

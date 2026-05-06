@@ -4,14 +4,17 @@ Modified from https://github.com/plasmon360/python_newport_1918_powermeter
 
 """
 
-from past.utils import old_div
-from pyopenlab.instrument import Instrument
 from ctypes import *
 import time
+
 import numpy as np
+from past.utils import old_div
+
+from pyopenlab.instrument import Instrument
 
 
 class NewportPowermeter(Instrument):
+
     def __init__(self, product_id, **kwargs):
         """
 
@@ -74,8 +77,8 @@ class NewportPowermeter(Instrument):
         arInstrumentsModel = c_int()
         arInstrumentsSN = c_int()
         nArraySize = c_int()
-        self._dllWrapper("GetInstrumentList", byref(arInstruments), byref(arInstrumentsModel), byref(arInstrumentsSN),
-                         byref(nArraySize))
+        self._dllWrapper("GetInstrumentList", byref(arInstruments), byref(arInstrumentsModel),
+                         byref(arInstrumentsSN), byref(nArraySize))
         instrument_list = [arInstruments.value, arInstrumentsModel.value, arInstrumentsSN.value]
         return instrument_list
 
@@ -166,8 +169,9 @@ class NewportPowermeter(Instrument):
         self.wavelength = wavelength
         self.write('PM:DS:Clear')
         self.write('PM:DS:SIZE ' + str(buff_size))
-        self.write('PM:DS:INT ' + str(
-            interval_ms * 10))  # to set 1 ms rate we have to give int value of 10. This is strange as manual says the INT should be in ms
+        self.write(
+            'PM:DS:INT ' + str(interval_ms * 10)
+        )  # to set 1 ms rate we have to give int value of 10. This is strange as manual says the INT should be in ms
         self.write('PM:DS:ENable 1')
         while int(self.query('PM:DS:COUNT?')) < buff_size:  # Waits for the buffer is full or not.
             time.sleep(old_div(0.001 * interval_ms * buff_size, 10))

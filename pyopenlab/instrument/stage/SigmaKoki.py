@@ -4,11 +4,12 @@ This is an interface module for instruments produced by Sigma Koki
 
 __author__: Yago
 """
-from pyopenlab.utils.thread_utils import locked_action
-from pyopenlab.instrument.stage import Stage
-from pyopenlab.instrument.serial_instrument import SerialInstrument
-from pyopenlab.instrument.visa_instrument import VisaInstrument
 import time
+
+from pyopenlab.instrument.serial_instrument import SerialInstrument
+from pyopenlab.instrument.stage import Stage
+from pyopenlab.instrument.visa_instrument import VisaInstrument
+from pyopenlab.utils.thread_utils import locked_action
 
 
 class GSC01(SerialInstrument, Stage):
@@ -17,8 +18,8 @@ class GSC01(SerialInstrument, Stage):
     """
 
     counts_per_degree = 400.
-    axis_names = ('1', )
-    metadata_property_names = ('position', )
+    axis_names = ('1',)
+    metadata_property_names = ('position',)
 
     def __init__(self, address, **kwargs):
 
@@ -29,8 +30,7 @@ class GSC01(SerialInstrument, Stage):
                                   xonxoff=True,
                                   timeout=0.5,
                                   writeTimeout=0.5,
-                                  rtscts=True
-                                  )
+                                  rtscts=True)
         SerialInstrument.__init__(self, address)
         self.termination_character = '\r\n'
         Stage.__init__(self)
@@ -125,15 +125,16 @@ class GSC01(SerialInstrument, Stage):
         if wait:
             t0 = time.time()
             curpos = self.get_position()[0]
-            while curpos != pos and time.time()-t0 < 10:
+            while curpos != pos and time.time() - t0 < 10:
                 curpos = self.get_position()[0]
                 time.sleep(0.1)
 
     def get_position(self, axis=None):
         status = self.getStatus()
         counts = status.split(',')[0]
-        position = float(counts)/self.counts_per_degree
-        self._logger.debug('Status: %s. Counts: %s. Position returned %g' %(status, counts, position))
+        position = float(counts) / self.counts_per_degree
+        self._logger.debug('Status: %s. Counts: %s. Position returned %g' %
+                           (status, counts, position))
         return [position]
 
     def jog(self, direction, timeout=2):
@@ -248,8 +249,7 @@ class SHOT(VisaInstrument, Stage):
                                   xonxoff=True,
                                   timeout=0.5,
                                   writeTimeout=0.5,
-                                  rtscts=True
-                                  )
+                                  rtscts=True)
         VisaInstrument.__init__(self, address)
         self.termination_character = '\r\n'
         Stage.__init__(self, unit="step")
@@ -269,11 +269,11 @@ class SHOT(VisaInstrument, Stage):
 
     @locked_action
     def _write_check(self, command, wait=False):
-        self._logger.debug("Writing: %s" %command)
+        self._logger.debug("Writing: %s" % command)
         self.write(command)
         self._logger.debug("Writing successful")
         reply = self.read()
-        self._logger.debug("Read: %s" %reply)
+        self._logger.debug("Read: %s" % reply)
 
         if reply == 'NG\n':
             self._logger.warn('%s replied %s' % (command, reply))
@@ -317,7 +317,7 @@ class SHOT(VisaInstrument, Stage):
         :return:
         """
         if not hasattr(counts, '__iter__'):
-            counts = (counts, )
+            counts = (counts,)
         for count in counts:
             if not (-16777214 <= count <= 16777214):
                 raise ValueError('stage1 must be between -16777214 and 16777214.')
@@ -406,7 +406,7 @@ class SHOT(VisaInstrument, Stage):
             if len(min_speed) != 2 or len(min_speed) != 2 or len(min_speed) != 2:
                 raise ValueError('You need to provide speeds and times for both axis')
 
-        command = "D:%s" %axes
+        command = "D:%s" % axes
         for mn, mx, at in zip(min_speed, max_speed, accel_time):
             command += "S" + str(mn) + "F" + str(mx) + "R" + str(at)
         self._write_check(command)
@@ -475,8 +475,7 @@ class HIT(SerialInstrument, Stage):
                                   xonxoff=True,
                                   timeout=0.5,
                                   writeTimeout=0.5,
-                                  rtscts=True
-                                  )
+                                  rtscts=True)
         SerialInstrument.__init__(self, address)
         self.termination_character = '\r\n'
         Stage.__init__(self, unit="step")
@@ -493,7 +492,7 @@ class HIT(SerialInstrument, Stage):
         if axes is None:
             axes = self.axis_names
         if not isinstance(axes, list) and not isinstance(axes, tuple):
-            axes = (axes, )
+            axes = (axes,)
         axes_iter = []
         for ax in axes:
             if ax in list(self.axis_LUT.keys()):
@@ -622,7 +621,7 @@ class HIT(SerialInstrument, Stage):
 
         self._logger.debug("Axes: %s axes_iter: %s Parameters: %s" % (axes, axes_iter, parameters))
 
-        argument_list = ['DUMMY']*8
+        argument_list = ['DUMMY'] * 8
         for ax, param in zip(axes_iter, parameters):
             argument_list[ax] = str(param)
         argument_string = ','.join(argument_list)

@@ -1,14 +1,19 @@
 ﻿from __future__ import print_function
-from builtins import str
+
 from builtins import range
+from builtins import str
+
 __author__ = 'alansanders'
 
-from pyopenlab.experiment.scanning_experiment import ScanningExperiment, TimedScan
-import numpy as np
 import threading
 import time
-from pyopenlab.utils.gui import *
+
+import numpy as np
+
+from pyopenlab.experiment.scanning_experiment import ScanningExperiment
+from pyopenlab.experiment.scanning_experiment import TimedScan
 from pyopenlab.ui.ui_tools import UiTools
+from pyopenlab.utils.gui import *
 
 
 class LinearScan(ScanningExperiment, TimedScan):
@@ -36,7 +41,8 @@ class LinearScan(ScanningExperiment, TimedScan):
         :param rate: the update period in seconds
         :return:
         """
-        if isinstance(self.acquisition_thread, threading.Thread) and self.acquisition_thread.is_alive():
+        if isinstance(self.acquisition_thread,
+                      threading.Thread) and self.acquisition_thread.is_alive():
             print('scan already running')
             return
         self.init_scan()
@@ -110,7 +116,7 @@ class LinearScanQt(LinearScan, QtCore.QObject):
     def run(self, rate=0.1):
         super(LinearScanQt, self).run()
         self.acquiring.wait()
-        self.timer.start(1000.*rate)
+        self.timer.start(1000. * rate)
 
     def get_qt_ui(self):
         return LinearScanUI(self)
@@ -136,12 +142,14 @@ class LinearScanQt(LinearScan, QtCore.QObject):
 
 
 class LinearScanUI(QtWidgets.QWidget, UiTools):
+
     def __init__(self, linear_scanner):
-        assert isinstance(linear_scanner, LinearScanQt), "A valid LinearScanQt subclass must be supplied"
+        assert isinstance(linear_scanner,
+                          LinearScanQt), "A valid LinearScanQt subclass must be supplied"
         super(LinearScanUI, self).__init__()
         self.linear_scanner = linear_scanner
         uic.loadUi(os.path.join(os.path.dirname(__file__), 'linear_scanner.ui'), self)
-        self.rate = 1./30.
+        self.rate = 1. / 30.
 
         self.setWindowTitle(self.linear_scanner.__class__.__name__)
 
@@ -202,10 +210,12 @@ class LinearScanUI(QtWidgets.QWidget, UiTools):
 if __name__ == '__main__':
     import matplotlib
     matplotlib.use('Qt4Agg')
-    from pyopenlab.ui.mpl_gui import FigureCanvasWithDeferredDraw as FigureCanvas
-    from matplotlib.figure import Figure
     import cProfile
     import pstats
+
+    from matplotlib.figure import Figure
+
+    from pyopenlab.ui.mpl_gui import FigureCanvasWithDeferredDraw as FigureCanvas
 
     test = 'qt'
     if test == 'qt':
@@ -214,12 +224,14 @@ if __name__ == '__main__':
         template = LinearScan
 
     class DummyLinearScan(template):
+
         def __init__(self):
             super(DummyLinearScan, self).__init__()
             self.start, self.stop, self.step = (0, 1, 0.01)
             self.estimated_step_time = 0.0005
             self.fig = Figure()
             self.data = None
+
         def open_scan(self):
             self.fig.clear()
             self.data = np.zeros_like(self.parameter, dtype=np.float64)
@@ -228,18 +240,24 @@ if __name__ == '__main__':
             #self.ax.set_xlim(self.parameter.min(), self.parameter.max())
         def set_parameter(self, value):
             pass
+
         def scan_function(self, index):
             time.sleep(0.0005)
             x = self.parameter[index]
-            self.data[index] = np.sin(2*np.pi*5*x)
-            self.check_for_data_request(self.parameter[:self.index+1], self.data[:self.index+1])
+            self.data[index] = np.sin(2 * np.pi * 5 * x)
+            self.check_for_data_request(self.parameter[:self.index + 1], self.data[:self.index + 1])
+
         def run(self, rate=0.1):
             fname = 'profiling.stats'
-            cProfile.runctx('super(DummyLinearScan, self).run(%.2f)'%rate, globals(), locals(), filename=fname)
+            cProfile.runctx('super(DummyLinearScan, self).run(%.2f)' % rate,
+                            globals(),
+                            locals(),
+                            filename=fname)
             stats = pstats.Stats(fname)
             stats.strip_dirs()
             stats.sort_stats('cumulative')
             stats.print_stats()
+
         def update(self, force=False):
             super(DummyLinearScan, self).update(force)
             if self.data is None or self.fig.canvas is None:
@@ -261,23 +279,25 @@ if __name__ == '__main__':
                     self.ax.relim()
                     self.ax.autoscale_view()
                 self.fig.canvas.draw()
+
         def get_qt_ui(self):
             return DummyLinearScanUI(self)
 
     class DummyLinearScanUI(LinearScanUI):
+
         def __init__(self, linear_scanner):
             super(DummyLinearScanUI, self).__init__(linear_scanner)
             self.canvas = FigureCanvas(self.linear_scanner.fig)
-            self.canvas.setMaximumSize(300,300)
+            self.canvas.setMaximumSize(300, 300)
             self.layout.addWidget(self.canvas)
             self.resize(self.sizeHint())
 
     ls = DummyLinearScan()
     if test == 'qt':
-        ls.run(1./30.)
+        ls.run(1. / 30.)
         app = get_qt_app()
         gui = ls.get_qt_ui()
-        gui.rate = 1./30.
+        gui.rate = 1. / 30.
         gui.show()
         sys.exit(app.exec_())
     else:

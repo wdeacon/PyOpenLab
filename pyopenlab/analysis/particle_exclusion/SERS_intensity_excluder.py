@@ -12,17 +12,21 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from pyopenlab.analysis import latest_scan, load_h5, Spectrum
-from pyopenlab.analysis.particle_exclusion.utils import load_rejected, save_rejected
-from scipy import ndimage, signal
+from scipy import ndimage
+from scipy import signal
 from tqdm import tqdm
 
+from pyopenlab.analysis import latest_scan
+from pyopenlab.analysis import load_h5
+from pyopenlab.analysis import Spectrum
+from pyopenlab.analysis.particle_exclusion.utils import load_rejected
+from pyopenlab.analysis.particle_exclusion.utils import save_rejected
 
 
 class IntensityExcluder():
     '''excludes particles who's darkfield spectrum peaks below a threshold (set by a user) '''
 
-    def __init__(self, scan, SERS_name='lab.SERS_0',counts_thresh=500):
+    def __init__(self, scan, SERS_name='lab.SERS_0', counts_thresh=500):
         # SERS_name is the name of the group of the SERS data,
         # if the global maximum of the SERS is below counts_thresh the particle will be excluded
         self.scan = scan
@@ -33,8 +37,7 @@ class IntensityExcluder():
 
     def run(self, plot=False, overwrite=True):
         if plot:
-            if not self.fig_dir.exists(
-            ):  # make the folder if it doesn't exist
+            if not self.fig_dir.exists():  # make the folder if it doesn't exist
                 self.fig_dir.mkdir()
 
         rejected = set() if overwrite else load_rejected()
@@ -42,21 +45,21 @@ class IntensityExcluder():
         for name, group in tqdm(list(self.scan.items())):
             if not name.startswith('Particle'):
                 continue
-            spec=Spectrum.from_h5(group[self.SERS_name]) # extracts the DF spectrum from file
+            spec = Spectrum.from_h5(group[self.SERS_name])  # extracts the DF spectrum from file
             wl = spec.wl
             global_max = np.max(spec)
-            reject_flag=False
-            
+            reject_flag = False
+
             reject_flag = True
             for sp in spec:
                 ind_list = np.where(sp > self.counts_thresh)[0]
-                
-                if len(ind_list)>=7:
+
+                if len(ind_list) >= 7:
                     reject_flag = False
                     continue
             if reject_flag:
                 rejected.add(name)
-                
+
             # if global_max <= self.counts_thresh:
             #     rejected.add(name)
             #     reject_flag=True
@@ -66,8 +69,12 @@ class IntensityExcluder():
                 status = 'rejected' if reject_flag else 'accepted'
                 plt.suptitle(f'{name}, {status}')
                 for sp in spec:
-                    plt.plot(wl,sp)
-                    plt.hlines(self.counts_thresh,np.min(wl), np.max(wl), colors=None, linestyles='dashed')
+                    plt.plot(wl, sp)
+                    plt.hlines(self.counts_thresh,
+                               np.min(wl),
+                               np.max(wl),
+                               colors=None,
+                               linestyles='dashed')
                 plt.savefig(self.fig_dir / f'_{name}.png')
                 plt.close()
         save_rejected(rejected)

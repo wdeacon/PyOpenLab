@@ -4,19 +4,24 @@ Created on Fri Mar  5 12:47:58 2021
 
 @author: Hera
 """
+from itertools import zip_longest
+import random
+import re
+import winsound
+
+import numpy as np
+
+from pyopenlab.instrument import Instrument
+from pyopenlab.utils.array_with_attrs import ArrayWithAttrs
 from pyopenlab.utils.gui import QtWidgets
 from pyopenlab.utils.thread_utils import background_action
-from pyopenlab.utils.array_with_attrs import ArrayWithAttrs
-from pyopenlab.instrument import Instrument
-from itertools import zip_longest
-import re
-import winsound, random
-import numpy as np
+
 
 def squawk():
     for i in range(5):
-        winsound.Beep(random.randrange(37,3500),random.randrange(70,750)) 
+        winsound.Beep(random.randrange(37, 3500), random.randrange(70, 750))
     return 'I did a thing'
+
 
 class Rotators(QtWidgets.QWidget, Instrument):
     ''' takes a list of rotators (must have a move function, should be a subclass of Stage),
@@ -34,22 +39,23 @@ class Rotators(QtWidgets.QWidget, Instrument):
         # will set C to 45 deg, B will continue moving and taking measurements 
         # after A runs out
         '''
+
     def __init__(self, rotators, payload=squawk):
         QtWidgets.QWidget.__init__(self)
         Instrument.__init__(self)
         self.rotators = rotators
         self.payload = payload
-        
+
         self.edits = {r: [] for r in rotators}
-        
+
         lines_widget = QtWidgets.QWidget()
         lines_layout = QtWidgets.QFormLayout()
-        
+
         for label, r in rotators.items():
             l = QtWidgets.QLabel(label)
             self.edits[label] = (t := QtWidgets.QLineEdit())
             t.editingFinished.connect(self.textChanged)
-            lines_layout.addRow(l, t)  
+            lines_layout.addRow(l, t)
         lines_widget.setLayout(lines_layout)
         layout = QtWidgets.QHBoxLayout()
         layout.addWidget(lines_widget)
@@ -59,8 +65,8 @@ class Rotators(QtWidgets.QWidget, Instrument):
         self.setLayout(layout)
 
     def textChanged(self):
-       self.angles = {r: self.parse_edit(self.edits[r]) for r in self.rotators}
-       
+        self.angles = {r: self.parse_edit(self.edits[r]) for r in self.rotators}
+
     @staticmethod
     def parse_edit(edit):
         text = edit.text()
@@ -71,7 +77,7 @@ class Rotators(QtWidgets.QWidget, Instrument):
             return list(map(float, split))
         else:
             return []
-        
+
     @background_action
     def run(self, checked):
         zipped_angles = zip_longest(*self.angles.values(), fillvalue=None)
@@ -83,11 +89,14 @@ class Rotators(QtWidgets.QWidget, Instrument):
             data = ArrayWithAttrs(self.payload())
             data.attrs.update({l: r.position for l, r in self.rotators.items()})
             self.create_dataset('rotator_data_%d', data=data)
-  
+
     def get_qt_ui(self):
-         return self
+        return self
+
+
 if __name__ == '__main__':
-    from pyopenlab.instrument.stage.Thorlabs_ELL8K import Thorlabs_ELL8K, BusDistributor
+    from pyopenlab.instrument.stage.Thorlabs_ELL8K import BusDistributor
+    from pyopenlab.instrument.stage.Thorlabs_ELL8K import Thorlabs_ELL8K
     bus = BusDistributor('COM6')
     ells = {l: Thorlabs_ELL8K(bus, l) for l in 'ABC'}
     rotators = Rotators(ells)

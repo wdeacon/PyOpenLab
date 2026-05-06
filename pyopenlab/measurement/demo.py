@@ -1,25 +1,29 @@
-﻿import h5py
-import pyjisa.autoload
-from typing import List, Tuple
+﻿from typing import List, Tuple
 
-from pyopenlab.measurement import Action, Instrument, Parameter, SimpleAction
+import h5py
+from jisa.devices.translator import Translator
+import pyjisa.autoload
+
+from pyopenlab.measurement import Action
+from pyopenlab.measurement import Instrument
+from pyopenlab.measurement import Parameter
+from pyopenlab.measurement import SimpleAction
 from pyopenlab.measurement.sweep import H5Sweep
 
-from jisa.devices.translator import Translator
 
 class Move(SimpleAction):
 
-    def __init__(self, xAxis: Translator.Linear, yAxis: Translator.Linear, speed, position): 
+    def __init__(self, xAxis: Translator.Linear, yAxis: Translator.Linear, speed, position):
 
-        super().__init__("Move to (%.02g m, %.02g m)" % (position[0], position[1]), "%.02g m, %.02g m"  % (position[0], position[1]))
+        super().__init__("Move to (%.02g m, %.02g m)" % (position[0], position[1]),
+                         "%.02g m, %.02g m" % (position[0], position[1]))
 
         self.xAxis = xAxis
         self.yAxis = yAxis
         self.speed = speed
         self.position = position
 
-
-    def main(self, data = None):
+    def main(self, data=None):
 
         self.xAxis.setMaxSpeed(self.speed)
         self.yAxis.setMaxSpeed(self.speed)
@@ -27,22 +31,22 @@ class Move(SimpleAction):
         self.xAxis.setPosition(self.position[0])
         self.yAxis.setPosition(self.position[1])
 
-
-    def finish(self, data = None):
+    def finish(self, data=None):
         self.xAxis.waitUntilStationary()
         self.yAxis.waitUntilStationary()
 
 
-
 class PositionSweep(H5Sweep[Tuple[float, float]]):
 
-    def __init__(self, tag, actions = []): super().__init__("Position Sweep", tag, actions)
+    def __init__(self, tag, actions=[]):
+        super().__init__("Position Sweep", tag, actions)
 
-    positions = Parameter(name = "Positions [m]", defaultValue = [(0.0, 0.0), (0.0, 1.0), (1.0, 0.0), (1.0, 1.0)])
-    speed     = Parameter(name = "Speed",         defaultValue = 100.0, range=(0.0, 100.0))
+    positions = Parameter(name="Positions [m]",
+                          defaultValue=[(0.0, 0.0), (0.0, 1.0), (1.0, 0.0), (1.0, 1.0)])
+    speed = Parameter(name="Speed", defaultValue=100.0, range=(0.0, 100.0))
 
-    xAxis = Instrument(name = "X Axis Translator", type = Translator.Linear, required = True)
-    yAxis = Instrument(name = "Y Axis Translator", type = Translator.Linear, required = True)
+    xAxis = Instrument(name="X Axis Translator", type=Translator.Linear, required=True)
+    yAxis = Instrument(name="Y Axis Translator", type=Translator.Linear, required=True)
 
     def generate(self, value: Tuple[float, float], actions: List[Action]):
         return [Move(self.xAxis, self.yAxis, value)] + actions
@@ -52,6 +56,3 @@ class PositionSweep(H5Sweep[Tuple[float, float]]):
 
     def getValues(self) -> List[Tuple[float, float]]:
         return self.positions
-
-
-    

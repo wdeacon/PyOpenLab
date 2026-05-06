@@ -1,8 +1,11 @@
-﻿import numpy as np
+﻿from functools import wraps
+
+import numpy as np
 from scipy import sparse
 from scipy.sparse.linalg import spsolve
-from functools import wraps
+
 from pyopenlab.analysis import Spectrum
+
 
 def baseline_als(y, lam, p, niter=10):
     """
@@ -19,6 +22,7 @@ def baseline_als(y, lam, p, niter=10):
         z = spsolve(Z, w * y)
         w = p * (y > z) + (1 - p) * (y < z)
     return z
+
 
 @wraps(baseline_als)
 def als(y, lam=10**3, p=0.01, niter=10):

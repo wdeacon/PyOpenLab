@@ -1,16 +1,17 @@
 ﻿# -*- coding: utf-8 -*-
-from pyopenlab.instrument.camera import CameraParameter
-from pyopenlab.utils.thread_utils import locked_action
-from pyopenlab.utils.log import create_logger
-import pyopenlab.datafile as df
+from ctypes import *
 import os
 import platform
-import time
-from ctypes import *
-import numpy as np
-import tempfile
 import shutil
+import tempfile
+import time
 
+import numpy as np
+
+import pyopenlab.datafile as df
+from pyopenlab.instrument.camera import CameraParameter
+from pyopenlab.utils.log import create_logger
+from pyopenlab.utils.thread_utils import locked_action
 
 LOGGER = create_logger('Andor SDK')
 TEMPORARY_PREFIX = '_andortemporary'
@@ -22,25 +23,18 @@ def to_bits(integer):
     :return: list of 1s and 0s
     """
     bits = integer.bit_length()
-    return [1 if integer & (1 << (bits-1-n)) else 0 for n in range(bits)]
+    return [1 if integer & (1 << (bits - 1 - n)) else 0 for n in range(bits)]
 
 
 class AndorCapabilities(Structure):
-    _fields_ = [("ulSize", c_ulong),
-                ("ulAcqModes", c_ulong),
-                ("ulReadModes", c_ulong),
-                ("ulTriggerModes", c_ulong),
-                ("ulCameraType", c_ulong),
-                ("ulPixelMode", c_ulong),
-                ("ulSetFunctions", c_ulong),
-                ("ulGetFunctions", c_ulong),
-                ("ulFeatures", c_ulong),
-                ("ulPCICard", c_ulong),
-                ("ulEMGainCapability", c_ulong),
-                ("ulFTReadModes", c_ulong)]
+    _fields_ = [("ulSize", c_ulong), ("ulAcqModes", c_ulong), ("ulReadModes", c_ulong),
+                ("ulTriggerModes", c_ulong), ("ulCameraType", c_ulong), ("ulPixelMode", c_ulong),
+                ("ulSetFunctions", c_ulong), ("ulGetFunctions", c_ulong), ("ulFeatures", c_ulong),
+                ("ulPCICard", c_ulong), ("ulEMGainCapability", c_ulong), ("ulFTReadModes", c_ulong)]
 
 
 class AndorWarning(Warning):
+
     def __init__(self, code, msg, reply):
         super(AndorWarning, self).__init__()
         self.error_code = code
@@ -90,6 +84,7 @@ class AndorBase(object):
         Andor.GetParameter('VSSpeed', 0)
     Which does not return the current VSSpeed, but the VSSpeed (in microseconds) of the setting 0.
     """
+
     def start(self, camera_index=None):
         if not hasattr(self, '_logger'):
             self._logger = LOGGER
@@ -121,7 +116,8 @@ class AndorBase(object):
         self._initialized_cameras = []
         if camera_index is None:
             if self.get_andor_parameter('AvailableCameras') > 1:
-                self._logger.warn('More than one camera available, but no index provided. Initializing camera 0')
+                self._logger.warn(
+                    'More than one camera available, but no index provided. Initializing camera 0')
             self.camera_index = 0
         else:
             self.camera_index = camera_index
@@ -187,7 +183,7 @@ class AndorBase(object):
             return
         if error != 20002:
             raise AndorWarning(error, funcname, ERROR_CODE[error])
-   
+
     def set_andor_parameter(self, param_loc, *inputs):
         """Parameter setter
 
@@ -198,13 +194,14 @@ class AndorBase(object):
         :param inputs: inputs required to set the particular parameter. Must be at least one
         :return:
         """
-        
+
         if len(inputs) == 1 and type(inputs[0]) == tuple:
             if len(np.shape(inputs)) == 2:
                 inputs = inputs[0]
             elif len(np.shape(inputs)) == 3:
                 inputs = inputs[0][0]
-        if 'not_supported' in self.parameters[param_loc] and self.parameters[param_loc]['not_supported']:
+        if 'not_supported' in self.parameters[param_loc] and self.parameters[param_loc][
+                'not_supported']:
             return
         if 'Set' in self.parameters[param_loc]:
             func = self.parameters[param_loc]['Set']
@@ -212,15 +209,14 @@ class AndorBase(object):
             form_in = ()
             if 'Input_params' in func:
                 for input_param in func['Input_params']:
-                    form_in += ({'value': getattr(self, input_param[0]),
-                                  'type': input_param[1]},)
+                    form_in += ({'value': getattr(self, input_param[0]), 'type': input_param[1]},)
             for val, typ in zip(inputs, func['Inputs']):
-                form_in += ({'value':val, 'type': typ},)
+                form_in += ({'value': val, 'type': typ},)
 
             form_out = ()
             if 'Outputs' in func:
                 for val in func['Outputs']:
-                    form_out += (val(), )
+                    form_out += (val(),)
 
             try:
                 self._dll_wrapper(func['cmdName'], inputs=form_in, outputs=form_out)
@@ -237,12 +233,13 @@ class AndorBase(object):
             except AndorWarning as andor_warning:
                 if andor_warning.error_name == 'DRV_NOT_SUPPORTED':
                     if self.parameters[param_loc]['value'] is None:
-                        self._logger.error('Not supported parameter and None value in the parameter dictionary')
+                        self._logger.error(
+                            'Not supported parameter and None value in the parameter dictionary')
                     else:
                         self.parameters[param_loc]['not_supported'] = True
                         inputs = self.parameters[param_loc]['value']
                         if not isinstance(inputs, tuple):
-                            inputs = (inputs, )
+                            inputs = (inputs,)
                 else:
                     self._logger.warn(andor_warning)
                     raise andor_warning
@@ -291,12 +288,16 @@ class AndorBase(object):
                 vals = ()
                 for i in range(getattr(self, func['Iterator'])):
                     form_in_iterator = form_in + ({'value': i, 'type': c_int},)
-                    vals += (self._dll_wrapper(func['cmdName'], inputs=form_in_iterator, outputs=form_out),)
+                    vals += (self._dll_wrapper(func['cmdName'],
+                                               inputs=form_in_iterator,
+                                               outputs=form_out),)
             self.parameters[param_loc]['value'] = vals
             self._parameters[param_loc] = vals
             return vals
-        elif 'Get_from_prop' in list(self.parameters[param_loc].keys()) and hasattr(self, '_' + param_loc):
-            vals = getattr(self, self.parameters[param_loc]['Get_from_prop'])[getattr(self, '_' + param_loc)]
+        elif 'Get_from_prop' in list(self.parameters[param_loc].keys()) and hasattr(
+                self, '_' + param_loc):
+            vals = getattr(self, self.parameters[param_loc]['Get_from_prop'])[getattr(
+                self, '_' + param_loc)]
             self.parameters[param_loc]['value'] = vals
             self._parameters[param_loc] = vals
             return vals
@@ -334,15 +335,16 @@ class AndorBase(object):
         assert isinstance(parameter_dictionary, dict)
         for name, value in list(parameter_dictionary.items()):
             if not hasattr(self, name):
-                self._logger.warn('The parameter ' + name + 'does not exist and therefore cannot be set')
+                self._logger.warn('The parameter ' + name +
+                                  'does not exist and therefore cannot be set')
                 continue
             if value is None:
                 self._logger.info('%s has not been set, as the value provided was "None" ' % name)
                 continue
 
             if 'Get_from_prop' in self.parameters[name]:
-                value = getattr(self, self.parameters[name]['Get_from_prop'])[
-                    np.where(np.array(getattr(self, self.parameters[name]['Get_from_prop'])) == value)[0][0]]
+                value = getattr(self, self.parameters[name]['Get_from_prop'])[np.where(
+                    np.array(getattr(self, self.parameters[name]['Get_from_prop'])) == value)[0][0]]
             try:
                 setattr(self, name, value)
             except Exception as e:
@@ -371,11 +373,21 @@ class AndorBase(object):
 
         :return:
         """
-        capabilities = dict(AcqModes=[], ReadModes=[], FTReadModes=[], TriggerModes=[], CameraType=None, PixelMode=[],
-                            SetFunctions=[], GetFunctions=[], Features=[], PCICard=None, EMGainCapability=[])
+        capabilities = dict(AcqModes=[],
+                            ReadModes=[],
+                            FTReadModes=[],
+                            TriggerModes=[],
+                            CameraType=None,
+                            PixelMode=[],
+                            SetFunctions=[],
+                            GetFunctions=[],
+                            Features=[],
+                            PCICard=None,
+                            EMGainCapability=[])
 
         bits = to_bits(self.Capabilities['AcqModes'])
-        keys = ['Single', 'Video', 'Accumulate', 'Kinetic', 'FrameTransfer', 'FastKinetic', 'Overlap']
+        keys = [
+            'Single', 'Video', 'Accumulate', 'Kinetic', 'FrameTransfer', 'FastKinetic', 'Overlap']
         for bit, key in zip(bits, keys):
             if bit:
                 capabilities['AcqModes'] += [key]
@@ -393,14 +405,16 @@ class AndorBase(object):
                 capabilities['FTReadModes'] += [key]
 
         bits = to_bits(self.Capabilities['TriggerModes'])
-        keys = ['Internal', 'External', 'External_FVB_EM', 'Continuous',
-                'ExternalStart', 'Bulb', 'ExternalExposure', 'Inverted']
+        keys = [
+            'Internal', 'External', 'External_FVB_EM', 'Continuous', 'ExternalStart', 'Bulb',
+            'ExternalExposure', 'Inverted']
         for bit, key in zip(bits, keys):
             if bit:
                 capabilities['TriggerModes'] += [key]
 
-        keys = ['PDA', 'iXon', 'iCCD', 'EMCCD', 'CCD', 'iStar', 'Video', 'iDus', 'Newton',
-                'Surcam', 'USBiStar', 'Luca', 'Reserved', 'iKon', 'InGaAs', 'iVac', 'Clara']
+        keys = [
+            'PDA', 'iXon', 'iCCD', 'EMCCD', 'CCD', 'iStar', 'Video', 'iDus', 'Newton', 'Surcam',
+            'USBiStar', 'Luca', 'Reserved', 'iKon', 'InGaAs', 'iVac', 'Clara']
         capabilities['CameraType'] = keys[int(self.Capabilities['CameraType'])]
 
         bits = to_bits(self.Capabilities['PixelMode'])
@@ -410,24 +424,28 @@ class AndorBase(object):
                 capabilities['PixelMode'] += [key]
 
         bits = to_bits(self.Capabilities['SetFunctions'])
-        keys = ['VSSpeed', 'HSSpeed', 'Temperature', 'MCPGain', 'EMCCDGain', 'BaselineClamp', 'VSAmplitude',
-                'HighCapacity', 'BaselineOffset', 'PreAmpGain', 'CropMode/IsolatedCropMode', 'DMAParameters',
-                'HorizontalBin', 'MultiTrackHRange', 'RandomTracks', 'EMAdvanced']
+        keys = [
+            'VSSpeed', 'HSSpeed', 'Temperature', 'MCPGain', 'EMCCDGain', 'BaselineClamp',
+            'VSAmplitude', 'HighCapacity', 'BaselineOffset', 'PreAmpGain',
+            'CropMode/IsolatedCropMode', 'DMAParameters', 'HorizontalBin', 'MultiTrackHRange',
+            'RandomTracks', 'EMAdvanced']
         for bit, key in zip(bits, keys):
             if bit:
                 capabilities['SetFunctions'] += [key]
 
         bits = to_bits(self.Capabilities['GetFunctions'])
-        keys = ['Temperature', 'TemperatureRange', 'Detector', 'MCPGain', 'EMCCDGain', 'BaselineClamp']
+        keys = [
+            'Temperature', 'TemperatureRange', 'Detector', 'MCPGain', 'EMCCDGain', 'BaselineClamp']
         for bit, key in zip(bits, keys):
             if bit:
                 capabilities['GetFunctions'] += [key]
 
         bits = to_bits(self.Capabilities['Features'])
-        keys = ['Status', 'DriverEvent', 'Spool', 'Shutter', 'ShutterEx', 'I2C', 'SaturationEvent', 'FanMode',
-                'LowFanMode', 'TemperatureDuringAcquitisition', 'KeepClean', 'Internal', 'FTandExternalExposure',
-                'KineticAndExternalExposure', 'Internal', 'Internal', 'IOcontrol', 'PhotonCounting', 'CountConvert',
-                'DualMode']
+        keys = [
+            'Status', 'DriverEvent', 'Spool', 'Shutter', 'ShutterEx', 'I2C', 'SaturationEvent',
+            'FanMode', 'LowFanMode', 'TemperatureDuringAcquitisition', 'KeepClean', 'Internal',
+            'FTandExternalExposure', 'KineticAndExternalExposure', 'Internal', 'Internal',
+            'IOcontrol', 'PhotonCounting', 'CountConvert', 'DualMode']
         for bit, key in zip(bits, keys):
             if bit:
                 capabilities['Features'] += [key]
@@ -473,7 +491,6 @@ class AndorBase(object):
         # except AndorWarning:
         #     self.set_andor_parameter('OutAmp', 0)
         self.cooler = 1
-        
 
     @locked_action
     def capture(self):
@@ -493,7 +510,8 @@ class AndorBase(object):
         self.wait_for_driver()
         if self._parameters['AcquisitionMode'] == 4:
             num_of_images = 1  # self.parameters['FastKinetics']['value'][1]
-            image_shape = (self._parameters['FastKinetics'][-1], self._parameters['DetectorShape'][0])
+            image_shape = (self._parameters['FastKinetics'][-1],
+                           self._parameters['DetectorShape'][0])
         else:
             if self._parameters['AcquisitionMode'] == 1:
                 num_of_images = 1
@@ -502,18 +520,23 @@ class AndorBase(object):
             elif self._parameters['AcquisitionMode'] == 3:
                 num_of_images = self._parameters['NKin']
             else:
-                raise NotImplementedError('Acquisition Mode %g' % self._parameters['AcquisitionMode'])
+                raise NotImplementedError('Acquisition Mode %g' %
+                                          self._parameters['AcquisitionMode'])
 
             if self._parameters['ReadMode'] == 0:
                 if self._parameters['IsolatedCropMode'][0]:
-                    image_shape = (self._parameters['IsolatedCropMode'][2] // self._parameters['IsolatedCropMode'][4], )
+                    image_shape = (self._parameters['IsolatedCropMode'][2] //
+                                   self._parameters['IsolatedCropMode'][4],)
                 else:
-                    image_shape = (self._parameters['DetectorShape'][0] // self._parameters['FVBHBin'], )
+                    image_shape = (self._parameters['DetectorShape'][0] //
+                                   self._parameters['FVBHBin'],)
             elif self._parameters['ReadMode'] == 1:  # random track
-                image_shape = (self.MultiTrack[0], self._parameters['DetectorShape'][0] // self._parameters['FVBHBin'])
+                image_shape = (self.MultiTrack[0],
+                               self._parameters['DetectorShape'][0] // self._parameters['FVBHBin'])
             elif self._parameters['ReadMode'] == 2:
-                image_shape = ( self.RandomTracks[0], self._parameters['DetectorShape'][0]// self._parameters['FVBHBin'])
-                 
+                image_shape = (self.RandomTracks[0],
+                               self._parameters['DetectorShape'][0] // self._parameters['FVBHBin'])
+
             elif self._parameters['ReadMode'] == 3:
                 image_shape = (self._parameters['DetectorShape'][0],)
             elif self._parameters['ReadMode'] == 4:
@@ -523,8 +546,11 @@ class AndorBase(object):
                 #         self._parameters['IsolatedCropMode'][2] / self._parameters['IsolatedCropMode'][4])
                 # else:
                 image_shape = (
-                    (self._parameters['Image'][5] - self._parameters['Image'][4] + 1) // self._parameters['Image'][1],
-                    (self._parameters['Image'][3] - self._parameters['Image'][2] + 1) // self._parameters['Image'][0],)
+                    (self._parameters['Image'][5] - self._parameters['Image'][4] + 1) //
+                    self._parameters['Image'][1],
+                    (self._parameters['Image'][3] - self._parameters['Image'][2] + 1) //
+                    self._parameters['Image'][0],
+                )
             else:
                 raise NotImplementedError('Read Mode %g' % self._parameters['ReadMode'])
 
@@ -532,9 +558,14 @@ class AndorBase(object):
         dim = num_of_images * np.prod(image_shape)
         cimageArray = c_int * dim
         cimage = cimageArray()
-        self._logger.debug('Getting AcquiredData for %i images with dimension %s' % (num_of_images, image_shape))
+        self._logger.debug('Getting AcquiredData for %i images with dimension %s' %
+                           (num_of_images, image_shape))
         try:
-            self._dll_wrapper('GetAcquiredData', inputs=({'type': c_int, 'value': dim},), outputs=(cimage,),
+            self._dll_wrapper('GetAcquiredData',
+                              inputs=({
+                                  'type': c_int,
+                                  'value': dim},),
+                              outputs=(cimage,),
                               reverse=True)
             imageArray = []
             for i in range(len(cimage)):
@@ -599,21 +630,22 @@ class AndorBase(object):
         vbin = self._parameters['Image'][1]
         offset = self._parameters['DetectorShape'][1] - n_rows
 
-        self.set_andor_parameter('FastKinetics', n_rows, series_Length, expT, mode, hbin, vbin, offset)
-    
-    
-    @locked_action    
+        self.set_andor_parameter('FastKinetics', n_rows, series_Length, expT, mode, hbin, vbin,
+                                 offset)
+
+    @locked_action
     def SetRandomTracks(self, number_tracks_and_pixels):
         number_tracks, pixels = number_tracks_and_pixels
-        assert len(pixels)/number_tracks == 2
+        assert len(pixels) / number_tracks == 2
         self._RandomTracks = number_tracks, pixels
         number_tracks = c_int(number_tracks)
         arr = c_int * len(pixels)
         c_pixels = arr(*pixels)
         return self.dll.SetRandomTracks(number_tracks, byref(c_pixels))
-    
+
     def GetRandomTracks(self):
         return self._RandomTracks
+
     RandomTracks = property(GetRandomTracks, SetRandomTracks)
 
     @property
@@ -684,33 +716,45 @@ parameters = dict(
     CurrentCamera=dict(Get=dict(cmdName='GetCurrentCamera', Outputs=(c_uint,)),
                        Set=dict(cmdName='SetCurrentCamera', Inputs=(c_uint,))),
     channel=dict(value=0),
-    CameraHandle=dict(Get=dict(cmdName='GetCameraHandle', Outputs=(c_uint,), Input_params=(('camera_index', c_int), ))),
+    CameraHandle=dict(Get=dict(
+        cmdName='GetCameraHandle', Outputs=(c_uint,), Input_params=(('camera_index', c_int),))),
     PixelSize=dict(Get=dict(cmdName='GetPixelSize', Outputs=(c_float, c_float))),
     SoftwareWaitBetweenCaptures=dict(value=0),
-    SoftwareVersion=dict(Get=dict(cmdName='GetSoftwareVersion', Outputs=(c_int, c_int, c_int, c_int, c_int, c_int))),
+    SoftwareVersion=dict(
+        Get=dict(cmdName='GetSoftwareVersion', Outputs=(c_int, c_int, c_int, c_int, c_int, c_int))),
     DetectorShape=dict(Get=dict(cmdName='GetDetector', Outputs=(c_int, c_int)), value=None),
     SerialNumber=dict(Get=dict(cmdName='GetCameraSerialNumber', Outputs=(c_int,)), value=None),
     HeadModel=dict(Get=dict(cmdName='GetHeadModel', Outputs=(c_char,) * 20), value=None),
-    Capabilities=dict(Get=dict(cmdName='GetCapabilities', Outputs=(
-        AndorCapabilities(sizeof(c_ulong) * 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),)), value=None),
+    Capabilities=dict(Get=dict(cmdName='GetCapabilities',
+                               Outputs=(AndorCapabilities(
+                                   sizeof(c_ulong) * 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),)),
+                      value=None),
     AcquisitionMode=dict(Set=dict(cmdName='SetAcquisitionMode', Inputs=(c_int,)), value=None),
     TriggerMode=dict(Set=dict(cmdName='SetTriggerMode', Inputs=(c_int,)), value=None),
     ReadMode=dict(Set=dict(cmdName='SetReadMode', Inputs=(c_int,)), value=None),
     CropMode=dict(Set=dict(cmdName='SetCropMode', Inputs=(c_int,) * 3), value=None),
     IsolatedCropMode=dict(Set=dict(cmdName='SetIsolatedCropMode', Inputs=(c_int,) * 5), value=(0,)),
-    AcquisitionTimings=dict(Get=dict(cmdName='GetAcquisitionTimings', Outputs=(c_float, c_float, c_float)),
+    AcquisitionTimings=dict(Get=dict(cmdName='GetAcquisitionTimings',
+                                     Outputs=(c_float, c_float, c_float)),
                             value=None),
     AccumCycleTime=dict(Set=dict(cmdName='SetAccumulationCycleTime', Inputs=(c_float,)),
                         Finally='AcquisitionTimings'),
     KinCycleTime=dict(Set=dict(cmdName='SetKineticCycleTime', Inputs=(c_float,)),
                       Finally='AcquisitionTimings'),
-    Exposure=dict(Set=dict(cmdName='SetExposureTime', Inputs=(c_float,)), Get_from_fixed_prop='AcquisitionTimings'),
+    Exposure=dict(Set=dict(cmdName='SetExposureTime', Inputs=(c_float,)),
+                  Get_from_fixed_prop='AcquisitionTimings'),
     Image=dict(Set=dict(cmdName='SetImage', Inputs=(c_int,) * 6), value=None),
     NAccum=dict(Set=dict(cmdName='SetNumberAccumulations', Inputs=(c_int,)), value=1),
     NKin=dict(Set=dict(cmdName='SetNumberKinetics', Inputs=(c_int,)), value=1),
-    FastKinetics=dict(Set=dict(cmdName='SetFastKineticsEx', Inputs=(c_int, c_int, c_float,) + (c_int,) * 4)),
+    FastKinetics=dict(
+        Set=dict(cmdName='SetFastKineticsEx', Inputs=(
+            c_int,
+            c_int,
+            c_float,
+        ) + (c_int,) * 4)),
     EMGain=dict(Set=dict(cmdName='SetEMCCDGain', Inputs=(c_int,)),
-                Get=dict(cmdName='GetEMCCDGain', Outputs=(c_int,)), value=None),
+                Get=dict(cmdName='GetEMCCDGain', Outputs=(c_int,)),
+                value=None),
     EMAdvancedGain=dict(Set=dict(cmdName='SetEMAdvanced', Inputs=(c_int,)), value=None),
     EMMode=dict(Set=dict(cmdName='SetEMCCDGainMode', Inputs=(c_int,)), value=None),
     EMGainRange=dict(Get=dict(cmdName='GetEMCCDGainRange', Outputs=(c_int,) * 2), value=None),
@@ -725,30 +769,41 @@ parameters = dict(
     FrameTransferMode=dict(Set=dict(cmdName='SetFrameTransferMode', Inputs=(c_int,)), value=None),
     SingleTrack=dict(Set=dict(cmdName='SetSingleTrack', Inputs=(c_int,) * 2), value=None),
     MultiTrack=dict(Set=dict(cmdName='SetMultiTrack', Inputs=(c_int,) * 3, Outputs=(c_int,) * 2)),
-    
     FVBHBin=dict(Set=dict(cmdName='SetFVBHBin', Inputs=(c_int,)), value=1),
     Spool=dict(Set=dict(cmdName='SetSpool', Inputs=(c_int, c_int, c_char, c_int)), value=None),
     NumVSSpeed=dict(Get=dict(cmdName='GetNumberVSSpeeds', Outputs=(c_int,)), value=None),
-    NumHSSpeed=dict(Get=dict(cmdName='GetNumberHSSpeeds', Outputs=(c_int,),
-                             Input_params=(('channel', c_int), ('OutAmp', c_int))), value=None),
+    NumHSSpeed=dict(Get=dict(cmdName='GetNumberHSSpeeds',
+                             Outputs=(c_int,),
+                             Input_params=(('channel', c_int), ('OutAmp', c_int))),
+                    value=None),
     VSSpeed=dict(Set=dict(cmdName='SetVSSpeed', Inputs=(c_int,)), Get_from_prop='VSSpeeds'),
-    VSSpeeds=dict(Get=dict(cmdName='GetVSSpeed', Inputs=(c_int,), Outputs=(c_float,), Iterator='NumVSSpeed')),
+    VSSpeeds=dict(
+        Get=dict(cmdName='GetVSSpeed', Inputs=(c_int,), Outputs=(c_float,), Iterator='NumVSSpeed')),
     # why no work?
     HSSpeed=dict(Set=dict(cmdName='SetHSSpeed', Inputs=(c_int,), Input_params=(('OutAmp', c_int),)),
                  Get_from_prop='HSSpeeds'),
-    HSSpeeds=dict(Get=dict(cmdName='GetHSSpeed', Inputs=(c_int,) * 2, Iterator='NumHSSpeed', Outputs=(c_float,),
-                           Input_params=(('channel', c_int), ('OutAmp', c_int),))),
+    HSSpeeds=dict(Get=dict(cmdName='GetHSSpeed',
+                           Inputs=(c_int,) * 2,
+                           Iterator='NumHSSpeed',
+                           Outputs=(c_float,),
+                           Input_params=(
+                               ('channel', c_int),
+                               ('OutAmp', c_int),
+                           ))),
     NumPreAmp=dict(Get=dict(cmdName='GetNumberPreAmpGains', Outputs=(c_int,))),
-    PreAmpGains=dict(Get=dict(cmdName='GetPreAmpGain', Inputs=(c_int,), Outputs=(c_float,), Iterator='NumPreAmp')),
-    PreAmpGain=dict(Set=dict(cmdName='SetPreAmpGain', Inputs=(c_int,)), Get_from_prop='PreAmpGains'),
+    PreAmpGains=dict(
+        Get=dict(cmdName='GetPreAmpGain', Inputs=(c_int,), Outputs=(
+            c_float,), Iterator='NumPreAmp')),
+    PreAmpGain=dict(Set=dict(cmdName='SetPreAmpGain', Inputs=(c_int,)),
+                    Get_from_prop='PreAmpGains'),
     NumADChannels=dict(Get=dict(cmdName='GetNumberADChannels', Outputs=(c_int,))),
     ADChannel=dict(Set=dict(cmdName='SetADChannel', Inputs=(c_int,))),
-    BitDepth=dict(Get=dict(cmdName='GetBitDepth', Inputs=(c_int,), Outputs=(c_int,), Iterator='NumADChannels'))
-)
+    BitDepth=dict(
+        Get=dict(cmdName='GetBitDepth', Inputs=(c_int,), Outputs=(
+            c_int,), Iterator='NumADChannels')))
 for param_name in parameters:
     if param_name != 'Image':
         setattr(AndorBase, param_name, AndorParameter(param_name))
-
 
 ERROR_CODE = {
     20001: "DRV_ERROR_CODES",
@@ -789,5 +844,4 @@ ERROR_CODE = {
     20099: "DRV_BINNING_ERROR",
     20990: "DRV_NOCAMERA",
     20991: "DRV_NOT_SUPPORTED",
-    20992: "DRV_NOT_AVAILABLE"
-}
+    20992: "DRV_NOT_AVAILABLE"}

@@ -1,9 +1,10 @@
 ﻿__author__ = 'alansanders'
 
-from pyopenlab.experiment.scanning_experiment import ContinuousLinearScan, ContinuousLinearScanQt
+from pyopenlab import inherit_docstring
+from pyopenlab.experiment.scanning_experiment import ContinuousLinearScan
+from pyopenlab.experiment.scanning_experiment import ContinuousLinearScanQt
 from pyopenlab.instrument.stage import Stage
 from pyopenlab.utils.gui import *
-from pyopenlab import inherit_docstring
 
 
 @inherit_docstring(ContinuousLinearScan)
@@ -69,13 +70,16 @@ class ContinuousLinearStageScanQt(ContinuousLinearStageScan, ContinuousLinearSca
 if __name__ == '__main__':
     import matplotlib
     matplotlib.use('Qt4Agg')
-    from pyopenlab.ui.mpl_gui import FigureCanvasWithDeferredDraw as FigureCanvas
-    from matplotlib.figure import Figure
-    import numpy as np
-    from pyopenlab.instrument.stage import DummyStage
     import time
 
+    from matplotlib.figure import Figure
+    import numpy as np
+
+    from pyopenlab.instrument.stage import DummyStage
+    from pyopenlab.ui.mpl_gui import FigureCanvasWithDeferredDraw as FigureCanvas
+
     class DummyLinearStageScan(ContinuousLinearStageScanQt):
+
         def __init__(self):
             super(DummyLinearStageScan, self).__init__()
             self.stage = None
@@ -86,6 +90,7 @@ if __name__ == '__main__':
             self.p = None
             self.x = None
             self.y = None
+
         def open_scan(self):
             self.fig.clear()
             self.p = 0
@@ -93,13 +98,15 @@ if __name__ == '__main__':
             self.x = []
             self.y = []
             self.ax = self.fig.add_subplot(111)
+
         def scan_function(self, index):
             time.sleep(0.01)
             p = self.stage.get_position(self.axis)
             self.d.append(index)
             self.x.append(p)
-            self.y.append(np.sin(2*np.pi*0.01*p))
+            self.y.append(np.sin(2 * np.pi * 0.01 * p))
             self.check_for_data_request(self.d, self.x, self.y)
+
         def update(self, force=False):
             super(DummyLinearStageScan, self).update(force)
             if self.y == [] or self.fig.canvas is None:
@@ -120,20 +127,21 @@ if __name__ == '__main__':
                     self.ax.relim()
                     self.ax.autoscale_view()
                 self.fig.canvas.draw()
+
         def get_qt_ui(self):
             return DummyLinearStageScanUI(self)
+
         def calculate_feedback_input(self):
             return self.y[-1]
 
-
     class DummyLinearStageScanUI(ContinuousLinearStageScanQt.get_qt_ui_cls()):
+
         def __init__(self, linear_scan):
             super(DummyLinearStageScanUI, self).__init__(linear_scan)
             self.canvas = FigureCanvas(self.linear_scan.fig)
-            self.canvas.setMaximumSize(300,300)
+            self.canvas.setMaximumSize(300, 300)
             self.layout.addWidget(self.canvas)
             self.resize(self.sizeHint())
-
 
     stage = DummyStage()
     stage.axis_names = ('x',)
@@ -141,7 +149,6 @@ if __name__ == '__main__':
     ls.set_stage(stage)
     app = get_qt_app()
     gui = ls.get_qt_ui()
-    gui.rate = 1./30.
+    gui.rate = 1. / 30.
     gui.show()
     sys.exit(app.exec_())
-

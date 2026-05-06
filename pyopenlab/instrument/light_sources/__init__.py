@@ -1,12 +1,14 @@
 ﻿from __future__ import print_function
+
 from builtins import str
+
 __author__ = 'alansanders'
 
 from pyopenlab.instrument import Instrument
+from pyopenlab.instrument.shutter import Shutter
+from pyopenlab.ui.ui_tools import UiTools
 from pyopenlab.utils.gui import *
 from pyopenlab.utils.gui import uic
-from pyopenlab.ui.ui_tools import UiTools
-from pyopenlab.instrument.shutter import Shutter
 
 
 class LightSource(Instrument):
@@ -17,6 +19,7 @@ class LightSource(Instrument):
     min_power = 0
     max_power = 1
     shutter = None
+
     def __init__(self, shutter=None):
         assert isinstance(shutter, Shutter) or shutter == None, 'invalid shutter supplied'
         super(LightSource, self).__init__()
@@ -33,11 +36,11 @@ class LightSource(Instrument):
     def _get_power(self):
         """Wrapper for get_power so we don't need to redefine properties"""
         return self.get_power()
-    
+
     def _set_power(self, value):
         """Wrapper for get_power so we don't need to redefine properties"""
         return self.set_power(value)
-        
+
     power = property(_get_power, _set_power)
 
     def get_qt_ui(self):
@@ -45,6 +48,7 @@ class LightSource(Instrument):
 
 
 class LightSourceUI(QtWidgets.QWidget, UiTools):
+
     def __init__(self, light_source, parent=None):
         assert isinstance(light_source, LightSource), 'instrument must be a LightSource'
         self.light_source = light_source

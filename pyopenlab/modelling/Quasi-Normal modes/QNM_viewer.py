@@ -6,14 +6,15 @@ Created on Tue Jun  8 19:32:29 2021
 """
 from collections import defaultdict
 from functools import cache
-from pathlib import Path
 import json
-
-import qdarkstyle  # dark theme
-from PyQt5.QtWidgets import QApplication
+from pathlib import Path
 
 from mim import MIM
-from widgets import GraphWithPinAndClearButtons, LivePlotWindow, Parameter
+from PyQt5.QtWidgets import QApplication
+import qdarkstyle  # dark theme
+from widgets import GraphWithPinAndClearButtons
+from widgets import LivePlotWindow
+from widgets import Parameter
 
 pi = 3.14159265
 
@@ -66,6 +67,7 @@ def imag_factory(parsed_txt):
 
 
 def lorentz_factory(real_eq, imag_eq):
+
     def inner_func(wl):
         real = real_eq(f, D, t, n)
         efficiency = imag_eq(real, D)
@@ -75,6 +77,7 @@ def lorentz_factory(real_eq, imag_eq):
 
 
 def annotate_factory(real_eq, imag_eq):
+
     def inner_func():
         real = real_eq(f, D, t, n)
         efficiency = imag_eq(real, D)
@@ -92,8 +95,7 @@ def make_graph_widget(folder):
         with open(file, 'r') as eq_file:
             s_expression = eq_file.readline()
             parsed_txt = ''.join(eq_file.read().splitlines())
-            modes[f'{mode} mode']['real'] = real_factory(
-                s_expression, parsed_txt)
+            modes[f'{mode} mode']['real'] = real_factory(s_expression, parsed_txt)
 
     for file in (folder / 'imag equations').iterdir():
         mode = file_to_mode_name(file)
@@ -109,12 +111,12 @@ def make_graph_widget(folder):
         reals = [mode['real'](f, D, t, n) for mode in modes.values()]
         return min(reals) * 0.8, max(reals) * 1.1
 
-
-    return GraphWithPinAndClearButtons(modes,
-                                       xlim_func,
-                                       resolution=100,
-                                       title=folder.stem,                                      
-                                       )
+    return GraphWithPinAndClearButtons(
+        modes,
+        xlim_func,
+        resolution=100,
+        title=folder.stem,
+    )
 
 
 if __name__ == '__main__':

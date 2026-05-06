@@ -1,8 +1,9 @@
 ﻿# -*- coding: utf-8 -*-
 
-from pyopenlab.utils import monitor_property
 import threading
 import time
+
+from pyopenlab.utils import monitor_property
 
 
 class TemperatureControlMixin():
@@ -17,6 +18,7 @@ class TemperatureControlMixin():
     The minimum you need to do in order to subclass this is to override the
     `get_temperature` method
     """
+
     def __init__(self):
         super(TemperatureControlMixin, self).__init__()
 
@@ -25,6 +27,7 @@ class TemperatureControlMixin():
 
     def get_temperature(self):
         raise NotImplementedError
+
     temperature = property(fget=get_temperature)
 
     def set_target_temperature(self, value):
@@ -32,6 +35,7 @@ class TemperatureControlMixin():
 
     def get_target_temperature(self):
         return
+
     target_temperature = property(fset=set_target_temperature, fget=get_target_temperature)
 
     def monitor_temperature(self, how_long=5, how_often=10, warn_limits=None):
@@ -62,7 +66,8 @@ class TemperatureControlMixin():
             self._controlling = False
             self._control_thread.join()
             del self._control_thread
-        self._control_thread = threading.Thread(target=self._control_temperature, args=(upper_target, lower_target))
+        self._control_thread = threading.Thread(target=self._control_temperature,
+                                                args=(upper_target, lower_target))
         self._controlling = True
         self._control_thread.start()
 

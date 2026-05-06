@@ -5,9 +5,14 @@ scans are possible.
 """
 __author__ = 'alansanders'
 
-from .scanning_experiment import ScanningExperiment, ScanningExperimentHDF5
+from .continuous_linear_scanner import ContinuousLinearScan
+from .continuous_linear_scanner import ContinuousLinearScanQt
+from .continuous_linear_stage_scanner import ContinuousLinearStageScan
+from .continuous_linear_stage_scanner import ContinuousLinearStageScanQt
+from .grid_scanner import GridScan
+from .grid_scanner import GridScanQt
+from .linear_scanner import LinearScan
+from .linear_scanner import LinearScanQt
 from .scan_timing import TimedScan
-from .linear_scanner import LinearScan, LinearScanQt
-from .continuous_linear_scanner import ContinuousLinearScan, ContinuousLinearScanQt
-from .continuous_linear_stage_scanner import ContinuousLinearStageScan, ContinuousLinearStageScanQt
-from .grid_scanner import GridScan, GridScanQt
+from .scanning_experiment import ScanningExperiment
+from .scanning_experiment import ScanningExperimentHDF5

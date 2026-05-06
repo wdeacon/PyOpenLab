@@ -2,21 +2,28 @@
 tl_mono_to_color_processor.py
 """
 
-from ctypes import cdll, POINTER, c_int, c_ushort, c_void_p, c_char_p, c_float, c_ubyte
-from typing import Any
-from traceback import format_exception
+from ctypes import c_char_p
+from ctypes import c_float
+from ctypes import c_int
+from ctypes import c_ubyte
+from ctypes import c_ushort
+from ctypes import c_void_p
+from ctypes import cdll
+from ctypes import POINTER
 import logging
 import platform
+from traceback import format_exception
+from typing import Any
 
 import numpy as np
 
-from .tl_color_enums import FORMAT, FILTER_ARRAY_PHASE
 from .tl_camera_enums import SENSOR_TYPE
+from .tl_color_enums import FILTER_ARRAY_PHASE
+from .tl_color_enums import FORMAT
 from .tl_mono_to_color_enums import COLOR_SPACE
 
 """ Setup logger """
 _logger = logging.getLogger('thorlabs_tsi_sdk.tl_mono_to_color_processor')
-
 """ error-handling methods """
 
 
@@ -42,12 +49,10 @@ def _create_c_failure_message(sdk, function_name, error_code):
 
 # noinspection PyTypeChecker
 _3x3Matrix_float = c_float * 9
-
 """ Classes """
 
 
 class MonoToColorProcessorSDK(object):
-
     """
     MonoToColorProcessorSDK
 
@@ -64,8 +69,9 @@ class MonoToColorProcessorSDK(object):
         self._disposed = True
 
         if MonoToColorProcessorSDK._is_sdk_open:
-            raise MonoToColorError("MonoToColorProcessorSDK is already in use. Please dispose of the current instance "
-                                   "before trying to create another instance.")
+            raise MonoToColorError(
+                "MonoToColorProcessorSDK is already in use. Please dispose of the current instance "
+                "before trying to create another instance.")
 
         try:
             if platform.system() == 'Windows':
@@ -73,28 +79,32 @@ class MonoToColorProcessorSDK(object):
             elif platform.system() == 'Linux':
                 self._sdk = cdll.LoadLibrary(r"libthorlabs_tsi_mono_to_color_processing.so")
             else:
-                raise MonoToColorError("{system} is not a supported platform.".format(system=platform.system()))
+                raise MonoToColorError(
+                    "{system} is not a supported platform.".format(system=platform.system()))
             self._disposed = False
         except OSError as os_error:
-            raise MonoToColorError(str(os_error) +
-                                   "\nUnable to load library - are the thorlabs tsi mono to color sdk libraries "
-                                   "discoverable from the application directory? Try placing them in the same "
-                                   "directory as your program, or adding the directory with the libraries to the "
-                                   "PATH. Make sure to use 32-bit libraries when using a 32-bit python interpreter "
-                                   "and 64-bit libraries when using a 64-bit interpreter.\n")
+            raise MonoToColorError(
+                str(os_error) +
+                "\nUnable to load library - are the thorlabs tsi mono to color sdk libraries "
+                "discoverable from the application directory? Try placing them in the same "
+                "directory as your program, or adding the directory with the libraries to the "
+                "PATH. Make sure to use 32-bit libraries when using a 32-bit python interpreter "
+                "and 64-bit libraries when using a 64-bit interpreter.\n")
 
         error_code = self._sdk.tl_mono_to_color_processing_module_initialize()
         if error_code != 0:
-            raise MonoToColorError("tl_mono_to_color_processing_module_initialize() returned error code: {error_code}\n"
-                                   .format(error_code=error_code))
+            raise MonoToColorError(
+                "tl_mono_to_color_processing_module_initialize() returned error code: {error_code}\n"
+                .format(error_code=error_code))
         MonoToColorProcessorSDK._is_sdk_open = True
 
         try:
             """ set C function argument types """
-            self._sdk.tl_mono_to_color_create_mono_to_color_processor.argtypes = [c_int, c_int,
-                                                                                  POINTER(_3x3Matrix_float),
-                                                                                  POINTER(_3x3Matrix_float), c_int,
-                                                                                  POINTER(c_void_p)]
+            self._sdk.tl_mono_to_color_create_mono_to_color_processor.argtypes = [
+                c_int, c_int,
+                POINTER(_3x3Matrix_float),
+                POINTER(_3x3Matrix_float), c_int,
+                POINTER(c_void_p)]
             self._sdk.tl_mono_to_color_destroy_mono_to_color_processor.argtypes = [c_void_p]
             self._sdk.tl_mono_to_color_get_color_space.argtypes = [c_void_p, POINTER(c_int)]
             self._sdk.tl_mono_to_color_set_color_space.argtypes = [c_void_p, c_int]
@@ -106,20 +116,24 @@ class MonoToColorProcessorSDK(object):
             self._sdk.tl_mono_to_color_set_green_gain.argtypes = [c_void_p, c_float]
             self._sdk.tl_mono_to_color_get_blue_gain.argtypes = [c_void_p, POINTER(c_float)]
             self._sdk.tl_mono_to_color_set_blue_gain.argtypes = [c_void_p, c_float]
-            self._sdk.tl_mono_to_color_transform_to_48.argtypes = [c_void_p, POINTER(c_ushort), c_int, c_int,
-                                                                   POINTER(c_ushort)]
-            self._sdk.tl_mono_to_color_transform_to_32.argtypes = [c_void_p, POINTER(c_ushort), c_int, c_int,
-                                                                   POINTER(c_ubyte)]
-            self._sdk.tl_mono_to_color_transform_to_24.argtypes = [c_void_p, POINTER(c_ushort), c_int, c_int,
-                                                                   POINTER(c_ubyte)]
+            self._sdk.tl_mono_to_color_transform_to_48.argtypes = [
+                c_void_p, POINTER(c_ushort), c_int, c_int,
+                POINTER(c_ushort)]
+            self._sdk.tl_mono_to_color_transform_to_32.argtypes = [
+                c_void_p, POINTER(c_ushort), c_int, c_int,
+                POINTER(c_ubyte)]
+            self._sdk.tl_mono_to_color_transform_to_24.argtypes = [
+                c_void_p, POINTER(c_ushort), c_int, c_int,
+                POINTER(c_ubyte)]
             self._sdk.tl_mono_to_color_processing_module_terminate.argtypes = []
             self._sdk.tl_mono_to_color_get_last_error.restype = c_char_p
             self._sdk.tl_mono_to_color_get_camera_sensor_type.argtypes = [c_void_p, POINTER(c_int)]
-            self._sdk.tl_mono_to_color_get_color_filter_array_phase.argtypes = [c_void_p, POINTER(c_int)]
-            self._sdk.tl_mono_to_color_get_color_correction_matrix.argtypes = [c_void_p,
-                                                                               POINTER(POINTER(_3x3Matrix_float))]
-            self._sdk.tl_mono_to_color_get_default_white_balance_matrix.argtypes = [c_void_p,
-                                                                                    POINTER(POINTER(_3x3Matrix_float))]
+            self._sdk.tl_mono_to_color_get_color_filter_array_phase.argtypes = [
+                c_void_p, POINTER(c_int)]
+            self._sdk.tl_mono_to_color_get_color_correction_matrix.argtypes = [
+                c_void_p, POINTER(POINTER(_3x3Matrix_float))]
+            self._sdk.tl_mono_to_color_get_default_white_balance_matrix.argtypes = [
+                c_void_p, POINTER(POINTER(_3x3Matrix_float))]
             self._sdk.tl_mono_to_color_get_bit_depth = [c_void_p, POINTER(c_int)]
         except Exception as exception:
             _logger.error("SDK initialization failed; " + str(exception))
@@ -135,7 +149,8 @@ class MonoToColorProcessorSDK(object):
 
     def __exit__(self, exception_type, exception_value, exception_traceback):
         if exception_type is not None:
-            _logger.debug("".join(format_exception(exception_type, exception_value, exception_traceback)))
+            _logger.debug("".join(
+                format_exception(exception_type, exception_value, exception_traceback)))
         self.dispose()
         return True if exception_type is None else False
 
@@ -153,16 +168,19 @@ class MonoToColorProcessorSDK(object):
                 return
             error_code = self._sdk.tl_mono_to_color_processing_module_terminate()
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(
-                    self._sdk, "tl_mono_to_color_processing_module_terminate", error_code))
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk,
+                                              "tl_mono_to_color_processing_module_terminate",
+                                              error_code))
             MonoToColorProcessorSDK._is_sdk_open = False
             self._disposed = True
         except Exception as exception:
             _logger.error("Mono To Color SDK destruction failed; " + str(exception))
             raise exception
 
-    def create_mono_to_color_processor(self, camera_sensor_type, color_filter_array_phase, color_correction_matrix,
-                                       default_white_balance_matrix, bit_depth):
+    def create_mono_to_color_processor(self, camera_sensor_type, color_filter_array_phase,
+                                       color_correction_matrix, default_white_balance_matrix,
+                                       bit_depth):
         # type: (SENSOR_TYPE, FILTER_ARRAY_PHASE, np.array, np.array, int) -> MonoToColorProcessor
         """
         Creates a MonoToColorProcessor object using the given parameters.
@@ -183,15 +201,14 @@ class MonoToColorProcessorSDK(object):
             c_color_correction_matrix = _3x3Matrix_float(*color_correction_matrix)
             c_default_white_balance_matrix = _3x3Matrix_float(*default_white_balance_matrix)
             c_bit_depth = c_int(bit_depth)
-            error_code = self._sdk.tl_mono_to_color_create_mono_to_color_processor(c_camera_sensor_type,
-                                                                                   c_color_filter_array_phase,
-                                                                                   c_color_correction_matrix,
-                                                                                   c_default_white_balance_matrix,
-                                                                                   c_bit_depth,
-                                                                                   c_mono_to_color_handle)
+            error_code = self._sdk.tl_mono_to_color_create_mono_to_color_processor(
+                c_camera_sensor_type, c_color_filter_array_phase, c_color_correction_matrix,
+                c_default_white_balance_matrix, c_bit_depth, c_mono_to_color_handle)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(
-                    self._sdk, "tl_mono_to_color_create_mono_to_color_processor", error_code))
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk,
+                                              "tl_mono_to_color_create_mono_to_color_processor",
+                                              error_code))
             # noinspection PyProtectedMember
             return MonoToColorProcessor._create(self._sdk, c_mono_to_color_handle)
         except Exception as exception:
@@ -200,7 +217,6 @@ class MonoToColorProcessorSDK(object):
 
 
 class MonoToColorProcessor(object):
-
     """
     MonoToColorProcessor
 
@@ -236,12 +252,14 @@ class MonoToColorProcessor(object):
         self.dispose()
 
     """ with statement functionality """
+
     def __enter__(self):
         return self
 
     def __exit__(self, exception_type, exception_value, exception_traceback):
         if exception_type is not None:
-            _logger.debug("".join(format_exception(exception_type, exception_value, exception_traceback)))
+            _logger.debug("".join(
+                format_exception(exception_type, exception_value, exception_traceback)))
         self.dispose()
         return True if exception_type is None else False
 
@@ -258,8 +276,10 @@ class MonoToColorProcessor(object):
             error_code = self._sdk.tl_mono_to_color_destroy_mono_to_color_processor(
                 self._mono_to_color_processor_handle)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(
-                    self._sdk, "tl_mono_to_color_destroy_mono_to_color_processor", error_code))
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk,
+                                              "tl_mono_to_color_destroy_mono_to_color_processor",
+                                              error_code))
             self._disposed = True
         except Exception as exception:
             _logger.error("Could not dispose MonoToColorProcessor instance; " + str(exception))
@@ -278,19 +298,19 @@ class MonoToColorProcessor(object):
         :return np.array: 3-channel colored output image, *dtype* = ctypes.c_ushort.
         """
         try:
-            output_buffer = np.zeros(shape=(image_width_pixels*image_height_pixels*3,), dtype=c_ushort)
+            output_buffer = np.zeros(shape=(image_width_pixels * image_height_pixels * 3,),
+                                     dtype=c_ushort)
             output_buffer_pointer = output_buffer.ctypes.data_as(POINTER(c_ushort))
             input_buffer_pointer = input_buffer.ctypes.data_as(POINTER(c_ushort))
             c_image_width = c_int(image_width_pixels)
             c_image_height = c_int(image_height_pixels)
-            error_code = self._sdk.tl_mono_to_color_transform_to_48(self._mono_to_color_processor_handle,
-                                                                    input_buffer_pointer,
-                                                                    c_image_width,
-                                                                    c_image_height,
-                                                                    output_buffer_pointer)
+            error_code = self._sdk.tl_mono_to_color_transform_to_48(
+                self._mono_to_color_processor_handle, input_buffer_pointer, c_image_width,
+                c_image_height, output_buffer_pointer)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(self._sdk, "tl_mono_to_color_transform_to_48",
-                                                                 error_code))
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk, "tl_mono_to_color_transform_to_48",
+                                              error_code))
             return output_buffer
         except Exception as exception:
             _logger.error("Could not transform image to 48bpp; " + str(exception))
@@ -309,19 +329,19 @@ class MonoToColorProcessor(object):
         :return np.array: 4-channel colored output image, *dtype* = ctypes.c_ubyte.
         """
         try:
-            output_buffer = np.zeros(shape=(image_width_pixels*image_height_pixels*4,), dtype=c_ubyte)
+            output_buffer = np.zeros(shape=(image_width_pixels * image_height_pixels * 4,),
+                                     dtype=c_ubyte)
             output_buffer_pointer = output_buffer.ctypes.data_as(POINTER(c_ubyte))
             input_buffer_pointer = input_buffer.ctypes.data_as(POINTER(c_ushort))
             c_image_width = c_int(image_width_pixels)
             c_image_height = c_int(image_height_pixels)
-            error_code = self._sdk.tl_mono_to_color_transform_to_32(self._mono_to_color_processor_handle,
-                                                                    input_buffer_pointer,
-                                                                    c_image_width,
-                                                                    c_image_height,
-                                                                    output_buffer_pointer)
+            error_code = self._sdk.tl_mono_to_color_transform_to_32(
+                self._mono_to_color_processor_handle, input_buffer_pointer, c_image_width,
+                c_image_height, output_buffer_pointer)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(self._sdk, "tl_mono_to_color_transform_to_32",
-                                                                 error_code))
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk, "tl_mono_to_color_transform_to_32",
+                                              error_code))
             return output_buffer
         except Exception as exception:
             _logger.error("Could not transform image to 32bpp; " + str(exception))
@@ -340,19 +360,19 @@ class MonoToColorProcessor(object):
         :return np.array: 3-channel colored output image, *dtype* = ctypes.c_ubyte.
         """
         try:
-            output_buffer = np.zeros(shape=(image_width_pixels*image_height_pixels*3,), dtype=c_ubyte)
+            output_buffer = np.zeros(shape=(image_width_pixels * image_height_pixels * 3,),
+                                     dtype=c_ubyte)
             output_buffer_pointer = output_buffer.ctypes.data_as(POINTER(c_ubyte))
             input_buffer_pointer = input_buffer.ctypes.data_as(POINTER(c_ushort))
             c_image_width = c_int(image_width_pixels)
             c_image_height = c_int(image_height_pixels)
-            error_code = self._sdk.tl_mono_to_color_transform_to_24(self._mono_to_color_processor_handle,
-                                                                    input_buffer_pointer,
-                                                                    c_image_width,
-                                                                    c_image_height,
-                                                                    output_buffer_pointer)
+            error_code = self._sdk.tl_mono_to_color_transform_to_24(
+                self._mono_to_color_processor_handle, input_buffer_pointer, c_image_width,
+                c_image_height, output_buffer_pointer)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(self._sdk, "tl_mono_to_color_transform_to_24",
-                                                                 error_code))
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk, "tl_mono_to_color_transform_to_24",
+                                              error_code))
             return output_buffer
         except Exception as exception:
             _logger.error("Could not transform image to 24bpp; " + str(exception))
@@ -370,10 +390,12 @@ class MonoToColorProcessor(object):
         """
         try:
             color_space = c_int()
-            error_code = self._sdk.tl_mono_to_color_get_color_space(self._mono_to_color_processor_handle, color_space)
+            error_code = self._sdk.tl_mono_to_color_get_color_space(
+                self._mono_to_color_processor_handle, color_space)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(self._sdk, "tl_mono_to_color_get_color_space",
-                                                                 error_code))
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk, "tl_mono_to_color_get_color_space",
+                                              error_code))
             return COLOR_SPACE(int(color_space.value))
         except Exception as exception:
             _logger.error("Could not get color space; " + str(exception))
@@ -383,10 +405,12 @@ class MonoToColorProcessor(object):
     def color_space(self, color_space):
         try:
             c_value = c_int(color_space)
-            error_code = self._sdk.tl_mono_to_color_set_color_space(self._mono_to_color_processor_handle, c_value)
+            error_code = self._sdk.tl_mono_to_color_set_color_space(
+                self._mono_to_color_processor_handle, c_value)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(self._sdk, "tl_mono_to_color_set_color_space",
-                                                                 error_code))
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk, "tl_mono_to_color_set_color_space",
+                                              error_code))
         except Exception as exception:
             _logger.error("Could not set color space; " + str(exception))
             raise exception
@@ -401,11 +425,12 @@ class MonoToColorProcessor(object):
         """
         try:
             output_format = c_int()
-            error_code = self._sdk.tl_mono_to_color_get_output_format(self._mono_to_color_processor_handle,
-                                                                      output_format)
+            error_code = self._sdk.tl_mono_to_color_get_output_format(
+                self._mono_to_color_processor_handle, output_format)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(self._sdk, "tl_mono_to_color_get_output_format",
-                                                                 error_code))
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk, "tl_mono_to_color_get_output_format",
+                                              error_code))
             return FORMAT(int(output_format.value))
         except Exception as exception:
             _logger.error("Could not get output format; " + str(exception))
@@ -415,10 +440,12 @@ class MonoToColorProcessor(object):
     def output_format(self, output_format):
         try:
             c_value = c_int(output_format)
-            error_code = self._sdk.tl_mono_to_color_set_output_format(self._mono_to_color_processor_handle, c_value)
+            error_code = self._sdk.tl_mono_to_color_set_output_format(
+                self._mono_to_color_processor_handle, c_value)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(self._sdk, "tl_mono_to_color_set_output_format",
-                                                                 error_code))
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk, "tl_mono_to_color_set_output_format",
+                                              error_code))
         except Exception as exception:
             _logger.error("Could not set output format; " + str(exception))
             raise exception
@@ -436,10 +463,12 @@ class MonoToColorProcessor(object):
         """
         try:
             red_gain = c_float()
-            error_code = self._sdk.tl_mono_to_color_get_red_gain(self._mono_to_color_processor_handle, red_gain)
+            error_code = self._sdk.tl_mono_to_color_get_red_gain(
+                self._mono_to_color_processor_handle, red_gain)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(self._sdk, "tl_mono_to_color_get_red_gain",
-                                                                 error_code))
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk, "tl_mono_to_color_get_red_gain",
+                                              error_code))
             return float(red_gain.value)
         except Exception as exception:
             _logger.error("Could not get red gain value; " + str(exception))
@@ -449,10 +478,12 @@ class MonoToColorProcessor(object):
     def red_gain(self, red_gain):
         try:
             c_value = c_float(red_gain)
-            error_code = self._sdk.tl_mono_to_color_set_red_gain(self._mono_to_color_processor_handle, c_value)
+            error_code = self._sdk.tl_mono_to_color_set_red_gain(
+                self._mono_to_color_processor_handle, c_value)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(self._sdk, "tl_mono_to_color_set_red_gain",
-                                                                 error_code))
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk, "tl_mono_to_color_set_red_gain",
+                                              error_code))
         except Exception as exception:
             _logger.error("Could not set red gain value; " + str(exception))
             raise exception
@@ -470,10 +501,12 @@ class MonoToColorProcessor(object):
         """
         try:
             blue_gain = c_float()
-            error_code = self._sdk.tl_mono_to_color_get_blue_gain(self._mono_to_color_processor_handle, blue_gain)
+            error_code = self._sdk.tl_mono_to_color_get_blue_gain(
+                self._mono_to_color_processor_handle, blue_gain)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(self._sdk, "tl_mono_to_color_get_blue_gain",
-                                                                 error_code))
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk, "tl_mono_to_color_get_blue_gain",
+                                              error_code))
             return float(blue_gain.value)
         except Exception as exception:
             _logger.error("Could not get blue gain value; " + str(exception))
@@ -483,10 +516,12 @@ class MonoToColorProcessor(object):
     def blue_gain(self, blue_gain):
         try:
             c_value = c_float(blue_gain)
-            error_code = self._sdk.tl_mono_to_color_set_blue_gain(self._mono_to_color_processor_handle, c_value)
+            error_code = self._sdk.tl_mono_to_color_set_blue_gain(
+                self._mono_to_color_processor_handle, c_value)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(self._sdk, "tl_mono_to_color_set_blue_gain",
-                                                                 error_code))
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk, "tl_mono_to_color_set_blue_gain",
+                                              error_code))
         except Exception as exception:
             _logger.error("Could not set blue gain value; " + str(exception))
             raise exception
@@ -504,10 +539,12 @@ class MonoToColorProcessor(object):
         """
         try:
             green_gain = c_float()
-            error_code = self._sdk.tl_mono_to_color_get_green_gain(self._mono_to_color_processor_handle, green_gain)
+            error_code = self._sdk.tl_mono_to_color_get_green_gain(
+                self._mono_to_color_processor_handle, green_gain)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(self._sdk, "tl_mono_to_color_get_green_gain",
-                                                                 error_code))
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk, "tl_mono_to_color_get_green_gain",
+                                              error_code))
             return float(green_gain.value)
         except Exception as exception:
             _logger.error("Could not get green gain value; " + str(exception))
@@ -517,10 +554,12 @@ class MonoToColorProcessor(object):
     def green_gain(self, green_gain):
         try:
             c_value = c_float(green_gain)
-            error_code = self._sdk.tl_mono_to_color_set_green_gain(self._mono_to_color_processor_handle, c_value)
+            error_code = self._sdk.tl_mono_to_color_set_green_gain(
+                self._mono_to_color_processor_handle, c_value)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(self._sdk, "tl_mono_to_color_set_green_gain",
-                                                                 error_code))
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk, "tl_mono_to_color_set_green_gain",
+                                              error_code))
         except Exception as exception:
             _logger.error("Could not set green gain value; " + str(exception))
             raise exception
@@ -535,11 +574,12 @@ class MonoToColorProcessor(object):
         """
         try:
             camera_sensor_type = c_int()
-            error_code = self._sdk.tl_mono_to_color_get_camera_sensor_type(self._mono_to_color_processor_handle,
-                                                                           camera_sensor_type)
+            error_code = self._sdk.tl_mono_to_color_get_camera_sensor_type(
+                self._mono_to_color_processor_handle, camera_sensor_type)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(self._sdk, "tl_mono_to_color_get_camera_sensor_type",
-                                                                 error_code))
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk, "tl_mono_to_color_get_camera_sensor_type",
+                                              error_code))
             return SENSOR_TYPE(int(camera_sensor_type.value))
         except Exception as exception:
             _logger.error("Could not get camera sensor type; " + str(exception))
@@ -555,11 +595,13 @@ class MonoToColorProcessor(object):
         """
         try:
             color_filter_array_phase = c_int()
-            error_code = self._sdk.tl_mono_to_color_get_color_filter_array_phase(self._mono_to_color_processor_handle,
-                                                                                 color_filter_array_phase)
+            error_code = self._sdk.tl_mono_to_color_get_color_filter_array_phase(
+                self._mono_to_color_processor_handle, color_filter_array_phase)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(
-                    self._sdk, "tl_mono_to_color_get_color_filter_array_phase", error_code))
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk,
+                                              "tl_mono_to_color_get_color_filter_array_phase",
+                                              error_code))
             return FILTER_ARRAY_PHASE(int(color_filter_array_phase.value))
         except Exception as exception:
             _logger.error("Could not get color filter array phase; " + str(exception))
@@ -575,20 +617,23 @@ class MonoToColorProcessor(object):
         """
         try:
             color_correction_matrix = _3x3Matrix_float()
-            error_code = self._sdk.tl_mono_to_color_get_color_correction_matrix(self._mono_to_color_processor_handle,
-                                                                                color_correction_matrix)
+            error_code = self._sdk.tl_mono_to_color_get_color_correction_matrix(
+                self._mono_to_color_processor_handle, color_correction_matrix)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(
-                    self._sdk, "tl_mono_to_color_get_color_correction_matrix", error_code))
-            color_correction_matrix_as_np_array = np.array([float(color_correction_matrix[0]),
-                                                            float(color_correction_matrix[1]),
-                                                            float(color_correction_matrix[2]),
-                                                            float(color_correction_matrix[3]),
-                                                            float(color_correction_matrix[4]),
-                                                            float(color_correction_matrix[5]),
-                                                            float(color_correction_matrix[6]),
-                                                            float(color_correction_matrix[7]),
-                                                            float(color_correction_matrix[8])])
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk,
+                                              "tl_mono_to_color_get_color_correction_matrix",
+                                              error_code))
+            color_correction_matrix_as_np_array = np.array([
+                float(color_correction_matrix[0]),
+                float(color_correction_matrix[1]),
+                float(color_correction_matrix[2]),
+                float(color_correction_matrix[3]),
+                float(color_correction_matrix[4]),
+                float(color_correction_matrix[5]),
+                float(color_correction_matrix[6]),
+                float(color_correction_matrix[7]),
+                float(color_correction_matrix[8])])
             return color_correction_matrix_as_np_array
         except Exception as exception:
             _logger.error("Could not get color correction matrix; " + str(exception))
@@ -607,17 +652,20 @@ class MonoToColorProcessor(object):
             error_code = self._sdk.tl_mono_to_color_get_default_white_balance_matrix(
                 self._mono_to_color_processor_handle, default_white_balance_matrix)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(
-                    self._sdk, "tl_mono_to_color_get_default_white_balance_matrix", error_code))
-            default_white_balance_matrix_as_np_array = np.array([float(default_white_balance_matrix[0]),
-                                                                float(default_white_balance_matrix[1]),
-                                                                float(default_white_balance_matrix[2]),
-                                                                float(default_white_balance_matrix[3]),
-                                                                float(default_white_balance_matrix[4]),
-                                                                float(default_white_balance_matrix[5]),
-                                                                float(default_white_balance_matrix[6]),
-                                                                float(default_white_balance_matrix[7]),
-                                                                float(default_white_balance_matrix[8])])
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk,
+                                              "tl_mono_to_color_get_default_white_balance_matrix",
+                                              error_code))
+            default_white_balance_matrix_as_np_array = np.array([
+                float(default_white_balance_matrix[0]),
+                float(default_white_balance_matrix[1]),
+                float(default_white_balance_matrix[2]),
+                float(default_white_balance_matrix[3]),
+                float(default_white_balance_matrix[4]),
+                float(default_white_balance_matrix[5]),
+                float(default_white_balance_matrix[6]),
+                float(default_white_balance_matrix[7]),
+                float(default_white_balance_matrix[8])])
             return default_white_balance_matrix_as_np_array
         except Exception as exception:
             _logger.error("Could not get default white balance matrix; " + str(exception))
@@ -633,10 +681,12 @@ class MonoToColorProcessor(object):
         """
         try:
             bit_depth = c_int()
-            error_code = self._sdk.tl_mono_to_color_get_bit_depth(self._mono_to_color_processor_handle, bit_depth)
+            error_code = self._sdk.tl_mono_to_color_get_bit_depth(
+                self._mono_to_color_processor_handle, bit_depth)
             if error_code != 0:
-                raise MonoToColorError(_create_c_failure_message(self._sdk, "tl_mono_to_color_get_bit_depth",
-                                                                 error_code))
+                raise MonoToColorError(
+                    _create_c_failure_message(self._sdk, "tl_mono_to_color_get_bit_depth",
+                                              error_code))
             return int(bit_depth.value)
         except Exception as exception:
             _logger.error("Could not get bit depth; " + str(exception))
@@ -647,6 +697,7 @@ class MonoToColorProcessor(object):
 
 
 class MonoToColorError(Exception):
+
     def __init__(self, message):
         _logger.debug(message)
         super(MonoToColorError, self).__init__(message)

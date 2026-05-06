@@ -1,15 +1,23 @@
 ﻿from __future__ import print_function
+
 from builtins import object
+
 __author__ = 'alansanders'
 
-from pyopenlab.instrument.visa_instrument import VisaInstrument, queried_property, queried_channel_property
 from functools import partial
-import numpy as np
-from pyopenlab.utils.gui import *
-from pyopenlab.ui.ui_tools import *
+
 import matplotlib.pyplot as plt
+import numpy as np
+
+from pyopenlab.instrument.visa_instrument import queried_channel_property
+from pyopenlab.instrument.visa_instrument import queried_property
+from pyopenlab.instrument.visa_instrument import VisaInstrument
+from pyopenlab.ui.ui_tools import *
+from pyopenlab.utils.gui import *
+
 
 class AgilentDSOChannel(object):
+
     def __init__(self, dso, channel):
         self.parent = dso
         self.ch = channel
@@ -17,15 +25,21 @@ class AgilentDSOChannel(object):
     def capture(self):
         self.parent.write(':digitize channel{0}'.format(self.ch))
 
-    display = queried_channel_property(':channel{0}:display?', ':channel{0}:display {1}',
-                                       validate=[0, 1], dtype='int')
+    display = queried_channel_property(':channel{0}:display?',
+                                       ':channel{0}:display {1}',
+                                       validate=[0, 1],
+                                       dtype='int')
     range = queried_channel_property(':channel{0}:range?', ':channel{0}:range {1}')
     scale = queried_channel_property(':channel{0}:scale?', ':channel{0}:scale {1}')
     offset = queried_channel_property(':channel{0}:offset?', ':channel{0}:offset {1}')
-    coupling = queried_channel_property(':channel{0}:coupling?', ':channel{0}:coupling {1}',
-                                        validate=['ac', 'dc'], dtype='str')
-    units = queried_channel_property(':channel{0}:unit?', ':channel{0}:unit {1}',
-                                     validate=['volt', 'ampere'], dtype='str')
+    coupling = queried_channel_property(':channel{0}:coupling?',
+                                        ':channel{0}:coupling {1}',
+                                        validate=['ac', 'dc'],
+                                        dtype='str')
+    units = queried_channel_property(':channel{0}:unit?',
+                                     ':channel{0}:unit {1}',
+                                     validate=['volt', 'ampere'],
+                                     dtype='str')
     label = queried_channel_property(':channel{0}:label?', ':channel{0}:label {1}', dtype='str')
     probe = queried_channel_property(':channel{0}:probe?', ':channel{0}:probe {1}')
 
@@ -34,6 +48,7 @@ class AgilentDSO(VisaInstrument):
     """
     Interface to the Agilent digital storage oscilloscopes.
     """
+
     def __init__(self, address='USB0::0x0957::0x1799::MY51330673::INSTR'):
         super(AgilentDSO, self).__init__(address=address)
         self.instr.read_termination = '\n'
@@ -77,7 +92,8 @@ class AgilentDSO(VisaInstrument):
     def force_trigger(self):
         self.write(':trigger:force')
 
-    acquire_type = queried_property(':acquire:type?', ':acquire:type {0}',
+    acquire_type = queried_property(':acquire:type?',
+                                    ':acquire:type {0}',
                                     validate=['normal', 'average', 'hresolution', 'peak'],
                                     dtype='str'),
     acquire_complete = queried_property(':acquire:complete?', ':acquire:complete {0}'),
@@ -86,40 +102,66 @@ class AgilentDSO(VisaInstrument):
     armed = queried_property(':aer?')
     opc = queried_property('*opc?')
     operegister_condition = queried_property(':operegister:condition?', dtype='int')
-    time_mode = queried_property(':timebase:mode?', ':timebase:mode {0}',
+    time_mode = queried_property(':timebase:mode?',
+                                 ':timebase:mode {0}',
                                  validate=['main', 'window', 'xy', 'roll', 'MAIN'],
                                  dtype='str')
     time_range = queried_property(':timebase:range?', ':timebase:range {0}')
     time_scale = queried_property(':timebase:scale?', ':timebase:scale {0}')
-    time_ref = queried_property(':timebase:reference?', ':timebase:reference {0}',
-                                validate=['left', 'center', 'right', 'LEFT', 'CENT'], dtype='str')
+    time_ref = queried_property(':timebase:reference?',
+                                ':timebase:reference {0}',
+                                validate=['left', 'center', 'right', 'LEFT', 'CENT'],
+                                dtype='str')
     time_delay = queried_property(':timebase:delay?', ':timebase:delay {0}')
-    trigger_sweep = queried_property(':trigger:sweep?', ':trigger:sweep {0}',
-                                     validate=['normal', 'auto', 'NORM', 'AUTO'], dtype='str')
-    trigger_mode = queried_property(':trigger:mode?', ':trigger:mode {0}',
-                                    validate=['edge', 'glitch', 'pattern', 'tv', 'EDGE'], dtype='str')
-    trigger_level = queried_property(':trigger:level?', ':trigger:level {0}')
-    trigger_source = queried_property(':trigger:source?', ':trigger:source {0}',
-                                      validate=['channel1', 'channel2', 'external', 'line', 'wgen', 'CHAN1', 'CHAN2'],
-                                      dtype='str')
-    trigger_slope = queried_property(':trigger:slope?', ':trigger:slope {0}',
-                                     validate=['positive', 'negative', 'either', 'alternate', 'POS', 'NEG'],
+    trigger_sweep = queried_property(':trigger:sweep?',
+                                     ':trigger:sweep {0}',
+                                     validate=['normal', 'auto', 'NORM', 'AUTO'],
                                      dtype='str')
-    trigger_reject_noise = queried_property(':trigger:nreject?', ':trigger:nreject {0}',
-                                            validate=[0, 1], dtype='int')
-    trigger_filter = queried_property(':trigger:hfreject?', ':trigger:hfreject {0}',
-                                      validate=[0, 1], dtype='int')
+    trigger_mode = queried_property(':trigger:mode?',
+                                    ':trigger:mode {0}',
+                                    validate=['edge', 'glitch', 'pattern', 'tv', 'EDGE'],
+                                    dtype='str')
+    trigger_level = queried_property(':trigger:level?', ':trigger:level {0}')
+    trigger_source = queried_property(':trigger:source?',
+                                      ':trigger:source {0}',
+                                      validate=[
+                                          'channel1', 'channel2', 'external', 'line', 'wgen',
+                                          'CHAN1', 'CHAN2'],
+                                      dtype='str')
+    trigger_slope = queried_property(':trigger:slope?',
+                                     ':trigger:slope {0}',
+                                     validate=[
+                                         'positive', 'negative', 'either', 'alternate', 'POS',
+                                         'NEG'],
+                                     dtype='str')
+    trigger_reject_noise = queried_property(':trigger:nreject?',
+                                            ':trigger:nreject {0}',
+                                            validate=[0, 1],
+                                            dtype='int')
+    trigger_filter = queried_property(':trigger:hfreject?',
+                                      ':trigger:hfreject {0}',
+                                      validate=[0, 1],
+                                      dtype='int')
     trigger_status = queried_property(':ter?', dtype='int')
-    waveform_format = queried_property(':waveform:format?', ':waveform:format {0}',
-                                       validate=['byte', 'ascii'], dtype='str')
-    waveform_byteorder = queried_property(':waveform:byteorder?', ':waveform:byteorder {0}',
-                                          validate=['lsbfirst', 'msbfirst', 'LSBFirst', 'MSBFirst', 'LSBF', 'MSBF'],
+    waveform_format = queried_property(':waveform:format?',
+                                       ':waveform:format {0}',
+                                       validate=['byte', 'ascii'],
+                                       dtype='str')
+    waveform_byteorder = queried_property(':waveform:byteorder?',
+                                          ':waveform:byteorder {0}',
+                                          validate=[
+                                              'lsbfirst', 'msbfirst', 'LSBFirst', 'MSBFirst',
+                                              'LSBF', 'MSBF'],
                                           dtype='str')
-    waveform_unsigned = queried_property(':waveform:unsigned?', ':waveform:unsigned {0}',
-                                         validate=[0, 1], dtype='int')
+    waveform_unsigned = queried_property(':waveform:unsigned?',
+                                         ':waveform:unsigned {0}',
+                                         validate=[0, 1],
+                                         dtype='int')
     waveform_points = queried_property(':waveform:points?', ':waveform:points {0}', dtype='int')
-    waveform_points_mode = queried_property(':waveform:points:mode?', ':waveform:points:mode {0}',
-                                            validate=['normal', 'maximum', 'raw', 'NORM', 'MAX', 'RAW'],
+    waveform_points_mode = queried_property(':waveform:points:mode?',
+                                            ':waveform:points:mode {0}',
+                                            validate=[
+                                                'normal', 'maximum', 'raw', 'NORM', 'MAX', 'RAW'],
                                             dtype='str')
 
     # read parameters
@@ -141,7 +183,7 @@ class AgilentDSO(VisaInstrument):
 
     def scale_trace(self, trace):
         trace = self.y_or + (self.y_inc * (trace - self.y_ref))
-        time = np.arange(trace.size)*self.x_inc + self.x_or
+        time = np.arange(trace.size) * self.x_inc + self.x_or
         return time, trace
 
     def read_trace(self, ch, renew=True):
@@ -170,6 +212,7 @@ class AgilentDSO(VisaInstrument):
 
 
 class AgilentDsoUI(QtWidgets.QWidget, UiTools):
+
     def __init__(self, dso, parent=None):
         if not isinstance(dso, AgilentDSO):
             raise ValueError('dso must be an instance of DSO')
@@ -185,10 +228,9 @@ if __name__ == '__main__':
     print(dso.time_range)
     print(dso.channel1.range)
     dso.capture()
-    t,v = dso.read_trace(1)
+    t, v = dso.read_trace(1)
 
-    
-    plt.plot(1e3*t,v)
+    plt.plot(1e3 * t, v)
     plt.show()
 
     print(dso.check_trigger(force=True))

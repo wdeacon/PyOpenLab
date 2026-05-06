@@ -1,0 +1,14 @@
+repos:
+  - repo: https://github.com/google/yapf
+    rev: v0.43.0
+    hooks:
+      - id: yapf
+        args: [--style=setup.cfg, --in-place]
+        additional_dependencies: [toml]
+        exclude: ^pyopenlab/instrument/ElectroOpticModulator/Arduino_power_control_python_communication/
+
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: [--settings-path=setup.cfg]

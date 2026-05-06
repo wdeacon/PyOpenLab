@@ -4,22 +4,32 @@ Created on Thu Jul 30 13:13:27 2015
 
 """
 
-from pyopenlab.utils.gui import QtWidgets, uic, QtCore
 import os
 
-from pyopenlab.instrument.visa_instrument import VisaInstrument
 from pyopenlab.instrument.temperatureControl import TemperatureControlMixin
+from pyopenlab.instrument.visa_instrument import VisaInstrument
+from pyopenlab.utils.gui import QtCore
+from pyopenlab.utils.gui import QtWidgets
+from pyopenlab.utils.gui import uic
 
 
 class OxfordITC(VisaInstrument, TemperatureControlMixin):
+
     def __init__(self, address, **kwargs):
         TemperatureControlMixin.__init__(self)
         if 'GPIB' in address:
-            VisaInstrument.__init__(self, address, settings=dict(timeout=10000, read_termination='\r',
-                                                                 write_termination='\r'))
+            VisaInstrument.__init__(self,
+                                    address,
+                                    settings=dict(timeout=10000,
+                                                  read_termination='\r',
+                                                  write_termination='\r'))
         else:
-            VisaInstrument.__init__(self, address, settings=dict(baud_rate=9600, read_termination='\r',
-                                                                 write_termination='\r', timeout=1000))
+            VisaInstrument.__init__(self,
+                                    address,
+                                    settings=dict(baud_rate=9600,
+                                                  read_termination='\r',
+                                                  write_termination='\r',
+                                                  timeout=1000))
 
         self.setControlMode(3)
 
@@ -35,7 +45,7 @@ class OxfordITC(VisaInstrument, TemperatureControlMixin):
             self.setControlMode(0)
             self.instr.close()
         except:
-            self._logger.warn("Couldn't close %s on port %s" %(self.__name__, self._address))
+            self._logger.warn("Couldn't close %s on port %s" % (self.__name__, self._address))
 
     def get_temperature(self):
         temp = self.query('R1', delay=1)
@@ -128,7 +138,6 @@ class OxfordITC(VisaInstrument, TemperatureControlMixin):
         self.write('D' + str(D))
 
         self.params['PID'] = [P, I, D]
-
 
     def get_qt_ui(self):
         return OxfordITCUI(self)

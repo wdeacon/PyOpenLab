@@ -1,16 +1,23 @@
 ﻿# -*- coding: utf-8 -*-
 
-from past.utils import old_div
-from pyopenlab.utils.gui import QtWidgets, QtGui, QtCore, uic, get_qt_app
-from pyopenlab.ui.ui_tools import UiTools
-from pyopenlab.instrument import Instrument
-import pyqtgraph.dockarea as dockarea
-import numpy as np
-import os
 import math
+import os
+
+import numpy as np
+from past.utils import old_div
+import pyqtgraph.dockarea as dockarea
+from scipy.interpolate import interp1d
+
+from pyopenlab.instrument import Instrument
+from pyopenlab.ui.ui_tools import UiTools
+from pyopenlab.utils.gui import get_qt_app
+from pyopenlab.utils.gui import QtCore
+from pyopenlab.utils.gui import QtGui
+from pyopenlab.utils.gui import QtWidgets
+from pyopenlab.utils.gui import uic
+
 from . import gui
 from . import pattern_generators
-from scipy.interpolate import interp1d
 
 
 def zernike_polynomial(array_size, n, m, beam_size=1, unit_circle=True):
@@ -36,13 +43,13 @@ def zernike_polynomial(array_size, n, m, beam_size=1, unit_circle=True):
 
     if type(array_size) == int:
         array_size = (array_size, array_size)
-    im_rat = array_size[1]/array_size[0]
+    im_rat = array_size[1] / array_size[0]
     if im_rat >= 1:
         _x = np.linspace(-im_rat, im_rat, array_size[1])
         _y = np.linspace(-1, 1, array_size[0])
     else:
         _x = np.linspace(-1, 1, array_size[1])
-        _y = np.linspace(-1/im_rat, 1/im_rat, array_size[0])
+        _y = np.linspace(-1 / im_rat, 1 / im_rat, array_size[0])
     x, y = np.meshgrid(_x, _y)
     # By normalising the radius to the beamsize, we can make Zernike polynomials of different sizes
     rho = old_div(np.sqrt(x**2 + y**2), beam_size)
@@ -50,10 +57,12 @@ def zernike_polynomial(array_size, n, m, beam_size=1, unit_circle=True):
 
     summ = []
     for k in range(1 + old_div((n - m), 2)):
-        summ += [old_div(((-1)**k * math.factorial(n - k) * (rho**(n-2*k))),
-                 (math.factorial(k) * math.factorial(old_div((n+m), 2) - k) * math.factorial(old_div((n-m), 2) - k)))]
+        summ += [
+            old_div(((-1)**k * math.factorial(n - k) * (rho**(n - 2 * k))),
+                    (math.factorial(k) * math.factorial(old_div((n + m), 2) - k) *
+                     math.factorial(old_div((n - m), 2) - k)))]
     r = np.sum(summ, 0)
-    if (n-m) % 2:
+    if (n - m) % 2:
         r = 0
 
     # Limiting the polynomial to the unit circle, where it is defined:
@@ -75,7 +84,12 @@ class SlmDisplay(QtWidgets.QWidget):
     """
     update_image = QtCore.Signal(np.ndarray)
 
-    def __init__(self, shape=(1000, 1000), resolution=(1, 1), bitness=8, hide_border=True, lut=None):
+    def __init__(self,
+                 shape=(1000, 1000),
+                 resolution=(1, 1),
+                 bitness=8,
+                 hide_border=True,
+                 lut=None):
         """
         :param shape: 2-tuple of int. Width and height of the SLM panel in pixels
         :param resolution:
@@ -114,7 +128,8 @@ class SlmDisplay(QtWidgets.QWidget):
 
         self.setWindowTitle('SLM Phase')
         if hide_border:
-            self.setWindowFlags(QtCore.Qt.CustomizeWindowHint | QtCore.Qt.FramelessWindowHint | QtCore.Qt.WindowStaysOnTopHint)
+            self.setWindowFlags(QtCore.Qt.CustomizeWindowHint | QtCore.Qt.FramelessWindowHint |
+                                QtCore.Qt.WindowStaysOnTopHint)
 
     def set_lut(self, lut):
         if type(lut) == str:
@@ -132,7 +147,8 @@ class SlmDisplay(QtWidgets.QWidget):
 
     def set_image(self, phase, slm_monitor=None):
         # Makes phase go from 0 to 2*pi, and removes floating point errors
-        phase = (phase + 0.1*np.pi / 2 ** self._bitness) % (2 * np.pi) - 0.1*np.pi / 2 ** self._bitness
+        phase = (phase + 0.1 * np.pi / 2**self._bitness) % (2 *
+                                                            np.pi) - 0.1 * np.pi / 2**self._bitness
         # Makes phase go from -pi to pi
         phase -= np.pi
         # Transform into SLM display values
@@ -159,7 +175,8 @@ class SlmDisplay(QtWidgets.QWidget):
         img = phase.ravel()
 
         if self._bitness == 8:
-            self._QImage = QtGui.QImage(img.astype(np.uint8), phase.shape[1], phase.shape[0], QtGui.QImage.Format_Grayscale8)
+            self._QImage = QtGui.QImage(img.astype(np.uint8), phase.shape[1], phase.shape[0],
+                                        QtGui.QImage.Format_Grayscale8)
         else:
             raise ValueError('Bitness %g is not implemented' % self._bitness)
 
@@ -167,6 +184,7 @@ class SlmDisplay(QtWidgets.QWidget):
 
 
 class Slm(Instrument):
+
     def __init__(self, options, slm_monitor, correction_phase=None, display_kwargs=None, **kwargs):
         """
         :param options: list of strings. Names of the functionalities you want your SLM to have:
@@ -207,7 +225,8 @@ class Slm(Instrument):
         """
         app = get_qt_app()
         desktop = app.desktop()
-        assert 0 <= monitor_index < desktop.screenCount(), 'monitor_index must be between 0 and the number of monitors'
+        assert 0 <= monitor_index < desktop.screenCount(
+        ), 'monitor_index must be between 0 and the number of monitors'
         slm_screen = desktop.screen(monitor_index)
 
         return [slm_screen.width(), slm_screen.height()]
@@ -244,8 +263,8 @@ class Slm(Instrument):
         if self.Display is None:
             self.Display = SlmDisplay(self._shape, **self.display_kwargs)
 
-        self._logger.debug("Setting phase (min, max)=(%g, %g); shape=%s; monitor=%s" % (np.min(phase), np.max(phase),
-                                                                                        np.shape(phase), slm_monitor))
+        self._logger.debug("Setting phase (min, max)=(%g, %g); shape=%s; monitor=%s" %
+                           (np.min(phase), np.max(phase), np.shape(phase), slm_monitor))
         phase = self.Display.set_image(phase + self._correction, slm_monitor=slm_monitor)
 
         if self.Display.isHidden():
@@ -257,6 +276,7 @@ class Slm(Instrument):
 
 
 class SlmUi(QtWidgets.QWidget, UiTools):
+
     def __init__(self, slm):
         """
         :param slm: instance of Slm
@@ -308,7 +328,7 @@ class SlmUi(QtWidgets.QWidget, UiTools):
 
     def make(self):
         parameters = self.get_gui_phase_params()
-        self.SLM._logger.debug('SlmUi.make called with args=%s' % (parameters, ))
+        self.SLM._logger.debug('SlmUi.make called with args=%s' % (parameters,))
         phase = self.SLM.make_phase(parameters)
 
         slm_monitor = self.slm_monitor_lineEdit.text()
@@ -354,8 +374,9 @@ class SlmUi(QtWidgets.QWidget, UiTools):
 
 
 if __name__ == "__main__":
-    settings = ['gratings', 'vortexbeam', 'focus', 'astigmatism', 'linear_lut', 'constant',
-                'calibration_responsiveness']
+    settings = [
+        'gratings', 'vortexbeam', 'focus', 'astigmatism', 'linear_lut', 'constant',
+        'calibration_responsiveness']
     SLM = Slm(settings, 1)
     SLM._logger.setLevel('DEBUG')
     SLM.show_gui()

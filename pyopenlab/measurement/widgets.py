@@ -1,39 +1,45 @@
-﻿
-from threading import Lock
+﻿from threading import Lock
+from typing import Callable, Generic, List, Tuple, TypeVar
 
+from qtpy.QtCore import QItemSelectionModel
+from qtpy.QtCore import Qt
+from qtpy.QtCore import Signal
 from qtpy.QtWidgets import *
-from qtpy.QtCore import QItemSelectionModel, Qt, Signal
-from typing import Generic, TypeVar, List, Callable, Tuple
 
-from pyopenlab.measurement.action import Action, Message, Status
+from pyopenlab.measurement.action import Action
+from pyopenlab.measurement.action import Message
+from pyopenlab.measurement.action import Status
 from pyopenlab.measurement.sweep import Sweep
 
 A = TypeVar("A", bound=Action)
 
+
 class ActionWidget(Generic[A], QWidget):
 
-    statusChanged   = Signal(Status)
+    statusChanged = Signal(Status)
     messageReceived = Signal(Message)
-    actionsChanged  = Signal(list)
-    resized         = Signal()
+    actionsChanged = Signal(list)
+    resized = Signal()
 
     def __init__(self, action: A):
 
         super().__init__()
 
-        self._action  = action
-        self._vbox    = QVBoxLayout()
-        self._hbox    = QHBoxLayout()
-        self._box     = QLabel()
-        self._title   = QLabel("%s (%s)" % (action.name, action.description))
-        self._status  = QLabel(action.status.name)
+        self._action = action
+        self._vbox = QVBoxLayout()
+        self._hbox = QHBoxLayout()
+        self._box = QLabel()
+        self._title = QLabel("%s (%s)" % (action.name, action.description))
+        self._status = QLabel(action.status.name)
         self._message = QLabel("")
-        self._setup   = None
+        self._setup = None
 
         self._box.setFixedSize(25, 25)
         self._box.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed))
-        self._title.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
-        self._status.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum))
+        self._title.setSizePolicy(
+            QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
+        self._status.setSizePolicy(
+            QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum))
 
         self._hbox.addWidget(self._box)
         self._hbox.addWidget(self._title)
@@ -48,14 +54,15 @@ class ActionWidget(Generic[A], QWidget):
 
             self._sideBorder = QLabel()
             self._subActions = QVBoxLayout()
-            self._subLayout  = QHBoxLayout()
+            self._subLayout = QHBoxLayout()
 
             self._sideBorder.setMinimumWidth(10)
-            self._sideBorder.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.MinimumExpanding))
+            self._sideBorder.setSizePolicy(
+                QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.MinimumExpanding))
             self._sideBorder.setStyleSheet("background-color: gray;")
 
-            self._subActions.setContentsMargins(0,0,0,0)
-            self._subLayout.setContentsMargins(0,0,0,0)
+            self._subActions.setContentsMargins(0, 0, 0, 0)
+            self._subLayout.setContentsMargins(0, 0, 0, 0)
 
             self._subLayout.addWidget(self._sideBorder)
             self._subLayout.addLayout(self._subActions)
@@ -66,8 +73,10 @@ class ActionWidget(Generic[A], QWidget):
 
             values = action.getValues()
 
-            self.updateActions(list(action.generate(values[0], action.getActions()) if len(values) > 0 else action.getActions()))
-
+            self.updateActions(
+                list(
+                    action.generate(values[0], action.getActions()) if len(values) >
+                    0 else action.getActions()))
 
         self.setupConnections()
 
@@ -76,12 +85,12 @@ class ActionWidget(Generic[A], QWidget):
         if lastMessage is not None:
             self.updateMessage(action.getLastMessage())
 
-            
     def updateActions(self, actions: List[Action]):
 
         if hasattr(self, "_subActions"):
-            
-            widgets: List[ActionWidget] = [self._subActions.itemAt(i).widget() for i in range(self._subActions.count())]
+
+            widgets: List[ActionWidget] = [
+                self._subActions.itemAt(i).widget() for i in range(self._subActions.count())]
 
             for widget in widgets:
                 self._subActions.removeWidget(widget)
@@ -90,39 +99,36 @@ class ActionWidget(Generic[A], QWidget):
 
             for sub in actions:
                 widget = ActionWidget(sub)
-                widget.layout().setContentsMargins(0,0,0,0)
+                widget.layout().setContentsMargins(0, 0, 0, 0)
                 self._subActions.addWidget(widget)
 
-
             self.resized.emit()
-            
-
 
     def getAction(self) -> A:
         return self._action
-    
 
-    def getSetupWidget(self, actions = [], equipment = []):
+    def getSetupWidget(self, actions=[], equipment=[]):
 
         if self._setup is None:
             from pyopenlab.measurement.gui import ActionSetupGUI
             self._setup = ActionSetupGUI(self._action, actions, equipment)
 
         return self._setup
-    
 
     def setupConnections(self):
 
-        self._statusListener  = self._action.addStatusListener(lambda status: self.statusChanged.emit(status))
-        self._messageListener = self._action.addMessageListener(lambda message: self.messageReceived.emit(message))
+        self._statusListener = self._action.addStatusListener(
+            lambda status: self.statusChanged.emit(status))
+        self._messageListener = self._action.addMessageListener(
+            lambda message: self.messageReceived.emit(message))
 
         self.statusChanged.connect(self.updateStatus)
         self.messageReceived.connect(self.updateMessage)
 
         if isinstance(self._action, Sweep):
-            self._actionListener = self._action.addActionListener(lambda actions: self.actionsChanged.emit(list(actions)))
+            self._actionListener = self._action.addActionListener(
+                lambda actions: self.actionsChanged.emit(list(actions)))
             self.actionsChanged.connect(self.updateActions)
-
 
     def destoryListeners(self):
 
@@ -138,8 +144,7 @@ class ActionWidget(Generic[A], QWidget):
             for widget in widgets:
                 if hasattr(widget, "destroyListeners"):
                     widget.destroyListeners()
-        
-    
+
     def updateStatus(self, status: Status):
 
         self._status.setText(status.name)
@@ -156,7 +161,6 @@ class ActionWidget(Generic[A], QWidget):
         elif status == Status.ERROR:
             self._box.setStyleSheet("background-color: brown;")
 
-
     def updateMessage(self, message: Message):
         if message.path[-1].part == self._action:
             self._message.setText(message.message)
@@ -164,24 +168,26 @@ class ActionWidget(Generic[A], QWidget):
 
 T = TypeVar("T")
 
+
 class ListWidget(QWidget, Generic[T]):
 
-    def __init__(self, display: Callable[[T], str], dialog: Callable[[QWidget, str, str, T], Tuple[T, bool]], defValue: T):
+    def __init__(self, display: Callable[[T], str], dialog: Callable[[QWidget, str, str, T],
+                                                                     Tuple[T, bool]], defValue: T):
 
         super().__init__()
 
-        self.display          = display
-        self.dialog           = dialog
-        self.defValue         = defValue
+        self.display = display
+        self.dialog = dialog
+        self.defValue = defValue
         self._values: List[T] = []
 
-        self.lyt        = QVBoxLayout(self)
+        self.lyt = QVBoxLayout(self)
         self.listWidget = QListWidget()
-        buttonLayout    = QHBoxLayout()
+        buttonLayout = QHBoxLayout()
 
-        self.addBtn  = QPushButton("+")
-        self.remBtn  = QPushButton("-")
-        self.upBtn   = QPushButton("▲")
+        self.addBtn = QPushButton("+")
+        self.remBtn = QPushButton("-")
+        self.upBtn = QPushButton("▲")
         self.downBtn = QPushButton("▼")
 
         buttonLayout.addWidget(self.addBtn)
@@ -191,7 +197,7 @@ class ListWidget(QWidget, Generic[T]):
 
         self.lyt.addLayout(buttonLayout)
         self.lyt.addWidget(self.listWidget)
-        self.lyt.setContentsMargins(0,0,0,0)
+        self.lyt.setContentsMargins(0, 0, 0, 0)
 
         self.setLayout(self.lyt)
 
@@ -203,12 +209,11 @@ class ListWidget(QWidget, Generic[T]):
         self.remBtn.clicked.connect(self.removeItem)
         self.upBtn.clicked.connect(self.moveUp)
         self.downBtn.clicked.connect(self.moveDown)
-    
+
     def add(self, value: T):
         """Add value of type T."""
         self.listWidget.addItem(self.display(value))
         self._values.append(value)
-
 
     def addItem(self):
 
@@ -216,7 +221,6 @@ class ListWidget(QWidget, Generic[T]):
 
         if ok:
             self.add(value)
-
 
     def editItem(self):
 
@@ -226,7 +230,7 @@ class ListWidget(QWidget, Generic[T]):
             QMessageBox.warning(self, "No Selection", "Select an item to edit.")
             return
 
-        item  = self.listWidget.item(row)
+        item = self.listWidget.item(row)
         value = self._values[row]
 
         value, ok = self.dialog(self, "Edit Item", "Enter Value...", value)
@@ -235,7 +239,6 @@ class ListWidget(QWidget, Generic[T]):
             item.setText(self.display(value))
             self._values[row] = value
 
-
     def removeItem(self):
 
         row = self.listWidget.currentRow()
@@ -243,7 +246,6 @@ class ListWidget(QWidget, Generic[T]):
         if row >= 0:
             self.listWidget.takeItem(row)
             self._values.pop(row)
-
 
     def moveUp(self):
 
@@ -256,7 +258,6 @@ class ListWidget(QWidget, Generic[T]):
             self.listWidget.setCurrentRow(row - 1)
 
             self._values[row], self._values[row - 1] = (self._values[row - 1], self._values[row])
-
 
     def moveDown(self):
 
@@ -274,11 +275,10 @@ class ListWidget(QWidget, Generic[T]):
                 self._values[row],
             )
 
-
     def getValues(self) -> List[T]:
         """Return list contents preserving original type."""
         return list(self._values)
-    
+
     def setValues(self, values: List[T]):
 
         self._values.clear()
@@ -290,7 +290,7 @@ class ListWidget(QWidget, Generic[T]):
 
 class TimeIntervalWidget(QWidget):
 
-    valueChanged  = Signal(int)  # milliseconds
+    valueChanged = Signal(int)  # milliseconds
     returnPressed = Signal()
 
     def __init__(self, parent=None):
@@ -340,18 +340,13 @@ class TimeIntervalWidget(QWidget):
             spin.valueChanged.connect(self._valueChanged)
             spin.lineEdit().returnPressed.connect(self.returnPressed.emit)
 
-
     def _valueChanged(self):
         self.valueChanged.emit(self.value())
 
     def value(self) -> int:
         """Return interval in milliseconds"""
-        return (
-            self.hours.value() * 3600000
-            + self.minutes.value() * 60000
-            + self.seconds.value() * 1000
-            + self.milliseconds.value()
-        )
+        return (self.hours.value() * 3600000 + self.minutes.value() * 60000 +
+                self.seconds.value() * 1000 + self.milliseconds.value())
 
     def setValue(self, ms: int):
         """Set interval from milliseconds"""

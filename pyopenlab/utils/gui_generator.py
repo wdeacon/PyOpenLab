@@ -1,26 +1,28 @@
 ﻿import datetime
-
-from pyopenlab.instrument.camera.fastcamera import FastCamera
-from pyopenlab.instrument.spectrometer.fastspectrometer import FastSpectrometer
-from pyopenlab.measurement.action import Message
-from pyopenlab.measurement.gui import QueueInstrument
-from pyopenlab.measurement.actionqueue import H5ActionQueue
-from pyopenlab.instrument.jinstrument import JInstrument
-from pyopenlab.utils.gui import QtWidgets, uic, QtCore, get_qt_app
-from pyopenlab.ui.ui_tools import UiTools
-import pyopenlab.datafile as df
-from pyopenlab.utils.log import create_logger, ColoredFormatter
-
+import inspect
+import logging
 import os
 import sys
-import inspect
-import numpy as np
 
+import numpy as np
 import pyqtgraph
 import pyqtgraph.dockarea
 import qdarkstyle
 
-import logging
+import pyopenlab.datafile as df
+from pyopenlab.instrument.camera.fastcamera import FastCamera
+from pyopenlab.instrument.jinstrument import JInstrument
+from pyopenlab.instrument.spectrometer.fastspectrometer import FastSpectrometer
+from pyopenlab.measurement.action import Message
+from pyopenlab.measurement.actionqueue import H5ActionQueue
+from pyopenlab.measurement.gui import QueueInstrument
+from pyopenlab.ui.ui_tools import UiTools
+from pyopenlab.utils.gui import get_qt_app
+from pyopenlab.utils.gui import QtCore
+from pyopenlab.utils.gui import QtWidgets
+from pyopenlab.utils.gui import uic
+from pyopenlab.utils.log import ColoredFormatter
+from pyopenlab.utils.log import create_logger
 
 LOGGER = create_logger('GeneratedGUI')
 
@@ -31,9 +33,17 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
     gui without all of the hard work
     """
 
-    def __init__(self, instrument_dict, parent=None, dock_settings_path=None,
-                 scripts_path=None, working_directory=None, file_path=None,
-                 terminal=False, dark=False, actions=[], logFile=None):  
+    def __init__(self,
+                 instrument_dict,
+                 parent=None,
+                 dock_settings_path=None,
+                 scripts_path=None,
+                 working_directory=None,
+                 file_path=None,
+                 terminal=False,
+                 dark=False,
+                 actions=[],
+                 logFile=None):
         """Args:
             instrument_dict(dict) :     This is a dictionary containing the
                                         instruments objects where the key is the 
@@ -75,7 +85,6 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
                 else:
                     instrument_dict["jisa_%s" % key] = JInstrument(instrument)
 
-
         self.instr_dict = instrument_dict
 
         if working_directory is None:
@@ -95,7 +104,6 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
             app = get_qt_app()
             app.setStyleSheet(qdarkstyle.load_stylesheet())
 
-
         if len(actions) > 0:
 
             queue = H5ActionQueue()
@@ -104,7 +112,7 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
 
             if logFile is None:
                 from pathlib import Path
-                home    = Path.home()
+                home = Path.home()
                 logFile = Path.joinpath(home, "pyopenlab-queue.log")
 
             f = open(logFile, "a")
@@ -113,7 +121,8 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
             f.flush()
 
             def _write(m: Message):
-                f.write("%s\t%s\t%s\t%s\r\n" % (str(datetime.datetime.fromtimestamp(m.timestamp)), m.type.name, m.pathString, m.message))
+                f.write("%s\t%s\t%s\t%s\r\n" % (str(datetime.datetime.fromtimestamp(
+                    m.timestamp)), m.type.name, m.pathString, m.message))
                 f.flush()
 
             queue.addMessageListener(_write)
@@ -123,7 +132,6 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
                 f.close()
 
             self.destroyed.connect(_end)
-
 
         self.instr_dict["HDF5"] = self.data_file
         self.setDockNestingEnabled(1)
@@ -135,9 +143,11 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
         self.actions = dict(Views={}, Instruments={})
 
         self.dockwidgetArea = pyqtgraph.dockarea.DockArea()
-        self.dockWidgetArea = self.replace_widget(self.verticalLayout, self.centralWidget(), self.dockwidgetArea)
+        self.dockWidgetArea = self.replace_widget(self.verticalLayout, self.centralWidget(),
+                                                  self.dockwidgetArea)
         self.dockWidgetAllInstruments.setWidget(self.dockwidgetArea)
-        self.dockWidgetAllInstruments.setTitleBarWidget(QtWidgets.QWidget())  # This trick makes the title bar disappear
+        self.dockWidgetAllInstruments.setTitleBarWidget(
+            QtWidgets.QWidget())  # This trick makes the title bar disappear
 
         # Iterate over all the opened instruments. If the instrument has a GUI (i.e. if they have the get_qt_ui function
         # defined inside them), then create a pyqtgraph.Dock for it and add its widget to the Dock. Also prints out any
@@ -146,7 +156,7 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
 
         for instr in self.instr_dict:
             self._open_one_gui(instr)
-            
+
         self.script_menu = None
         if scripts_path is not None:
             self.scripts_path = scripts_path
@@ -174,13 +184,15 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
             self.dock_settings_path = None
         self.showMaximized()
 
-    def __getattribute__(self, name):  # All instruments log function and method calls at debugging level
+    def __getattribute__(self,
+                         name):  # All instruments log function and method calls at debugging level
 
         returned = QtCore.QObject.__getattribute__(self, name)
         if inspect.isfunction(returned) or inspect.ismethod(returned):
             codeline = inspect.getsourcelines(returned)[1]
             filename = inspect.getfile(returned)
-            self._logger.debug('Called %s on line %g of %s' % (returned.__name__, codeline, filename))
+            self._logger.debug('Called %s on line %g of %s' %
+                               (returned.__name__, codeline, filename))
         return returned
 
     def _open_one_gui(self, instrument_name):
@@ -188,17 +200,21 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
         get_qt_ui function for a single panel or if invidual control and preview widgets
         are possible then the get_control_widget and get_preview_widgets will be sed
         """
-        if hasattr(self.instr_dict[instrument_name], 'get_control_widget') or hasattr(self.instr_dict[instrument_name],
-                                                                                      'get_preview_widget'):
+        if hasattr(self.instr_dict[instrument_name], 'get_control_widget') or hasattr(
+                self.instr_dict[instrument_name], 'get_preview_widget'):
             if hasattr(self.instr_dict[instrument_name], 'get_control_widget'):
 
                 widget = self.instr_dict[instrument_name].get_control_widget()
 
                 if widget is not None:
                     self.allWidgets[instrument_name + ' controls'] = widget
-                    self.allDocks[instrument_name + ' controls'] = pyqtgraph.dockarea.Dock(instrument_name + ' controls')
-                    self.dockwidgetArea.addDock(self.allDocks[instrument_name + ' controls'], 'left')
-                    self.allDocks[instrument_name + ' controls'].addWidget(self.allWidgets[instrument_name + ' controls'])
+                    self.allDocks[instrument_name +
+                                  ' controls'] = pyqtgraph.dockarea.Dock(instrument_name +
+                                                                         ' controls')
+                    self.dockwidgetArea.addDock(self.allDocks[instrument_name + ' controls'],
+                                                'left')
+                    self.allDocks[instrument_name + ' controls'].addWidget(
+                        self.allWidgets[instrument_name + ' controls'])
                     self._addActionViewMenu(instrument_name + ' controls')
 
             if hasattr(self.instr_dict[instrument_name], 'get_preview_widget'):
@@ -207,9 +223,12 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
 
                 if widget is not None:
                     self.allWidgets[instrument_name + ' display'] = widget
-                    self.allDocks[instrument_name + ' display'] = pyqtgraph.dockarea.Dock(instrument_name + ' display')
+                    self.allDocks[instrument_name +
+                                  ' display'] = pyqtgraph.dockarea.Dock(instrument_name +
+                                                                        ' display')
                     self.dockwidgetArea.addDock(self.allDocks[instrument_name + ' display'], 'left')
-                    self.allDocks[instrument_name + ' display'].addWidget(self.allWidgets[instrument_name + ' display'])
+                    self.allDocks[instrument_name + ' display'].addWidget(
+                        self.allWidgets[instrument_name + ' display'])
                     self._addActionViewMenu(instrument_name + ' display')
 
         elif hasattr(self.instr_dict[instrument_name], 'get_qt_ui'):
@@ -290,7 +309,9 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
         dock_state = self.dockWidgetArea.saveState()
         if self.dock_settings_path == None:
             import pyopenlab.utils.gui
-            from pyopenlab.utils.gui import QtGui, QtWidgets
+            from pyopenlab.utils.gui import QtGui
+            from pyopenlab.utils.gui import QtWidgets
+
             #     app = pyopenlab.utils.gui.get_qt_app()  # ensure Qt is running
             self.dock_settings_path = QtWidgets.QFileDialog.getSaveFileName(
                 caption="Create new dock settings file",
@@ -305,7 +326,9 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
         binary array file"""
         if self.dock_settings_path == None:
             import pyopenlab.utils.gui
-            from pyopenlab.utils.gui import QtGui, QtWidgets
+            from pyopenlab.utils.gui import QtGui
+            from pyopenlab.utils.gui import QtWidgets
+
             #          app = pyopenlab.utils.gui.get_qt_app()  # ensure Qt is running
             self.dock_settings_path = QtWidgets.QFileDialog.getOpenFileName(
                 caption="Select Existing Data File",
@@ -365,7 +388,8 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
                 self.terminalWindow.execute('data_file = df.current()')
                 self.terminalWindow.execute('')
                 handle = logging.StreamHandler(self.terminalWindow.kernel.stdout)
-            formatter = ColoredFormatter('[%(name)s] - %(levelname)s: %(message)s - %(asctime)s ', '%H:%M')
+            formatter = ColoredFormatter('[%(name)s] - %(levelname)s: %(message)s - %(asctime)s ',
+                                         '%H:%M')
             handle.setFormatter(formatter)
             self._logger.addHandler(handle)
             instr_logger = logging.getLogger('Instrument')
@@ -403,7 +427,8 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
             for fn in filenames:
                 if fn != '__init__.py':
                     menuitem = current.addAction(fn)
-                    menuitem.triggered.connect(partial(self.menuScriptClicked, '\\'.join((dirpath,fn))))
+                    menuitem.triggered.connect(
+                        partial(self.menuScriptClicked, '\\'.join((dirpath, fn))))
 
         script_menu.addSeparator()
         refreshScripts = script_menu.addAction('Refresh')
@@ -430,7 +455,7 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
             except Exception as e:
                 print(e)
             # exec(open(os.path.join(self.scripts_path, scriptname)).read())
-            
+
     def VerboseChanged(self, action):
         """Automatically change the loggers 
         verbosity level across all instruments upon 
@@ -453,12 +478,14 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
         self._logger.info(quit_msg)
         try:
             if os.environ["QT_API"] == "pyqt5":
-                reply = QtWidgets.QMessageBox.question(self, 'Message', quit_msg,
-                                                       QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.Save | QtWidgets.QMessageBox.No)
+                reply = QtWidgets.QMessageBox.question(
+                    self, 'Message', quit_msg, QtWidgets.QMessageBox.Yes |
+                    QtWidgets.QMessageBox.Save | QtWidgets.QMessageBox.No)
 
             else:
                 reply = QtWidgets.QMessageBox.question(self, 'Message', quit_msg,
-                                                       QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.Save,
+                                                       QtWidgets.QMessageBox.Yes,
+                                                       QtWidgets.QMessageBox.Save,
                                                        QtWidgets.QMessageBox.No)
 
             if reply != QtWidgets.QMessageBox.No:

@@ -8,47 +8,48 @@ Inherits spectral classes from spectrum_tools.py
 
 '''
 
-import h5py
-import os
+from importlib import reload
 import math
-import numpy as np
+import os
+
+import h5py
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
-
-from importlib import reload
+import numpy as np
 
 from pyopenlab.analysis import spc_to_h5 as sph
-
+from pyopenlab.analysis.general_spec_tools import all_rc_params as arp
+from pyopenlab.analysis.general_spec_tools import dft_raman_tools as drt
 from pyopenlab.analysis.general_spec_tools import particle_track_analysis as pta
 from pyopenlab.analysis.general_spec_tools import spectrum_tools as spt
-from pyopenlab.analysis.general_spec_tools import dft_raman_tools as drt
-
-from pyopenlab.analysis.general_spec_tools import all_rc_params as arp
 
 agg_sers_rc_params = arp.master_param_dict['Agg SERS']
 dft_rc_params = arp.master_param_dict['DFT Raman']
 bbox_params = arp.bbox_params
 
-other_plot_params = {'title_bbox' : 
-                                {'boxstyle' : 'square',
-                                'facecolor' : 'white',
-                                'edgecolor' : 'white',
-                                'linewidth' : 0,
-                                'alpha' : 1},
+other_plot_params = {
+    'title_bbox': {
+        'boxstyle': 'square',
+        'facecolor': 'white',
+        'edgecolor': 'white',
+        'linewidth': 0,
+        'alpha': 1},
+    'title_weight': 1.3,
+    'title_position': (0.5, 0.993),
+    'title_ha': 'center',
+    'title_va': 'center',
+    'legend_titlesize': 18,
+    'fig_rect': [0, 0, 0.85, 1],
+    'cbar_left': 0.82,
+    'cbar_width': 0.05,
+    'laser_colors': {
+        532: 'green',
+        633: 'red',
+        785: 'darkred'}}
 
-                'title_weight' : 1.3,
-                'title_position' : (0.5, 0.993),
 
-                'title_ha' : 'center', 'title_va' : 'center',
-                'legend_titlesize' : 18,
-                'fig_rect' : [0, 0, 0.85, 1], 
-                'cbar_left' : 0.82, 
-                'cbar_width' : 0.05,
-                'laser_colors' : {532 : 'green', 633 : 'red', 785 : 'darkred'}
-                }
-
-def extract_all_spc(data_dir = None):
+def extract_all_spc(data_dir=None):
     if data_dir is not None:
         os.chdir(data_dir)
 
@@ -59,16 +60,17 @@ def extract_all_spc(data_dir = None):
             print('Deleting existing file: %s' % i)
             os.remove(i)
 
-    return sph.run(nameOnly = True)
+    return sph.run(nameOnly=True)
 
-def inspect_data(data_dir = None, name_format = None, **kwargs):
+
+def inspect_data(data_dir=None, name_format=None, **kwargs):
     '''
     Quickly plots all Raman spectra (extracted using extract_all_spc()), for inspection
     '''
     if name_format is None:
         name_format = os.path.split(os.getcwd())[-1]
 
-    h5_file = pta.find_h5_file(root_dir = data_dir, name_format = name_format, **kwargs)
+    h5_file = pta.find_h5_file(root_dir=data_dir, name_format=name_format, **kwargs)
 
     with h5py.File(h5_file, 'r') as F:
         print(list(F['All Raw'].keys()))
@@ -76,12 +78,17 @@ def inspect_data(data_dir = None, name_format = None, **kwargs):
             spectrum = Renishaw_Raman_Spectrum(dset)
             spectrum.plot_raman()
 
-def tidy_h5(dset_names, new_dset_names = None, old_h5_name = None, new_h5_name = None, 
-            sum_timescans = False, **kwargs):
+
+def tidy_h5(dset_names,
+            new_dset_names=None,
+            old_h5_name=None,
+            new_h5_name=None,
+            sum_timescans=False,
+            **kwargs):
 
     if old_h5_name is None:
         name_format = os.path.split(os.getcwd())[-1]
-        old_h5_name = pta.find_h5_file(exclude = 'Summary', name_format = name_format, **kwargs)
+        old_h5_name = pta.find_h5_file(exclude='Summary', name_format=name_format, **kwargs)
 
     if new_h5_name is None:
         new_h5_name = f'{old_h5_name.replace(".h5", "").replace(" Raman Data", "")} Summary.h5'
@@ -101,31 +108,33 @@ def tidy_h5(dset_names, new_dset_names = None, old_h5_name = None, new_h5_name =
                 old_data = old_dset[()]
 
                 if len(old_data.shape) > 1 and sum_timescans == True:
-                    old_data = np.sum(old_data, axis = 0)
+                    old_data = np.sum(old_data, axis=0)
 
-                new_dset = G.create_dataset(new_dset_name, data = old_data)
+                new_dset = G.create_dataset(new_dset_name, data=old_data)
                 new_dset.attrs.update(old_dset.attrs)
                 print(f'{old_dset_name} moved to {new_dset_name}')
 
     print(f'\nSummary file: {new_h5_name} created')
     return new_h5_name
 
+
 class Renishaw_Raman_Spectrum(spt.Spectrum):
     '''
     Object containing xy data and functions for NPoM SERS spectral analysis and plotting
     Inherits from "Spectrum" object class in spectrum_tools.py
     args can be y data, x and y data, h5 dataset (with or without its name as a string)
-    '''    
-    def __init__(self, *args, x_range = None, norm_range = None, concentration = None, **kwargs):
+    '''
+
+    def __init__(self, *args, x_range=None, norm_range=None, concentration=None, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.x_range = x_range
-        self.norm_range = norm_range        
+        self.norm_range = norm_range
         self.concentration = concentration
 
         if len(self.y.shape) == 2:
             self.Y = self.y.copy()
-            self.y = np.sum(self.Y, axis = 0)
+            self.y = np.sum(self.Y, axis=0)
 
         self.y_raw = self.y.copy()
         self.x_raw = self.x.copy()
@@ -138,7 +147,13 @@ class Renishaw_Raman_Spectrum(spt.Spectrum):
                     !!! Need to update spc_to_h5 module to include functions for individual spectra
                     '''
 
-    def subtract_baseline(self, lam = 1e4, p = 1e-4, niter = 10, plot = False, smooth_first = False, **kwargs):
+    def subtract_baseline(self,
+                          lam=1e4,
+                          p=1e-4,
+                          niter=10,
+                          plot=False,
+                          smooth_first=False,
+                          **kwargs):
         if smooth_first == True:
             y = spt.butter_lowpass_filt_filt(self.y, **kwargs)
         else:
@@ -148,9 +163,9 @@ class Renishaw_Raman_Spectrum(spt.Spectrum):
         self.y_baselined = self.y - self.baseline
 
         if plot == True:
-            self.plot_raman(baseline = True)
+            self.plot_raman(baseline=True)
 
-    def normalise(self, baselined = False):
+    def normalise(self, baselined=False):
         '''
         Normalise spectrum
         If norm_range (in form of [x1, x2]) is specified, normalises to local maximum within that range
@@ -170,9 +185,9 @@ class Renishaw_Raman_Spectrum(spt.Spectrum):
             y_max = np.nanmax(y_trunc)
 
         y_norm = y - np.nanmin(y)
-        self.y_norm = y_norm/y_max
+        self.y_norm = y_norm / y_max
 
-    def clean_spectrum(self, x_range = None, **kwargs):
+    def clean_spectrum(self, x_range=None, **kwargs):
         '''
         remove nans, truncate, subtract baseline and normalise
         '''
@@ -187,14 +202,19 @@ class Renishaw_Raman_Spectrum(spt.Spectrum):
 
         self.subtract_baseline(**kwargs)
 
-        self.normalise(baselined = True)
+        self.normalise(baselined=True)
         self.y_clean = self.y_norm
         #print(len(self.x), len(self.y_clean))
 
     def set_color(self, color):
         self.color = color
 
-    def plot_raman(self, ax = None, rc_params = agg_sers_rc_params, baseline = False, clean = False, title = True):
+    def plot_raman(self,
+                   ax=None,
+                   rc_params=agg_sers_rc_params,
+                   baseline=False,
+                   clean=False,
+                   title=True):
         old_rc_params = plt.rcParams.copy()
 
         if ax is None:
@@ -212,7 +232,7 @@ class Renishaw_Raman_Spectrum(spt.Spectrum):
             y = self.y_clean
 
         if len(y.shape) > 1:
-            y = np.sum(y, axis = 0)       
+            y = np.sum(y, axis=0)
 
         else:
             external_ax = True
@@ -221,19 +241,20 @@ class Renishaw_Raman_Spectrum(spt.Spectrum):
 
         if baseline == True:
             ax.plot(x, self.baseline)
-        
+
         ax.set_xlabel('Raman Shift (cm$^{-1}$)')
         ax.set_yticks([])
         ax.set_ylabel('Scattering Intensity')
 
         ax.xaxis.set_minor_locator(MultipleLocator(20))
-        
+
         if title == True:
             ax.set_title(self.name)
 
         if external_ax == False:
             plt.show()
             plt.rcParams.update(old_rc_params)
+
 
 class Concentration_Series:
     '''
@@ -248,8 +269,19 @@ class Concentration_Series:
 
     '''
 
-    def __init__(self, h5_root = None, dft_dir = None, dft_collection = None, sample_names = None, concentrations = None, data_names = None,
-                 norm_range = None, x_range = None, powder_spectrum = None, baseline_plot = False, init_plot = False, **kwargs):
+    def __init__(self,
+                 h5_root=None,
+                 dft_dir=None,
+                 dft_collection=None,
+                 sample_names=None,
+                 concentrations=None,
+                 data_names=None,
+                 norm_range=None,
+                 x_range=None,
+                 powder_spectrum=None,
+                 baseline_plot=False,
+                 init_plot=False,
+                 **kwargs):
 
         self.raman_spectra = []
         self.x_range = x_range
@@ -258,7 +290,9 @@ class Concentration_Series:
         self.dft_collection = dft_collection
 
         if self.dft_collection is not None:
-            assert type(self.dft_collection) == drt.DFT_Raman_Collection, 'dft_collection must be an instance of drt.DFT_Raman_Collection'
+            assert type(
+                self.dft_collection
+            ) == drt.DFT_Raman_Collection, 'dft_collection must be an instance of drt.DFT_Raman_Collection'
             self.dft_names = list(self.dft_collection.dft_dict.keys())
 
         if concentrations is not None:
@@ -275,11 +309,12 @@ class Concentration_Series:
         if sample_names is None:
             sample_names = sorted(F.keys())
 
-        if self.concentrations is None:                
+        if self.concentrations is None:
             if 'Concentration' in F[sample_names[0]].attrs.keys():
                 self.concentrations = [F[i].attrs['Concentration'] for i in sample_names]
             else:
-                self.concentrations = np.linspace(1, 10, len(F.keys()))#dummy concentrations to keep everything else happy
+                self.concentrations = np.linspace(1, 10, len(
+                    F.keys()))  #dummy concentrations to keep everything else happy
                 self.real_concentrations = False
                 print('Warning: No concentrations specified')
 
@@ -296,11 +331,13 @@ class Concentration_Series:
             else:
                 norm_range = self.norm_range
 
-            spectrum = Renishaw_Raman_Spectrum(F[sample_name], x_range = x_range, norm_range = norm_range,
-                                               concentration = concentration)
-            spectrum.clean_spectrum(plot = baseline_plot, **kwargs)
+            spectrum = Renishaw_Raman_Spectrum(F[sample_name],
+                                               x_range=x_range,
+                                               norm_range=norm_range,
+                                               concentration=concentration)
+            spectrum.clean_spectrum(plot=baseline_plot, **kwargs)
             if init_plot == True:
-                spectrum.plot_raman(clean = True)
+                spectrum.plot_raman(clean=True)
 
             if sample_name == 'Powder':
                 self.powder_spectrum = spectrum
@@ -311,25 +348,38 @@ class Concentration_Series:
         self.concentrations = np.array(self.concentrations)
 
         if self.x_range is None:
-            self.x_range = [min([spectrum.x.min() for spectrum in self.raman_spectra]), 
-                            max([spectrum.x.max() for spectrum in self.raman_spectra])]
+            self.x_range = [
+                min([spectrum.x.min() for spectrum in self.raman_spectra]),
+                max([spectrum.x.max() for spectrum in self.raman_spectra])]
 
         self.x_range = np.array(self.x_range)
         self.kwargs = kwargs
         self.dft_collection = None
         self.dft_names = []
 
-    def load_dft(self, dft_dir = None, dft_names = None, polarisation = None, x_min = None, x_max = None):
+    def load_dft(self, dft_dir=None, dft_names=None, polarisation=None, x_min=None, x_max=None):
         if dft_dir is None:
             dft_dir = self.dft_dir
 
-        self.dft_collection = drt.DFT_Raman_Collection(dft_dir, dft_names, polarisation, x_min, x_max)
+        self.dft_collection = drt.DFT_Raman_Collection(dft_dir, dft_names, polarisation, x_min,
+                                                       x_max)
         self.dft_names = list(self.dft_collection.dft_dict.keys())
 
-    def plot_conc_series(self, dft_spectra = {}, x_range = None, dft_text_loc = None, label_x_loc = 500, 
-                         expt_labels = False, title = None, cbar_label = 'Aggregant Concentration ($\mathrm{\mu}$M)',
-                         text_pad = 0.08, y_squish = 1, rc_params = agg_sers_rc_params, bbox_params = bbox_params, 
-                         threshold_conc = 0, powder_color = 'grey', **kwargs):
+    def plot_conc_series(self,
+                         dft_spectra={},
+                         x_range=None,
+                         dft_text_loc=None,
+                         label_x_loc=500,
+                         expt_labels=False,
+                         title=None,
+                         cbar_label='Aggregant Concentration ($\mathrm{\mu}$M)',
+                         text_pad=0.08,
+                         y_squish=1,
+                         rc_params=agg_sers_rc_params,
+                         bbox_params=bbox_params,
+                         threshold_conc=0,
+                         powder_color='grey',
+                         **kwargs):
 
         old_rc_params = plt.rcParams.copy()
 
@@ -339,7 +389,7 @@ class Concentration_Series:
         n_expt_spectra = len(self.raman_spectra)
 
         if self.dft_collection is not None:
-            self.dft_collection.get_polar_dict(polarisations = dft_spectra)
+            self.dft_collection.get_polar_dict(polarisations=dft_spectra)
             n_dft_spectra = self.dft_collection.n_spectra
         else:
             n_dft_spectra = 0
@@ -350,16 +400,16 @@ class Concentration_Series:
         fig_height = n_expt_spectra + n_dft_spectra
         fig_height *= 1.5
 
-        fig = plt.figure(figsize = (14, fig_height))
+        fig = plt.figure(figsize=(14, fig_height))
         ax = fig.add_subplot(111)
 
         len_cols = 1000
 
         #print('Concentrations:', self.concentrations)
 
-        conc_cont = np.logspace(np.log10(self.concentrations.min()), np.log10(self.concentrations.max()), len_cols)
+        conc_cont = np.logspace(np.log10(self.concentrations.min()),
+                                np.log10(self.concentrations.max()), len_cols)
         cmap = plt.get_cmap('jet_r', len_cols)
-
         '''
         Powder Spectrum
         '''
@@ -370,54 +420,70 @@ class Concentration_Series:
             x = self.powder_spectrum.x
             y = self.powder_spectrum.y_clean
             x, y = spt.truncate_spectrum(x, y, *x_range)
-            ax.plot(x, y, 'k', lw = 4, alpha = 0.7)
-            ax.plot(x, y, color = powder_color)
+            ax.plot(x, y, 'k', lw=4, alpha=0.7)
+            ax.plot(x, y, color=powder_color)
 
             label_y_loc = y[abs(x - label_x_loc).argmin()] + 0.5
-            ax.text(label_x_loc, label_y_loc, 'Powder', va = 'center', ha = 'center', transform = ax.transData, bbox = bbox_params)
-
+            ax.text(label_x_loc,
+                    label_y_loc,
+                    'Powder',
+                    va='center',
+                    ha='center',
+                    transform=ax.transData,
+                    bbox=bbox_params)
         '''
         Experimental Spectra
         '''
 
-        for n, spectrum in enumerate(sorted(self.raman_spectra, key = lambda spectrum: spectrum.concentration), n_start):
+        for n, spectrum in enumerate(
+                sorted(self.raman_spectra, key=lambda spectrum: spectrum.concentration), n_start):
             x = spectrum.x
 
             if spectrum.concentration > threshold_conc:
                 y = spectrum.y_clean
             else:
-                y = spectrum.y_raw/100
+                y = spectrum.y_raw / 100
 
             x, y = spt.truncate_spectrum(x, y, *x_range)
 
-            y += n*y_squish
+            y += n * y_squish
 
             color = cmap(abs(conc_cont - spectrum.concentration).argmin())
-            ax.plot(x, y, 'k', lw = 4, alpha = 0.7)
-            ax.plot(x, y, color = color)
+            ax.plot(x, y, 'k', lw=4, alpha=0.7)
+            ax.plot(x, y, color=color)
 
             if expt_labels == True:
                 label_y_loc = y[abs(x - label_x_loc).argmin()]
-                ax.text(label_x_loc, label_y_loc, spectrum.name, va = 'center', ha = 'left', transform = ax.transData, bbox = bbox_params)
+                ax.text(label_x_loc,
+                        label_y_loc,
+                        spectrum.name,
+                        va='center',
+                        ha='left',
+                        transform=ax.transData,
+                        bbox=bbox_params)
 
         y_offset = np.nanmax(y) + 0.4
 
         if not np.isfinite(y_offset):
-            y_offset = len(self.raman_spectra)*y_squish + 1#for plotting DFT spectra above
+            y_offset = len(self.raman_spectra) * y_squish + 1  #for plotting DFT spectra above
 
-        label_y_loc = y[abs(x - label_x_loc).argmin()] + y_squish/2 + 0.15
+        label_y_loc = y[abs(x - label_x_loc).argmin()] + y_squish / 2 + 0.15
         color = np.array(color)
         color *= 0.7
         current_bbox_params = bbox_params.copy()
         current_bbox_params['edgecolor'] = tuple(color)
         current_bbox_params['alpha'] = 1
 
-        ax.text(label_x_loc, label_y_loc, 'Agg SERS:', ha = 'left',
-                fontsize = plt.rcParams['legend.fontsize'], bbox = current_bbox_params)
+        ax.text(label_x_loc,
+                label_y_loc,
+                'Agg SERS:',
+                ha='left',
+                fontsize=plt.rcParams['legend.fontsize'],
+                bbox=current_bbox_params)
 
         ax.set_yticks([])
         ax.set_xlim(*x_range)
-        ax.set_ylim(bottom = -0.1)
+        ax.set_ylim(bottom=-0.1)
         ax.xaxis.set_major_locator(MultipleLocator(200))
         ax.xaxis.set_minor_locator(MultipleLocator(20))
 
@@ -428,7 +494,6 @@ class Concentration_Series:
             ax.set_title(title)
 
         plt.rcParams['legend.title_fontsize'] = plt.rcParams['legend.fontsize']
-
         '''
         Colorbar
         '''
@@ -437,24 +502,31 @@ class Concentration_Series:
             cbar_width = other_plot_params['cbar_width']
             cbar_left = other_plot_params['cbar_left']
             fig_rect = other_plot_params['fig_rect']
-        
-            fig.tight_layout(rect = fig_rect)
-            plt.subplots_adjust(hspace = 0, wspace = 0.05)
+
+            fig.tight_layout(rect=fig_rect)
+            plt.subplots_adjust(hspace=0, wspace=0.05)
             ax_left, ax_bottom, ax_width, ax_height = ax.get_position().bounds
             ax_cbar = fig.add_axes([cbar_left, ax_bottom, cbar_width, ax_height])
-            cbar_norm = mpl.colors.LogNorm(vmin = conc_cont.min(), vmax = conc_cont.max())
-            cbar = mpl.colorbar.ColorbarBase(ax_cbar, cmap = cmap, norm = cbar_norm, orientation = 'vertical')#, 
-            cbar.set_label(cbar_label, rotation = 270, verticalalignment = 'bottom')
-
+            cbar_norm = mpl.colors.LogNorm(vmin=conc_cont.min(), vmax=conc_cont.max())
+            cbar = mpl.colorbar.ColorbarBase(ax_cbar,
+                                             cmap=cmap,
+                                             norm=cbar_norm,
+                                             orientation='vertical')  #,
+            cbar.set_label(cbar_label, rotation=270, verticalalignment='bottom')
         '''
         DFT Raman
         '''
 
         if self.dft_collection is not None:
-            self.dft_collection.plot_dft(polarisations = None, x_range = x_range, text_loc = dft_text_loc,
-                                   text_pad = text_pad, ax = ax, y_offset = y_offset, rc_params = None)
+            self.dft_collection.plot_dft(polarisations=None,
+                                         x_range=x_range,
+                                         text_loc=dft_text_loc,
+                                         text_pad=text_pad,
+                                         ax=ax,
+                                         y_offset=y_offset,
+                                         rc_params=None)
 
-        fig.savefig('Agg SERS Conc Series.png', bbox_inches = 'tight', transparent = True)
+        fig.savefig('Agg SERS Conc Series.png', bbox_inches='tight', transparent=True)
         plt.show()
 
         plt.rcParams.update(old_rc_params)

@@ -1,13 +1,15 @@
 ﻿# -*- coding: utf-8 -*-
 
 from builtins import str
-from pyopenlab.instrument.visa_instrument import VisaInstrument
+import json
+import os
 import re
 import time
-from visa import VisaIOError
-import os
-import json
+
 import numpy as np
+from visa import VisaIOError
+
+from pyopenlab.instrument.visa_instrument import VisaInstrument
 
 
 class SP2750(VisaInstrument):
@@ -24,12 +26,15 @@ class SP2750(VisaInstrument):
         self.set_wavelength_fast(value)
 
     def __init__(self, address, calibration_file=None):
-        port_settings = dict(baud_rate=9600, read_termination="\r\n", write_termination="\r", timeout=10000)
+        port_settings = dict(baud_rate=9600,
+                             read_termination="\r\n",
+                             write_termination="\r",
+                             timeout=10000)
         super(SP2750, self).__init__(address, port_settings)
         self.clear_read_buffer()
         self._calibration_file = calibration_file
 
-        self.metadata_property_names += ('wavelength', )
+        self.metadata_property_names += ('wavelength',)
 
     def query(self, *args, **kwargs):
         """
@@ -180,7 +185,8 @@ class SP2750(VisaInstrument):
     def calibration_file(self):
         """Path to the calibration file"""
         if self._calibration_file is None:
-            self._calibration_file = os.path.join(os.path.dirname(__file__), 'default_calibration.json')
+            self._calibration_file = os.path.join(os.path.dirname(__file__),
+                                                  'default_calibration.json')
         return self._calibration_file
 
     @calibration_file.setter
@@ -225,7 +231,8 @@ class SP2750(VisaInstrument):
         if isinstance(dispersion, dict):
             current_grating = self.get_grating()
             dispersion = dispersion[current_grating]
-        poly = np.poly1d(dispersion)  # poly1d handles it whether you give it a number on an iterable
+        poly = np.poly1d(
+            dispersion)  # poly1d handles it whether you give it a number on an iterable
         dispersion_value = poly(central_wavelength)
 
         offset_value = 0

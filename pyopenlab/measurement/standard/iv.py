@@ -1,32 +1,33 @@
-﻿import pyjisa.autoload
+﻿from h5py import Group
+from jisa.devices.meter import IMeter
+from jisa.devices.meter import TMeter
+from jisa.devices.meter import VMeter
+from jisa.devices.source import ISource
+from jisa.devices.source import VSource
 import numpy as np
+import pyjisa.autoload
 import pyqtgraph
 
 from pyopenlab.measurement.action import *
-from h5py import Group
-
-from jisa.devices.meter import VMeter, IMeter, TMeter
-from jisa.devices.source import VSource, ISource
 
 
 class IVCurve(H5Action):
 
-    voltages = Parameter(name = "Voltages [V]", defaultValue = [0.0, 1.0, 2.0, 3.0], type = Type.AUTO)
-    delay    = Parameter(name = "Delay Time",   defaultValue = 50,                   type = Type.TIME)
-    autoOff  = Parameter(name = "Auto Off?",    defaultValue = True,                 type = Type.AUTO)
+    voltages = Parameter(name="Voltages [V]", defaultValue=[0.0, 1.0, 2.0, 3.0], type=Type.AUTO)
+    delay = Parameter(name="Delay Time", defaultValue=50, type=Type.TIME)
+    autoOff = Parameter(name="Auto Off?", defaultValue=True, type=Type.AUTO)
 
-    vsource  = Instrument(name = "Voltage Source", type = VSource, required = True)
-    imeter   = Instrument(name = "Ammeter",        type = IMeter,  required = True)
-    tmeter   = Instrument(name = "Thermometer",    type = TMeter,  required = False)
+    vsource = Instrument(name="Voltage Source", type=VSource, required=True)
+    imeter = Instrument(name="Ammeter", type=IMeter, required=True)
+    tmeter = Instrument(name="Thermometer", type=TMeter, required=False)
 
-    def __init__(self, description): 
+    def __init__(self, description):
 
         super().__init__("IV Curve", description)
         self.sweepData = None
 
-
     def main(self, data: Group):
-            
+
         self.vsource.setVoltage(self.voltages[0])
         self.vsource.turnOn()
         self.imeter.turnOn()
@@ -46,8 +47,8 @@ class IVCurve(H5Action):
 
             self.sweepData[i, 0] = voltage
             self.sweepData[i, 1] = self.imeter.getCurrent()
-            self.sweepData[i, 2] = self.tmeter.getTemperature() if self.tmeter is not None else np.nan
-
+            self.sweepData[i,
+                           2] = self.tmeter.getTemperature() if self.tmeter is not None else np.nan
 
     def finish(self, data: Group):
 

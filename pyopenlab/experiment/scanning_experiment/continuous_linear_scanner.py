@@ -1,15 +1,20 @@
 ﻿from __future__ import print_function
+
 from builtins import str
+
 __author__ = 'alansanders'
 
-from pyopenlab.experiment.scanning_experiment import ScanningExperiment, TimedScan
+from functools import partial
 from threading import Thread
 import time
-from pyopenlab.utils.gui import *
-from pyopenlab.ui.ui_tools import UiTools
-from pyopenlab import inherit_docstring
-from functools import partial
+
 import numpy as np
+
+from pyopenlab import inherit_docstring
+from pyopenlab.experiment.scanning_experiment import ScanningExperiment
+from pyopenlab.experiment.scanning_experiment import TimedScan
+from pyopenlab.ui.ui_tools import UiTools
+from pyopenlab.utils.gui import *
 
 
 class ContinuousLinearScan(ScanningExperiment, TimedScan):
@@ -66,9 +71,9 @@ class ContinuousLinearScan(ScanningExperiment, TimedScan):
             if self.hold or self._num_measurements < self.num_repeats:
                 self._last_step = 0.  # used to prevent the incrementing of the displacement
             else:
-                self.set_parameter(self.direction*self.step)
+                self.set_parameter(self.direction * self.step)
                 self._num_measurements = 0  # reset the number of measurements made after move
-                self._last_step = self.direction*self.step
+                self._last_step = self.direction * self.step
             self._num_measurements += 1
             self.scan_function(index)
             index += 1
@@ -77,7 +82,7 @@ class ContinuousLinearScan(ScanningExperiment, TimedScan):
                 direction, step = self.feedback_loop(feedback_input, self.set_point)
                 self.update_from_feedback(direction, step)
             try:
-                self.update_parameter(self.direction*self.step)
+                self.update_parameter(self.direction * self.step)
             except NotImplementedError:
                 pass
         self.print_scan_time(time.time() - scan_start_time)
@@ -104,7 +109,7 @@ class ContinuousLinearScan(ScanningExperiment, TimedScan):
         :rtype : object
         """
         e = feedback_input - set_point
-        output = -self.feedback_gain*e  # if e>0 i.e. input > set_point for d=1 then d goes to -1
+        output = -self.feedback_gain * e  # if e>0 i.e. input > set_point for d=1 then d goes to -1
         output = np.clip(output, self.feedback_min, self.feedback_max)
         step_size = abs(output)
         direction = np.sign(output)
@@ -132,7 +137,7 @@ class ContinuousLinearScanQt(ContinuousLinearScan, QtCore.QObject):
     def run(self, rate=0.1):
         super(ContinuousLinearScanQt, self).run()
         self.acquiring.wait()
-        self.timer.start(1000.*rate)
+        self.timer.start(1000. * rate)
 
     def get_qt_ui(self):
         return ContinuousLinearScanUI(self)
@@ -154,13 +159,16 @@ class ContinuousLinearScanQt(ContinuousLinearScan, QtCore.QObject):
 
 
 class ContinuousLinearScanUI(QtWidgets.QWidget, UiTools):
+
     def __init__(self, cont_linear_scan):
-        assert isinstance(cont_linear_scan, ContinuousLinearScanQt), 'An instance of ContinuousLinearScanQt must be supplied'
+        assert isinstance(
+            cont_linear_scan,
+            ContinuousLinearScanQt), 'An instance of ContinuousLinearScanQt must be supplied'
         super(ContinuousLinearScanUI, self).__init__()
 
         self.linear_scan = cont_linear_scan
         uic.loadUi(os.path.join(os.path.dirname(__file__), 'continuous_linear_scanner.ui'), self)
-        self.rate = 1./30.
+        self.rate = 1. / 30.
 
         self.setWindowTitle(self.linear_scan.__class__.__name__)
 
@@ -241,11 +249,13 @@ class ContinuousLinearScanUI(QtWidgets.QWidget, UiTools):
 if __name__ == '__main__':
     import matplotlib
     matplotlib.use('Qt4Agg')
-    from pyopenlab.ui.mpl_gui import FigureCanvasWithDeferredDraw as FigureCanvas
     from matplotlib.figure import Figure
     import numpy as np
 
+    from pyopenlab.ui.mpl_gui import FigureCanvasWithDeferredDraw as FigureCanvas
+
     class DummyLinearScan(ContinuousLinearScanQt):
+
         def __init__(self):
             super(DummyLinearScan, self).__init__()
             self.step = 1.
@@ -254,6 +264,7 @@ if __name__ == '__main__':
             self.p = None
             self.x = None
             self.y = None
+
         def open_scan(self):
             self.fig.clear()
             self.p = 0
@@ -261,16 +272,19 @@ if __name__ == '__main__':
             self.x = []
             self.y = []
             self.ax = self.fig.add_subplot(111)
+
         def set_parameter(self, value):
             self.p += value
+
         #def update_parameter(self, value):
         #    self.p += value
         def scan_function(self, index):
             time.sleep(0.01)
             self.d.append(index)
             self.x.append(self.p)
-            self.y.append(np.sin(2*np.pi*0.01*self.p))
+            self.y.append(np.sin(2 * np.pi * 0.01 * self.p))
             self.check_for_data_request(self.d, self.x, self.y)
+
         def update(self, force=False):
             super(DummyLinearScan, self).update(force)
             if self.y == [] or self.fig.canvas is None:
@@ -291,26 +305,25 @@ if __name__ == '__main__':
                     self.ax.relim()
                     self.ax.autoscale_view()
                 self.fig.canvas.draw()
+
         def get_qt_ui(self):
             return DummyLinearScanUI(self)
+
         def calculate_feedback_input(self):
             return self.y[-1]
 
-
     class DummyLinearScanUI(ContinuousLinearScanUI):
+
         def __init__(self, linear_scan):
             super(DummyLinearScanUI, self).__init__(linear_scan)
             self.canvas = FigureCanvas(self.linear_scan.fig)
-            self.canvas.setMaximumSize(300,300)
+            self.canvas.setMaximumSize(300, 300)
             self.layout.addWidget(self.canvas)
             self.resize(self.sizeHint())
-
 
     ls = DummyLinearScan()
     app = get_qt_app()
     gui = ls.get_qt_ui()
-    gui.rate = 1./30.
+    gui.rate = 1. / 30.
     gui.show()
     sys.exit(app.exec_())
-
-

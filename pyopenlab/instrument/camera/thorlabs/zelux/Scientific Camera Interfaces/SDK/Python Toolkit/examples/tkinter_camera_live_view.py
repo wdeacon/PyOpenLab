@@ -19,7 +19,9 @@ try:
 except ImportError:
     configure_path = None
 
-from thorlabs_tsi_sdk.tl_camera import TLCameraSDK, TLCamera, Frame
+from thorlabs_tsi_sdk.tl_camera import Frame
+from thorlabs_tsi_sdk.tl_camera import TLCamera
+from thorlabs_tsi_sdk.tl_camera import TLCameraSDK
 from thorlabs_tsi_sdk.tl_camera_enums import SENSOR_TYPE
 from thorlabs_tsi_sdk.tl_mono_to_color_processor import MonoToColorProcessorSDK
 
@@ -28,15 +30,18 @@ try:
     import Tkinter as tk
 except ImportError:
     import tkinter as tk
-from PIL import Image, ImageTk
-import typing
+
 import threading
+import typing
+
+from PIL import Image
+from PIL import ImageTk
+
 try:
     #  For Python 2.7 queue is named Queue
     import Queue as queue
 except ImportError:
     import queue
-
 """ LiveViewCanvas
 
 This is a Tkinter Canvas object that can be reused in custom programs. The Canvas expects a parent Tkinter object and 
@@ -61,7 +66,8 @@ class LiveViewCanvas(tk.Canvas):
         try:
             image = self.image_queue.get_nowait()
             self._image = ImageTk.PhotoImage(master=self, image=image)
-            if (self._image.width() != self._image_width) or (self._image.height() != self._image_height):
+            if (self._image.width() != self._image_width) or (self._image.height()
+                                                              != self._image_height):
                 # resize the canvas to match the new image size
                 self._image_width = self._image.width()
                 self._image_height = self._image.height()
@@ -100,12 +106,9 @@ class ImageAcquisitionThread(threading.Thread):
             self._image_width = self._camera.image_width_pixels
             self._image_height = self._camera.image_height_pixels
             self._mono_to_color_processor = self._mono_to_color_sdk.create_mono_to_color_processor(
-                SENSOR_TYPE.BAYER,
-                self._camera.color_filter_array_phase,
+                SENSOR_TYPE.BAYER, self._camera.color_filter_array_phase,
                 self._camera.get_color_correction_matrix(),
-                self._camera.get_default_white_balance_matrix(),
-                self._camera.bit_depth
-            )
+                self._camera.get_default_white_balance_matrix(), self._camera.bit_depth)
             self._is_color = True
 
         self._bit_depth = camera.bit_depth
@@ -130,9 +133,8 @@ class ImageAcquisitionThread(threading.Thread):
             self._image_height = height
             print("Image dimension change detected, image acquisition thread was updated")
         # color the image. transform_to_24 will scale to 8 bits per channel
-        color_image_data = self._mono_to_color_processor.transform_to_24(frame.image_buffer,
-                                                                         self._image_width,
-                                                                         self._image_height)
+        color_image_data = self._mono_to_color_processor.transform_to_24(
+            frame.image_buffer, self._image_width, self._image_height)
         color_image_data = color_image_data.reshape(self._image_height, self._image_width, 3)
         # return PIL Image object
         return Image.fromarray(color_image_data, mode='RGB')
@@ -157,7 +159,8 @@ class ImageAcquisitionThread(threading.Thread):
                 # No point in keeping this image around when the queue is full, let's skip to the next one
                 pass
             except Exception as error:
-                print("Encountered error: {error}, image acquisition will stop.".format(error=error))
+                print(
+                    "Encountered error: {error}, image acquisition will stop.".format(error=error))
                 break
         print("Image acquisition has stopped")
         if self._is_color:
@@ -180,7 +183,8 @@ if __name__ == "__main__":
             root = tk.Tk()
             root.title(camera.name)
             image_acquisition_thread = ImageAcquisitionThread(camera)
-            camera_widget = LiveViewCanvas(parent=root, image_queue=image_acquisition_thread.get_output_queue())
+            camera_widget = LiveViewCanvas(parent=root,
+                                           image_queue=image_acquisition_thread.get_output_queue())
 
             print("Setting camera parameters...")
             camera.frames_per_trigger_zero_for_unlimited = 0
