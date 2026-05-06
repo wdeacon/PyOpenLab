@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\willi\\\\OneDrive\\\\Documents\\\\Codebase\\\\PyOpenLab\\\\nplab\" -Directory | ForEach-Object { $_.Name })",
+      "PowerShell(ls -Path \"C:\\\\Users\\\\willi\\\\OneDrive\\\\Documents\\\\Codebase\\\\PyOpenLab\\\\docs\" | Select-Object Name | Where-Object { $_.Name -match '\\\\.rst$' })"
+    ]
+  }
+}

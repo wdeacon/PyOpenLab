@@ -1,4 +1,4 @@
-@ECHO OFF
+﻿@ECHO OFF
 
 REM Command file for Sphinx documentation
 
@@ -127,9 +127,9 @@ if "%1" == "qthelp" (
 	echo.
 	echo.Build finished; now you can run "qcollectiongenerator" with the ^
 .qhcp project file in %BUILDDIR%/qthelp, like this:
-	echo.^> qcollectiongenerator %BUILDDIR%\qthelp\NPLab.qhcp
+	echo.^> qcollectiongenerator %BUILDDIR%\qthelp\pyopenlab.qhcp
 	echo.To view the help file:
-	echo.^> assistant -collectionFile %BUILDDIR%\qthelp\NPLab.ghc
+	echo.^> assistant -collectionFile %BUILDDIR%\qthelp\pyopenlab.ghc
 	goto end
 )
 

@@ -1,9 +1,9 @@
-from __future__ import print_function
+﻿from __future__ import print_function
 from builtins import str
 from builtins import range
-import nplab
-from nplab.instrument import Instrument
-import nplab.datafile
+import pyopenlab
+from pyopenlab.instrument import Instrument
+import pyopenlab.datafile
 import pytest
 
 class InstrumentA(Instrument):
@@ -13,15 +13,15 @@ class InstrumentA(Instrument):
 def test_datafile_assertion():
     with pytest.raises(IOError):
         #should fail because the datafile isn't open
-        nplab.log("Message", assert_datafile=True)
+        pyopenlab.log("Message", assert_datafile=True)
 
 def test_logging(tmpdir):
-    nplab.datafile.set_current(str(tmpdir.join("temp.h5")))
-    df = nplab.current_datafile()
+    pyopenlab.datafile.set_current(str(tmpdir.join("temp.h5")))
+    df = pyopenlab.current_datafile()
     assert df, "Error creating datafile!"
     print(df)
 
-    nplab.log("test log message", assert_datafile=True) #make a log message
+    pyopenlab.log("test log message", assert_datafile=True) #make a log message
     df.flush() #make sure the message makes it to the file...
 
     print(list(df['nplab_log'].keys()))
@@ -31,14 +31,14 @@ def test_logging(tmpdir):
     assert entry.attrs.get('creation_timestamp') is not None
 
 
-    nplab.log("test log message 2") #make a log message
+    pyopenlab.log("test log message 2") #make a log message
     assert len(df['nplab_log'].numbered_items("entry")) == 2
 
     df.close()
 
 def test_logging_from_instrument(tmpdir):
-    nplab.datafile.set_current(str(tmpdir.join("temp.h5")))
-    df = nplab.current_datafile()
+    pyopenlab.datafile.set_current(str(tmpdir.join("temp.h5")))
+    df = pyopenlab.current_datafile()
     assert df, "Error creating datafile!"
 
     instr = InstrumentA()
@@ -54,8 +54,8 @@ def test_logging_from_instrument(tmpdir):
     df.close()
 
 def test_long_log(tmpdir):
-    nplab.datafile.set_current(str(tmpdir.join("temp_long.h5")))
-    df = nplab.current_datafile()
+    pyopenlab.datafile.set_current(str(tmpdir.join("temp_long.h5")))
+    df = pyopenlab.current_datafile()
     assert df, "Error creating datafile!"
 
     instr = InstrumentA()

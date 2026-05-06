@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 Created on Mon Jul 18 17:59:26 2016
 
@@ -7,8 +7,8 @@ Created on Mon Jul 18 17:59:26 2016
 
 from builtins import input
 from builtins import range
-import nplab
-import nplab.instrument.camera.opencv
+import pyopenlab
+import pyopenlab.instrument.camera.opencv
 import threading
 import time
 
@@ -26,7 +26,7 @@ class CameraConsumer(threading.Thread):
 
 if __name__ == '__main__':
     device = int(eval(input("Enter the number of the camera to use: ")))
-    cam = nplab.instrument.camera.opencv.OpenCVCamera(device)
+    cam = pyopenlab.instrument.camera.opencv.OpenCVCamera(device)
     cam.live_view = True
     consumer_threads = [CameraConsumer(cam) for i in range(3)]
     for t in consumer_threads:
@@ -38,5 +38,5 @@ if __name__ == '__main__':
         t.join()
     cam.live_view = False
     cam.close()
-    nplab.close_current_datafile()
+    pyopenlab.close_current_datafile()
 

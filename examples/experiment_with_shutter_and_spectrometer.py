@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 Example experiment using a shutter and a spectrometer
 
@@ -9,16 +9,16 @@ rwb27, May 2016
 
 """
 
-import nplab
-import nplab.utils.gui 
-from nplab.instrument.spectrometer import Spectrometer
-from nplab.instrument.shutter import Shutter
-from nplab.experiment import Experiment, ExperimentStopped
-from nplab.utils.notified_property import DumbNotifiedProperty
-from nplab.ui.ui_tools import QuickControlBox
-from nplab.utils.gui import show_guis
-from nplab.utils.gui import QtWidgets, QtCore, QtGui, get_qt_app, uic
-from nplab.ui.ui_tools import UiTools
+import pyopenlab
+import pyopenlab.utils.gui 
+from pyopenlab.instrument.spectrometer import Spectrometer
+from pyopenlab.instrument.shutter import Shutter
+from pyopenlab.experiment import Experiment, ExperimentStopped
+from pyopenlab.utils.notified_property import DumbNotifiedProperty
+from pyopenlab.ui.ui_tools import QuickControlBox
+from pyopenlab.utils.gui import show_guis
+from pyopenlab.utils.gui import QtWidgets, QtCore, QtGui, get_qt_app, uic
+from pyopenlab.ui.ui_tools import UiTools
 
 class DumbIrradiationExperiment(Experiment):
     """An example experiment that opens and closes a shutter, and takes spectra."""
@@ -70,7 +70,7 @@ class DumbIrradiationExperiment_Gui(QtWidgets.QMainWindow, UiTools):
         uic.loadUi('DumbIrradiationExperimentGui.ui', self)
         
         #grabbing the current H5PY and intiating the data_browser
-        self.data_file = nplab.current_datafile()
+        self.data_file = pyopenlab.current_datafile()
         self.data_file_tab = self.replace_widget(self.DataBrowser_tab_layout,self.DataBrowser_widget,self.data_file.get_qt_ui())
         
         #setup spectrometer tab gui and widget
@@ -90,15 +90,15 @@ class DumbIrradiationExperiment_Gui(QtWidgets.QMainWindow, UiTools):
     
             
 if __name__ == '__main__':
-    from nplab.instrument.spectrometer import DummySpectrometer
-    from nplab.instrument.shutter import DummyShutter    
+    from pyopenlab.instrument.spectrometer import DummySpectrometer
+    from pyopenlab.instrument.shutter import DummyShutter    
     
     spectrometer = DummySpectrometer()
     shutter = DummyShutter()
     
     experiment = DumbIrradiationExperiment()
     
-    df = nplab.current_datafile()
+    df = pyopenlab.current_datafile()
     
 #    show_guis([spectrometer, shutter, experiment, df])
     app = get_qt_app()

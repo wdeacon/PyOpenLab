@@ -1,35 +1,35 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 Created on Tue May 26 16:11:56 2015
 
 @author: rwb27
 """
 
-import nplab
-import nplab.utils.units as units
-from nplab.utils.units import ensure_unit, unit_to_string, get_unit_string, get_units, array_with_units, convert_quantity
+import pyopenlab
+import pyopenlab.utils.units as units
+from pyopenlab.utils.units import ensure_unit, unit_to_string, get_unit_string, get_units, array_with_units, convert_quantity
 import numpy as np
 
 import pytest
 
 
 def test_array_with_attrs_init():
-    a = nplab.ArrayWithAttrs(np.array([1,2,3,4,5]))
+    a = pyopenlab.ArrayWithAttrs(np.array([1,2,3,4,5]))
     a.attrs.create('foo',142)
     a.attrs.modify('foo',98)
     assert a.attrs.get('foo')==98
     assert isinstance(a, np.ndarray)
-    assert isinstance(a[2:4], nplab.ArrayWithAttrs)
+    assert isinstance(a[2:4], pyopenlab.ArrayWithAttrs)
     
 def test_array_with_attrs_casting():
     n = np.array(10)
-    b = n.view(nplab.ArrayWithAttrs)
+    b = n.view(pyopenlab.ArrayWithAttrs)
     assert isinstance(b, np.ndarray)
-    assert isinstance(b, nplab.ArrayWithAttrs)
+    assert isinstance(b, pyopenlab.ArrayWithAttrs)
     assert b==10
     
 def test_get_unit_string():
-    a = nplab.ArrayWithAttrs(np.array([1,2,3,4,5]),attrs={'units':'um/s'})
+    a = pyopenlab.ArrayWithAttrs(np.array([1,2,3,4,5]),attrs={'units':'um/s'})
     q = units.ureg('um/second')
     assert get_unit_string(a)=='um/s'
     assert get_unit_string(q)=='micrometer / second'
@@ -38,7 +38,7 @@ def test_get_unit_string():
         get_unit_string(10,fail=True)
     
 def test_get_units():
-    a = nplab.ArrayWithAttrs(np.array([1,2,3,4,5]),attrs={'units':'um/s'})
+    a = pyopenlab.ArrayWithAttrs(np.array([1,2,3,4,5]),attrs={'units':'um/s'})
     q = units.ureg('um/second')
     assert get_units(a)==units.ureg('um/s')
     assert get_units(q)==units.ureg('um/s')
@@ -62,7 +62,7 @@ def test_array_with_units():
     assert get_unit_string(a) == 'V/nm'
     
 def test_convert_quantity():
-    a = nplab.ArrayWithAttrs(np.array(0.1),attrs={'units':'um'})
+    a = pyopenlab.ArrayWithAttrs(np.array(0.1),attrs={'units':'um'})
     q = units.ureg('0.1 um')
     na = np.array(0.1)
     assert convert_quantity(a,'nm') == 100

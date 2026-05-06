@@ -1,11 +1,11 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 Created on Mon Mar  8 18:08:38 2021
 
 @author: Eoin
 """
-from nplab.instrument import Instrument
-from nplab.utils.notified_property import DumbNotifiedProperty, NotifiedProperty ###
+from pyopenlab.instrument import Instrument
+from pyopenlab.utils.notified_property import DumbNotifiedProperty, NotifiedProperty ###
 ### = changed
 class GradStudent(Instrument):
     angry = DumbNotifiedProperty(False) ###
@@ -43,9 +43,9 @@ student = GradStudent()
 
 #%%    
 import os
-from nplab.utils.gui import QtWidgets, uic
+from pyopenlab.utils.gui import QtWidgets, uic
 
-from nplab.utils.notified_property import register_for_property_changes ###
+from pyopenlab.utils.notified_property import register_for_property_changes ###
 
 class GradStudentUI(QtWidgets.QWidget): 
     def __init__(self, student):

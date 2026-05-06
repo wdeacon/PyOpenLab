@@ -1,4 +1,4 @@
-"""
+﻿"""
 Instrument Tests
 ================
 
@@ -11,12 +11,12 @@ from builtins import range
 import pytest
 import os
 
-import nplab
-import nplab.datafile
-import nplab.instrument
+import pyopenlab
+import pyopenlab.datafile
+import pyopenlab.instrument
 import numpy as np
 
-from nplab.instrument import Instrument
+from pyopenlab.instrument import Instrument
 
 class InstrumentA(Instrument):
     integration_time = 42.3
@@ -118,8 +118,8 @@ def test_metadata_bundling(capsys):
 def test_saving(capsys, tmpdir):
     # test the auto-saving capabilities
     a = InstrumentA.get_instance() #should create/get a valid instance
-    nplab.datafile.set_current(str(tmpdir.join("temp.h5")), mode="w")
-    df = nplab.current_datafile()
+    pyopenlab.datafile.set_current(str(tmpdir.join("temp.h5")), mode="w")
+    df = pyopenlab.current_datafile()
     for i in range(10):
         a.create_data_group('test',attrs={'creator':'instrumentA','serial':i})
     assert df['InstrumentA/test_9'].attrs.get('serial')==9, "data saving didn't work as expected"

@@ -1,8 +1,8 @@
-__author__ = 'alansanders'
+﻿__author__ = 'alansanders'
 
 from setuptools import setup, find_packages
 
-setup(name='nplab',
+setup(name='pyopenlab',
       version='1.0',
       description='NP lab equipment control',
       url='',

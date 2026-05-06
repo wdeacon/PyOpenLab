@@ -1,4 +1,4 @@
-"""
+﻿"""
 This test file requires hardware and user interaction - it's more or less useless
 otherwise.  So, it will not be picked up by the test harness, as all the code
 runs in the main block.
@@ -8,8 +8,8 @@ from __future__ import print_function
 from builtins import input
 from builtins import zip
 from builtins import range
-import nplab
-import nplab.instrument.camera.lumenera as lumenera
+import pyopenlab
+import pyopenlab.instrument.camera.lumenera as lumenera
 
 def invert_image(rgb):
     return 255-rgb

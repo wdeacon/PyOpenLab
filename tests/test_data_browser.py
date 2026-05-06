@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 Created on Tue Oct 27 13:09:09 2015
 
@@ -6,14 +6,14 @@ Created on Tue Oct 27 13:09:09 2015
 """
 from __future__ import print_function
 
-import nplab
+import pyopenlab
 # import numpy as np
 # import matplotlib.pyplot as plt
 from numpy.random import random
-from nplab.ui.data_renderers import suitable_renderers
+from pyopenlab.ui.data_renderers import suitable_renderers
 
 if __name__ == '__main__':
-    df = nplab.current_datafile()
+    df = pyopenlab.current_datafile()
     group = df.create_group("test_items")
     
     d = group.create_dataset("1d_generic",data=random((100)))

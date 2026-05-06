@@ -1,4 +1,4 @@
-# Byte-compiled / optimized / DLL files
+﻿# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 lextab.py
@@ -54,8 +54,8 @@ coverage.xml
 # Sphinx documentation
 docs/_build/
 docs/modules.rst
-docs/nplab.rst
-docs/nplab.*.rst
+docs/pyopenlab.rst
+docs/pyopenlab.*.rst
 
 # VIM backups
 *.*~
@@ -67,7 +67,7 @@ docs/nplab.*.rst
 *.xml
 *.iml
 .DS_Store
-nplab/ui/open_browser_cmd_ee306.bat
+pyopenlab/ui/open_browser_cmd_ee306.bat
 
 env/
-nplab/instrument/camera/camera_with_location_car72.py
+pyopenlab/instrument/camera/camera_with_location_car72.py

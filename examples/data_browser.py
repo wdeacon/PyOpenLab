@@ -1,13 +1,13 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 This is a very simple script that pops up a data browser for one file.
 """
 
-import nplab.datafile
-import nplab.ui.hdf5_browser as browser
-from nplab.utils.gui import get_qt_app
+import pyopenlab.datafile
+import pyopenlab.ui.hdf5_browser as browser
+from pyopenlab.utils.gui import get_qt_app
 
 if __name__ == "__main__":
-    df = nplab.current_datafile()
+    df = pyopenlab.current_datafile()
     df.show_gui(blocking=True)
-    nplab.current_datafile().close()
+    pyopenlab.current_datafile().close()

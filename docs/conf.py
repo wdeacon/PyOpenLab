@@ -1,6 +1,6 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 #
-# NPLab documentation build configuration file, created by
+# pyopenlab documentation build configuration file, created by
 # sphinx-quickstart on Tue Aug 18 08:45:49 2015.
 #
 # This file is execfile()d with the current directory set to its
@@ -52,7 +52,7 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = 'NPLab'
+project = 'pyopenlab'
 copyright = '2015, Alan Sanders, Richard Bowman'
 author = 'Alan Sanders, Richard Bowman'
 
@@ -228,7 +228,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-  (master_doc, 'NPLab.tex', 'NPLab Documentation',
+  (master_doc, 'pyopenlab.tex', 'pyopenlab Documentation',
    'Alan Sanders, Richard Bowman', 'manual'),
 ]
 
@@ -258,7 +258,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'nplab', 'NPLab Documentation',
+    (master_doc, 'pyopenlab', 'pyopenlab Documentation',
      [author], 1)
 ]
 
@@ -272,8 +272,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-  (master_doc, 'NPLab', 'NPLab Documentation',
-   author, 'NPLab', 'One line description of project.',
+  (master_doc, 'pyopenlab', 'pyopenlab Documentation',
+   author, 'pyopenlab', 'One line description of project.',
    'Miscellaneous'),
 ]
 

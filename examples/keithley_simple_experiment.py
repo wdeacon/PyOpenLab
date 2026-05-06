@@ -1,4 +1,4 @@
-"""
+﻿"""
 This example demonstrates a real experiment using a Keithley SMU. The main focus here is on the
 Instrument subclass which allows a user to get a previously created instance of the Keithley
 class to use during the experiment.
@@ -7,7 +7,7 @@ from future import standard_library
 standard_library.install_aliases()
 __author__ = 'alansanders'
 
-from nplab.instrument.electronics.keithley_2635a_smu import Keithley2635A
+from pyopenlab.instrument.electronics.keithley_2635a_smu import Keithley2635A
 import numpy as np
 import matplotlib.pyplot as plt
 from time import sleep

@@ -1,11 +1,11 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 Created on Mon Mar  8 18:08:38 2021
 
 @author: Eoin
 """
 
-from nplab.instrument import Instrument
+from pyopenlab.instrument import Instrument
 
 class GradStudent(Instrument):
     angry = False
@@ -43,7 +43,7 @@ class GradStudent(Instrument):
 student = GradStudent()   
 #%% 
 import os
-from nplab.utils.gui import QtWidgets, uic
+from pyopenlab.utils.gui import QtWidgets, uic
 # same as from PyQt5 import QtWidgets, uic
 
 class GradStudentUI(QtWidgets.QWidget):

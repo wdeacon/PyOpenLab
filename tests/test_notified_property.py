@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 Created on Tue Apr 26 11:14:47 2016
 
@@ -12,7 +12,7 @@ Example:
 from __future__ import print_function
 
 from builtins import object
-from nplab.utils.notified_property import NotifiedProperty, DumbNotifiedProperty
+from pyopenlab.utils.notified_property import NotifiedProperty, DumbNotifiedProperty
 
 
 def a_changed(a):

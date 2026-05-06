@@ -1,17 +1,17 @@
-from __future__ import print_function
+﻿from __future__ import print_function
 from builtins import input
 from builtins import range
-import nplab
-import nplab.instrument.camera.opencv
-from nplab.instrument.camera import CameraControlWidget
-from nplab.utils.gui import QtCore, QtGui, show_guis
-from nplab.utils.notified_property import DumbNotifiedProperty
-from nplab.ui.ui_tools import QuickControlBox
-from nplab.experiment.gui import ExperimentWithProgressBar, run_function_modally
+import pyopenlab
+import pyopenlab.instrument.camera.opencv
+from pyopenlab.instrument.camera import CameraControlWidget
+from pyopenlab.utils.gui import QtCore, QtGui, show_guis
+from pyopenlab.utils.notified_property import DumbNotifiedProperty
+from pyopenlab.ui.ui_tools import QuickControlBox
+from pyopenlab.experiment.gui import ExperimentWithProgressBar, run_function_modally
 import time
 import threading
 
-class DumbOpenCVCameraWithTimelapse(nplab.instrument.camera.opencv.OpenCVCamera):
+class DumbOpenCVCameraWithTimelapse(pyopenlab.instrument.camera.opencv.OpenCVCamera):
     timelapse_n = DumbNotifiedProperty(5)
     timelapse_dt = DumbNotifiedProperty(1.0)
 
@@ -36,7 +36,7 @@ class DumbOpenCVCameraWithTimelapse(nplab.instrument.camera.opencv.OpenCVCamera)
         "Get a Qt widget with the camera's controls (but no image display)"
         return TimelapseCameraControlWidget(self)
 
-class OpenCVCameraWithTimelapse(nplab.instrument.camera.opencv.OpenCVCamera):
+class OpenCVCameraWithTimelapse(pyopenlab.instrument.camera.opencv.OpenCVCamera):
     timelapse_n = DumbNotifiedProperty(5)
     timelapse_dt = DumbNotifiedProperty(1.0)
 
@@ -86,10 +86,10 @@ class TimelapseCameraControlWidget(CameraControlWidget):
 if __name__ == '__main__':
     device = int(eval(input("Enter the number of the camera to use: ")))
     cam = DumbOpenCVCameraWithTimelapse(device)
-    df = nplab.datafile.set_temporary_current_datafile()
+    df = pyopenlab.datafile.set_temporary_current_datafile()
     cam.live_view = True
     show_guis([cam, df])
     cam.live_view = False
     cam.close()
-    nplab.close_current_datafile()
+    pyopenlab.close_current_datafile()
 

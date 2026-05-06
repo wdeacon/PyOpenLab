@@ -1,11 +1,11 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 Created on Thu Apr 09 22:37:15 2015
 
 @author: rwb27
 """
 
-from nplab.instrument.message_bus_instrument import EchoInstrument
+from pyopenlab.instrument.message_bus_instrument import EchoInstrument
 
 
 def test_parsing():

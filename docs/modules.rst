@@ -1,7 +1,7 @@
-nplab
+﻿pyopenlab
 =====
 
 .. toctree::
    :maxdepth: 4
 
-   nplab
+   pyopenlab
