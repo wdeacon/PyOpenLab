@@ -15,3 +15,24 @@ pip install -r requirements.txt
 ```
 
 Install `pyqtgraph` before using any GUI components.
+
+## Contributing
+
+Code style is enforced automatically via pre-commit hooks. After cloning, run once to activate them:
+
+```
+pip install pre-commit
+pre-commit install
+```
+
+**Formatter:** YAPF (Google base style, 100-char line limit) with visual indentation — arguments align to the column after the opening parenthesis:
+
+```python
+result = some_long_function_name(first_argument,
+                                 second_argument,
+                                 third_argument)
+```
+
+**Imports:** sorted by isort (stdlib → third-party → first-party).
+
+**Docstrings:** Google style.
