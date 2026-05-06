@@ -1,18 +1,17 @@
-﻿pyopenlab
-=====
-Core functions and instrument scripts for the Nanophotonics lab experimental scripts.  This is designed to be one Python module, which provides both the various support functions (saving to file, running experiments in a thread, etc.) and the core instrument scripts in `pyopenlab.instruments.*`.
+# PyOpenLab
 
-Experimental data is managed by the class `DataFile`, a wrapper for h5py that manages HDF5 files with auto-incrementing names and a graphical browser, which also maintains a "current" data file to which data should be saved, accessible as `pyopenlab.datafile.current()`.  For convenience, there is a function `pyopenlab.current_datafile()` that returns the same object.
+[PyOpenLab](https://github.com/wdeacon/PyOpenLab) is an open-source Python module designed to empower researchers and engineers through easy access to automation and control of scientific equipment. It is a scalable toolkit with plans to extend hardware support automatically through agentic AI — where an agent searches for new hardware (cameras, stages, etc.) and adds it to the library without human input.
 
-Instrument scripts should be subclasses of `pyopenlab.instrument.Instrument`, though usually this is done indirectly.  Most instruments will be subclasses of either or both of a generic instrument class (defining an instrument for standard instrument types such as stages, spectrometers, etc.) and also a bus-specific class (e.g. SerialInstrument).  The `Instrument` base class takes care of a number of generic boilerplate things, such as keeping track of instances of a given class, and being able to retrieve active instances with the `instance()` and `instances()` methods.  The `pyopenlab` module also defines some decorators to make threading tasks easier, commonly used by instrument classes.
+## Key concepts
 
+**DataFile** — a wrapper around h5py that manages HDF5 files with auto-incrementing names and a graphical browser. A "current" data file is maintained globally and accessible via `pyopenlab.current_datafile()`.
 
-When installing:
+**Instrument** — all instrument scripts subclass `pyopenlab.instrument.Instrument`, usually indirectly via a type-specific base class (e.g. Camera, Stage) and/or a bus-specific class (e.g. SerialInstrument). The base class handles instance tracking; active instances can be retrieved with `instance()` and `instances()`.
 
-install pyqtgraph before trying to open_browser_cmd.bat or open_browser_cmd.py
- 
-You can run
+## Installation
 
-`pip install -r requirements.txt`
+```
+pip install -r requirements.txt
+```
 
-to automatically install dependencies.
+Install `pyqtgraph` before using any GUI components.
