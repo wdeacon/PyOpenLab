@@ -1,10 +1,4 @@
-﻿# -*- coding: utf-8 -*-
-"""
-Created on Thu Jul 10 17:06:28 2014
-
-@author: Richard
-
-Function decorators to help writing multi-threaded code:
+﻿"""Function decorators to help writing multi-threaded instrument code.
     
 @locked_action
 @locked_action_decorator(wait_for_lock=True)
@@ -25,17 +19,17 @@ import numpy as np
 
 
 def locked_action_decorator(wait_for_lock=True):
-    """This decorates a function, to prevent it being called simultaneously from
-    multiple threads.  Only one locked action can happen at any given time on a
-    given object.
-    
-    We use a Reentrant Lock, which means that a single thread can acquire() it
-    multiple times.  This is helpful (for example if locked functions call
-    other locked functions, this is OK).
-    
-    If wait_for_lock is false and an action is running, it returns immediately.
-    This can be given as an argument to locked_action_decorator (which sets the
-    default) or to the function when called (which overrides it).
+    """Decorate a method so only one locked action runs at a time per instance.
+
+    Uses an RLock, so a locked method may safely call other locked methods on
+    the same object without deadlocking.
+
+    Args:
+        wait_for_lock: If True (default), block until the lock is available.
+            If False, return False immediately if the lock is already held.
+
+    Returns:
+        Callable: A decorator that applies the locking behaviour to a method.
     """
 
     def decorator(function):
@@ -73,17 +67,21 @@ locked_action = locked_action_decorator()
 
 
 def background_action_decorator(background_by_default=True,):
-    """This decorates a function to run it in a background thread.  NB it does
-    not lock the function: use @locked_action to do this (the two are compatible
-    but you must place background_action *before* locked function, so that the
-    lock is acquired by the background thread.).
-    
-    Arguments:
-    * background_by_default sets whether the function runs in the
-    background by default or whether it only backgrounds itself when asked.  In
-    either case the non-default behaviour can be requested with keyword argument
-    run_in_background_thread.
-    * 
+    """Decorate a method to run it in a background thread.
+
+    Does not acquire any lock; combine with :func:`locked_action` if needed,
+    placing ``@background_action`` *before* ``@locked_action`` so the lock is
+    acquired by the background thread.
+
+    Args:
+        background_by_default: If True (default), the method always runs in a
+            background thread. If False, it runs synchronously.
+
+    Returns:
+        Callable: A decorator that applies background-thread behaviour to a
+        method. The decorated method returns a ``threading.Thread`` when
+        backgrounded; call ``t.join_and_return_result()`` to get the return
+        value once the thread finishes.
     """
 
     def decorator(function):
@@ -125,7 +123,15 @@ backgroundable_action = background_action_decorator(background_by_default=False)
 
 
 def background_actions_running(obj):
-    """Determine whether an object has any currently-active background actions."""
+    """Return True if the object has any currently running background actions.
+
+    Args:
+        obj: An object whose methods may have been decorated with
+            :func:`background_action`.
+
+    Returns:
+        bool: True if at least one background thread is still alive.
+    """
     if not hasattr(obj, "_pyopenlab_background_action_threads"):
         return False
     for t in obj._pyopenlab_background_action_threads:
