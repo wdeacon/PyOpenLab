@@ -2,7 +2,23 @@
   "permissions": {
     "allow": [
       "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\willi\\\\OneDrive\\\\Documents\\\\Codebase\\\\PyOpenLab\\\\nplab\" -Directory | ForEach-Object { $_.Name })",
-      "PowerShell(ls -Path \"C:\\\\Users\\\\willi\\\\OneDrive\\\\Documents\\\\Codebase\\\\PyOpenLab\\\\docs\" | Select-Object Name | Where-Object { $_.Name -match '\\\\.rst$' })"
+      "PowerShell(ls -Path \"C:\\\\Users\\\\willi\\\\OneDrive\\\\Documents\\\\Codebase\\\\PyOpenLab\\\\docs\" | Select-Object Name | Where-Object { $_.Name -match '\\\\.rst$' })",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\willi\\\\OneDrive\\\\Documents\\\\Codebase\\\\PyOpenLab\" -Force)",
+      "Bash(Select-Object Name)",
+      "Bash(Get-ChildItem *)",
+      "Bash(Measure-Object)",
+      "Bash(Select-Object -ExpandProperty Count)",
+      "Bash(pip install *)",
+      "PowerShell(cd \"C:\\\\Users\\\\willi\\\\OneDrive\\\\Documents\\\\Codebase\\\\PyOpenLab\"; python -m isort --settings-path=setup.cfg pyopenlab/ 2>&1; Write-Host \"Exit code: $LASTEXITCODE\")",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\willi\\\\OneDrive\\\\Documents\\\\Codebase\\\\PyOpenLab\\\\pyopenlab\" -Force | Select-Object Name, @{Name=\"Type\";Expression={if\\($_.PSIsContainer\\){\"Directory\"}else{\"File\"}}} | Format-Table -AutoSize)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\willi\\\\OneDrive\\\\Documents\\\\Codebase\\\\PyOpenLab\\\\tests\" -Force | Select-Object Name, @{Name=\"Type\";Expression={if\\($_.PSIsContainer\\){\"Directory\"}else{\"File\"}}} | Format-Table -AutoSize)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\willi\\\\OneDrive\\\\Documents\\\\Codebase\\\\PyOpenLab\\\\docs\" -Force | Select-Object Name, @{Name=\"Type\";Expression={if\\($_.PSIsContainer\\){\"Directory\"}else{\"File\"}}} | Format-Table -AutoSize)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\willi\\\\OneDrive\\\\Documents\\\\Codebase\\\\PyOpenLab\\\\examples\" -Force | Select-Object Name, @{Name=\"Type\";Expression={if\\($_.PSIsContainer\\){\"Directory\"}else{\"File\"}}} | Format-Table -AutoSize)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\willi\\\\OneDrive\\\\Documents\\\\Codebase\\\\PyOpenLab\\\\pyopenlab\\\\analysis\" -Force | Select-Object Name, @{Name=\"Type\";Expression={if\\($_.PSIsContainer\\){\"Directory\"}else{\"File\"}}} | Format-Table -AutoSize)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\willi\\\\OneDrive\\\\Documents\\\\Codebase\\\\PyOpenLab\\\\pyopenlab\\\\instrument\" -Force | Select-Object Name, @{Name=\"Type\";Expression={if\\($_.PSIsContainer\\){\"Directory\"}else{\"File\"}}} | Format-Table -AutoSize)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\willi\\\\OneDrive\\\\Documents\\\\Codebase\\\\PyOpenLab\\\\pyopenlab\\\\ui\" -Force | Select-Object Name, @{Name=\"Type\";Expression={if\\($_.PSIsContainer\\){\"Directory\"}else{\"File\"}}} | Format-Table -AutoSize)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\willi\\\\OneDrive\\\\Documents\\\\Codebase\\\\PyOpenLab\\\\pyopenlab\\\\utils\" -Force | Select-Object Name, @{Name=\"Type\";Expression={if\\($_.PSIsContainer\\){\"Directory\"}else{\"File\"}}} | Format-Table -AutoSize)",
+      "Bash(git *)"
     ]
   }
 }

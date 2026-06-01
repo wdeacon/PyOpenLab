@@ -38,4 +38,3 @@ traits
 traitsui
 visa
 opencv-python-headless
-git+https://github.com/OE-FET/PyJISA.git

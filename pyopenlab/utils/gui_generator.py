@@ -10,12 +10,6 @@ import pyqtgraph.dockarea
 import qdarkstyle
 
 import pyopenlab.datafile as df
-from pyopenlab.instrument.camera.fastcamera import FastCamera
-from pyopenlab.instrument.jinstrument import JInstrument
-from pyopenlab.instrument.spectrometer.fastspectrometer import FastSpectrometer
-from pyopenlab.measurement.action import Message
-from pyopenlab.measurement.actionqueue import H5ActionQueue
-from pyopenlab.measurement.gui import QueueInstrument
 from pyopenlab.ui.ui_tools import UiTools
 from pyopenlab.utils.gui import get_qt_app
 from pyopenlab.utils.gui import QtCore
@@ -41,9 +35,7 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
                  working_directory=None,
                  file_path=None,
                  terminal=False,
-                 dark=False,
-                 actions=[],
-                 logFile=None):
+                 dark=False):
         """Args:
             instrument_dict(dict) :     This is a dictionary containing the
                                         instruments objects where the key is the 
@@ -67,24 +59,6 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
         super(GuiGenerator, self).__init__(parent)
         self._logger = LOGGER
 
-        keys = list(instrument_dict.keys())
-
-        for key in keys:
-
-            instrument = instrument_dict[key]
-
-            if str(type(instrument)).startswith("<java class"):
-
-                from jisa.devices.camera import Camera
-                from jisa.devices.spectrometer import Spectrometer
-
-                if isinstance(instrument, Camera):
-                    instrument_dict["fast_%s" % key] = FastCamera(instrument)
-                elif isinstance(instrument, Spectrometer):
-                    instrument_dict["fast_%s" % key] = FastSpectrometer(instrument)
-                else:
-                    instrument_dict["jisa_%s" % key] = JInstrument(instrument)
-
         self.instr_dict = instrument_dict
 
         if working_directory is None:
@@ -103,35 +77,6 @@ class GuiGenerator(QtWidgets.QMainWindow, UiTools):
         if dark:
             app = get_qt_app()
             app.setStyleSheet(qdarkstyle.load_stylesheet())
-
-        if len(actions) > 0:
-
-            queue = H5ActionQueue()
-            qinst = QueueInstrument(queue, actions, self.instr_dict.values(), self.data_file)
-            self.instr_dict["Action Queue"] = qinst
-
-            if logFile is None:
-                from pathlib import Path
-                home = Path.home()
-                logFile = Path.joinpath(home, "pyopenlab-queue.log")
-
-            f = open(logFile, "a")
-            f.write("### LOG BEGIN - %s ###\r\n" % str(datetime.datetime.now()))
-            f.write("Timestamp\tType\tSource\tMessage\r\n")
-            f.flush()
-
-            def _write(m: Message):
-                f.write("%s\t%s\t%s\t%s\r\n" % (str(datetime.datetime.fromtimestamp(
-                    m.timestamp)), m.type.name, m.pathString, m.message))
-                f.flush()
-
-            queue.addMessageListener(_write)
-
-            def _end():
-                f.write("### LOG END - %s ###\r\n" % str(datetime.datetime.now()))
-                f.close()
-
-            self.destroyed.connect(_end)
 
         self.instr_dict["HDF5"] = self.data_file
         self.setDockNestingEnabled(1)
