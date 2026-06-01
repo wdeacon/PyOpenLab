@@ -1,10 +1,6 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Apr 26 09:50:40 2016
+"""Notified properties — lightweight callback-enabled descriptors.
 
-@author: rwb27
-
-This module extends (actually reimplements sadly) Python's properties so that
+This module extends (actually reimplements) Python's properties so that
 they can do extra things when their values changed.  It's a super-lightweight
 alternative to Traits.  Note that you must be using a new-style class for this
 to work (i.e. you must inherit from object).
@@ -72,14 +68,21 @@ import numpy as np
 
 
 class Property():
-    """Emulate PyProperty_Type() in Objects/descrobject.c
-    
-    This is copied from 
-    https://docs.python.org/2/howto/descriptor.html#properties
-    as I'd otherwise be reimplementing.  Plus, having this here makes it
-    clearer how my properties differ."""
+    """Pure-Python reimplementation of the built-in property descriptor.
+
+    Provides the same ``getter``/``setter``/``deleter`` decorator interface as
+    the built-in ``property``, serving as the base for :class:`NotifiedProperty`.
+    """
 
     def __init__(self, fget=None, fset=None, fdel=None, doc=None):
+        """Create a property descriptor.
+
+        Args:
+            fget: Getter function, or None for a write-only property.
+            fset: Setter function, or None for a read-only property.
+            fdel: Deleter function, or None if deletion is not supported.
+            doc: Docstring. Defaults to ``fget.__doc__`` if not provided.
+        """
         self.fget = fget
         self.fset = fset
         self.fdel = fdel
@@ -105,12 +108,15 @@ class Property():
         self.fdel(obj)
 
     def getter(self, fget):
+        """Return a copy of this property with a new getter function."""
         return type(self)(fget, self.fset, self.fdel, self.__doc__)
 
     def setter(self, fset):
+        """Return a copy of this property with a new setter function."""
         return type(self)(self.fget, fset, self.fdel, self.__doc__)
 
     def deleter(self, fdel):
+        """Return a copy of this property with a new deleter function."""
         return type(self)(self.fget, self.fset, fdel, self.__doc__)
 
 
@@ -124,17 +130,19 @@ class NotifiedProperty(Property):
                  doc=None,
                  read_back=False,
                  single_update=True):
-        """Return a property that notifies when it's changed.
-        
-        This subclasses the pure Python implementation of properties, adding
-        support for notifying objects when it's changed.
-        
-        If read_back is True, the property is read immediately after it is
-        written, so that the value that's notified to any listening functions
-        is the correct one (this allows for validation of the new value, and
-        will make sure controls display what was actually done, rather than 
-        the value that was requested).  It's False by default, in case the
-        property that's connected to it is expensive to read.
+        """Create a property that fires callbacks when its value changes.
+
+        Args:
+            fget: Getter function.
+            fset: Setter function.
+            fdel: Deleter function.
+            doc: Docstring.
+            read_back: If True, re-read the property immediately after writing
+                so callbacks receive the actual stored value rather than the
+                requested one. Useful when the setter applies validation or
+                rounding. Defaults to False to avoid expensive reads.
+            single_update: If True (and ``read_back`` is True), only fire
+                callbacks when the value has actually changed.
         """
         super(NotifiedProperty, self).__init__(fget=fget, fset=fset, fdel=fdel, doc=doc)
         # We store a set of callbacks for each object (NB there's one property
@@ -168,18 +176,27 @@ class NotifiedProperty(Property):
             self.send_notification(obj, value)
 
     def register_callback(self, obj, callback):
-        """Add a function to be called whenever the value changes.
-        
-        The function should accept one argument, which is the new value.
-        
-        NB if the function raises an exception, it will not be called again.
+        """Register a function to be called whenever the property changes.
+
+        Args:
+            obj: The instance on which to listen for changes.
+            callback: Callable accepting one argument — the new value. If it
+                raises an exception it will be automatically deregistered.
         """
         if obj not in list(self.callbacks_by_object.keys()):
             self.callbacks_by_object[obj] = set()
         self.callbacks_by_object[obj].add(callback)
 
     def deregister_callback(self, obj, callback):
-        """Remove a function from the list of callbacks."""
+        """Remove a previously registered callback.
+
+        Args:
+            obj: The instance the callback was registered on.
+            callback: The callable to remove.
+
+        Raises:
+            KeyError: If no callbacks have been registered on ``obj``.
+        """
         try:
             callbacks = self.callbacks_by_object[obj]
         except KeyError:
@@ -190,7 +207,12 @@ class NotifiedProperty(Property):
             pass  # Don't worry if callbacks are removed pointlessly!
 
     def send_notification(self, obj, value):
-        """Notify anyone that's interested that the value changed."""
+        """Fire all registered callbacks for ``obj`` with the new value.
+
+        Args:
+            obj: The instance whose property changed.
+            value: The new value to pass to each callback.
+        """
         if obj in self.callbacks_by_object:
             for callback in self.callbacks_by_object[obj].copy():
                 try:
@@ -202,11 +224,20 @@ class NotifiedProperty(Property):
 
 
 class DumbNotifiedProperty(NotifiedProperty):
-    "A property that acts as a variable, except it notifies when it changes."
+    """A property that acts as a plain variable but fires callbacks on change.
+
+    Unlike :class:`NotifiedProperty`, no getter/setter functions are needed —
+    the value is stored internally per-instance.
+    """
 
     def __init__(self, default=None, fdel=None, doc=None):
-        "A property that acts as a variable, except it notifies when it changes."
+        """Create a self-storing notified property.
 
+        Args:
+            default: Default value returned before the property has been set.
+            fdel: Optional deleter function.
+            doc: Docstring for the property.
+        """
         super(DumbNotifiedProperty, self).__init__(fget=self.fget,
                                                    fset=self.fset,
                                                    fdel=fdel,
@@ -214,8 +245,8 @@ class DumbNotifiedProperty(NotifiedProperty):
         self._value = default
         self.values_by_object = WeakKeyDictionary()  # we store callbacks here
 
-    # Emulate a variable with the functions below:
     def fget(self, obj):
+        """Return the stored value for ``obj``, falling back to the default."""
         try:
             # First, try tp return the stored value for that object
             return self.values_by_object[obj]
@@ -224,18 +255,23 @@ class DumbNotifiedProperty(NotifiedProperty):
             return self._value
 
     def fset(self, obj, value):
+        """Store ``value`` for ``obj``."""
         self.values_by_object[obj] = value
 
 
 def register_for_property_changes(obj, property_name, callback):
-    """Register a function to be called when the property changes.
-    
-    Whenever the value of the named property changes, the callback
-    function will be called, with the new value as the only argument.
-    Note that it's the value that was passed as input to the setter, so
-    if you have cunning logic in there, it may be wrong and you might
-    want to consider retrieving the property at the start of this function
-    (at which point the setter has run, so any changes it makes are done)
+    """Register a callback to be called when a named property changes.
+
+    Args:
+        obj: The instance to watch.
+        property_name: Name of the :class:`NotifiedProperty` to watch.
+        callback: Callable accepting one argument — the new value. Note this
+            is the value passed to the setter; if the setter applies logic,
+            retrieve the property inside the callback to get the actual result.
+
+    Raises:
+        AssertionError: If ``property_name`` is not a :class:`NotifiedProperty`
+            on ``obj``'s class.
     """
     prop = getattr(obj.__class__, property_name, None)
     assert isinstance(prop, NotifiedProperty), "The specified property isn't available"
