@@ -209,23 +209,23 @@ class RamanSpectrum(Spectrum):
     """A :class:`Spectrum` whose x axis is Raman shift in cm⁻¹.
 
     Shifts are computed from ``wavelengths`` and ``laser_wavelength`` on first
-    access, or can be supplied directly.
+    access, or can be supplied directly via the ``shifts`` argument.
 
-    To use a different laser wavelength, change the class attribute:
+    Pass the excitation wavelength at construction time:
 
-    >>> RamanSpectrum.laser_wavelength = 785.
+    >>> spec = RamanSpectrum(data, wavelengths=wls, laser_wavelength=785.)
 
-    For multiple excitation wavelengths in the same analysis, subclass:
-
-    >>> class RamanSpectrum785(RamanSpectrum):
-    ...     laser_wavelength = 785.
-    >>> class RamanSpectrum532(RamanSpectrum):
-    ...     laser_wavelength = 532.
+    For multiple excitation wavelengths in the same analysis, subclass or
+    simply pass the appropriate ``laser_wavelength`` to each constructor call.
     """
 
-    laser_wavelength = 632.8
-
-    def __new__(cls, spectrum, shifts=None, wavelengths=None, *args, **kwargs):
+    def __new__(cls,
+                spectrum,
+                shifts=None,
+                wavelengths=None,
+                laser_wavelength=632.8,
+                *args,
+                **kwargs):
         """Create a RamanSpectrum from array data and either shifts or wavelengths.
 
         Args:
@@ -235,12 +235,15 @@ class RamanSpectrum(Spectrum):
             wavelengths: 1-D array of wavelength values in nm. Shifts are
                 computed lazily from ``wavelengths`` and ``laser_wavelength``
                 on first access.
+            laser_wavelength: Excitation laser wavelength in nm. Defaults to
+                632.8 (HeNe). Only used when shifts are computed from
+                wavelengths; ignored if ``shifts`` is provided directly.
             *args: Extra positional arguments (unused, for subclass compatibility).
             **kwargs: Extra keyword arguments (unused, for subclass compatibility).
 
         Returns:
-            RamanSpectrum: The new spectrum with ``.wavelengths`` and
-            ``._shifts`` set as appropriate.
+            RamanSpectrum: The new spectrum with ``.wavelengths``,
+            ``._shifts``, and ``.laser_wavelength`` set as appropriate.
 
         Raises:
             AssertionError: If both ``shifts`` and ``wavelengths`` are None.
@@ -254,20 +257,18 @@ class RamanSpectrum(Spectrum):
         if shifts is not None:
             shifts = np.asarray(shifts)
         obj._shifts = shifts
-
-        obj.laser_wavelength = cls.laser_wavelength
-        # stops existing instances' laser_wavelength being changed by changing
-        # the class attribute
+        obj.laser_wavelength = laser_wavelength
         return obj
 
     def __array_finalize__(self, obj):
-        """Propagate ``.wavelengths`` and ``._shifts`` when NumPy creates a derived array."""
+        """Propagate ``.wavelengths``, ``._shifts``, and ``.laser_wavelength`` when NumPy creates a derived array."""
         if obj is None:
             return
         if not obj.shape:
             return np.array(obj)
         self.wavelengths = getattr(obj, 'wavelengths', np.arange(obj.shape[-1]))
         self._shifts = getattr(obj, '_shifts', None)
+        self.laser_wavelength = getattr(obj, 'laser_wavelength', 632.8)
 
     def __reduce__(self):
         # Get the parent's __reduce__ tuple
@@ -283,7 +284,7 @@ class RamanSpectrum(Spectrum):
         super().__setstate__(state[0:-1])
 
     @classmethod
-    def from_h5(cls, dataset):
+    def from_h5(cls, dataset, laser_wavelength=632.8):
         """Create a RamanSpectrum from an HDF5 dataset, applying background and reference.
 
         If ``background`` and ``reference`` attributes are present on the dataset
@@ -292,6 +293,8 @@ class RamanSpectrum(Spectrum):
         Args:
             dataset: An h5py Dataset with a ``wavelengths`` attribute and
                 optionally ``background`` and ``reference`` attributes.
+            laser_wavelength: Excitation laser wavelength in nm. Defaults to
+                632.8 (HeNe).
 
         Returns:
             RamanSpectrum: The loaded and normalised spectrum, with shifts
@@ -300,7 +303,9 @@ class RamanSpectrum(Spectrum):
         attrs = dataset.attrs
         ref = attrs.get('reference', 1)
         bg = attrs.get('background', 0)
-        return cls((dataset[()] - bg) / (ref - bg), wavelengths=dataset.attrs['wavelengths'])
+        return cls((dataset[()] - bg) / (ref - bg),
+                   wavelengths=dataset.attrs['wavelengths'],
+                   laser_wavelength=laser_wavelength)
 
     @cached_property  # only ever calculated once per instance
     def shifts(self):
