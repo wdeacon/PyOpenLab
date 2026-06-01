@@ -1,9 +1,4 @@
-﻿# -*- coding: utf-8 -*-
-"""
-Serial Instrument interface
-
-@author: Richard Bowman
-"""
+﻿"""Serial instrument communication for pyopenlab."""
 import threading
 import time
 
@@ -26,44 +21,39 @@ from pyopenlab.instrument.message_bus_instrument import MessageBusInstrument
 
 
 class SerialInstrument(MessageBusInstrument):
-    """
-    An instrument primarily using serial communications
+    """Base class for instruments communicating over a serial port.
+
+    Subclass this and set ``port_settings`` to a dict of pyserial kwargs.
+    Override :meth:`test_communications` to validate the connection on open.
+
+    Attributes:
+        port_settings: Dict of keyword arguments passed directly to
+            ``serial.Serial``. Common keys:
+
+            - ``baudrate`` — e.g. 9600 or 115200
+            - ``bytesize`` — ``FIVEBITS``, ``SIXBITS``, ``SEVENBITS``,
+              or ``EIGHTBITS``
+            - ``parity`` — ``PARITY_NONE``, ``PARITY_EVEN``, ``PARITY_ODD``,
+              ``PARITY_MARK``, or ``PARITY_SPACE``
+            - ``stopbits`` — ``STOPBITS_ONE``, ``STOPBITS_ONE_POINT_FIVE``,
+              or ``STOPBITS_TWO``
+            - ``timeout`` — read timeout in seconds
+            - ``xonxoff`` — enable software flow control
+            - ``rtscts`` — enable hardware RTS/CTS flow control
+            - ``dsrdtr`` — enable hardware DSR/DTR flow control
+        initial_character: String prepended to every outgoing message.
     """
     port_settings = {}
     initial_character = ''
-    """A dictionary of serial port settings.  It is passed as the keyword
-    arguments to the constructor of the underlying serial port object, so
-    see the documentation for pyserial for full explanations.
-
-    port
-        Device name or port number number or None.
-    baudrate
-        Baud rate such as 9600 or 115200 etc.
-    bytesize
-        Number of data bits. Possible values: FIVEBITS, SIXBITS, SEVENBITS, EIGHTBITS
-    parity
-        Enable parity checking. Possible values: PARITY_NONE, PARITY_EVEN, PARITY_ODD PARITY_MARK, PARITY_SPACE
-    stopbits
-        Number of stop bits. Possible values: STOPBITS_ONE, STOPBITS_ONE_POINT_FIVE, STOPBITS_TWO
-    timeout
-        Set a read timeout value.
-    xonxoff
-        Enable software flow control.
-    rtscts
-        Enable hardware (RTS/CTS) flow control.
-    dsrdtr
-        Enable hardware (DSR/DTR) flow control.
-    writeTimeout
-        Set a write timeout value.
-    interCharTimeout
-        Inter-character timeout, None to disable (default).
-    """
 
     _serial_port_lock = threading.Lock()
 
     def __init__(self, port=None):
-        """
-        Set up the serial port and so on.
+        """Open the serial port.
+
+        Args:
+            port: Port name (e.g. ``'COM3'`` or ``'/dev/ttyUSB0'``). If None,
+                autodetection is attempted via :meth:`find_port`.
         """
         MessageBusInstrument.__init__(
             self)  # Using super() here can cause issues with multiple inheritance.
@@ -74,6 +64,7 @@ class SerialInstrument(MessageBusInstrument):
 
     @property
     def timeout(self):
+        """Serial port read timeout in seconds."""
         return self._timeout
 
     @timeout.setter
@@ -84,8 +75,15 @@ class SerialInstrument(MessageBusInstrument):
     def open(self, port=None, quiet=True):
         """Open communications with the serial port.
 
-        If no port is specified, it will attempt to autodetect.  If quiet=True
-        then we don't warn when ports are opened multiple times.
+        Args:
+            port: Port name to open. If None, autodetection is attempted via
+                :meth:`find_port`.
+            quiet: If True (default), suppress the warning when opening an
+                already-open port.
+
+        Raises:
+            AssertionError: If no port can be found or the instrument does not
+                respond to :meth:`test_communications`.
         """
         with self.communications_lock:
             if hasattr(self, 'ser') and self.ser.isOpen():
@@ -117,7 +115,15 @@ class SerialInstrument(MessageBusInstrument):
         self.close()
 
     def _write(self, query_string, ignore_echo=False, timeout=None):
-        """Write a string to the serial port"""
+        """Write a string to the serial port.
+
+        Args:
+            query_string: The string to send, wrapped with ``initial_character``
+                and ``termination_character``.
+            ignore_echo: If True, flush the input buffer before writing and
+                discard the echoed response afterward.
+            timeout: Read timeout in seconds used when reading the echo.
+        """
         assert self.ser.isOpen(
         ), "Warning: attempted to write to the serial port before it was opened.  Perhaps you need to call the 'open' method first?"
         try:
@@ -146,6 +152,16 @@ class SerialInstrument(MessageBusInstrument):
             self.ser.reset_output_buffer()
 
     def readline(self, timeout=None):
+        """Read a line from the serial port, blocking until the termination character arrives.
+
+        Args:
+            timeout: Maximum time to wait in seconds. Defaults to
+                ``self.timeout`` if set, otherwise 10 seconds.
+
+        Returns:
+            str: The received line with the termination character replaced by
+            ``'\\n'``.
+        """
         with self.communications_lock:
             if hasattr(self, 'timeout') and timeout is None:
                 timeout = self.timeout
@@ -166,17 +182,25 @@ class SerialInstrument(MessageBusInstrument):
             return line.decode().replace(self.termination_read, '\n')
 
     def test_communications(self):
-        """Check if the device is available on the current port.
+        """Check whether the instrument is responding on the current port.
 
-        This should be overridden by subclasses.  Assume the port has been
-        successfully opened and the settings are as defined by self.port_settings.
-        Usually this function sends a command and checks for a known reply."""
+        Override in subclasses to send a command and verify a known reply.
+        The base implementation always returns True.
+
+        Returns:
+            bool: True if the instrument is responding, False otherwise.
+        """
         with self.communications_lock:
             return True
 
     def find_port(self):
-        """Iterate through the available serial ports and query them to see
-        if our instrument is there."""
+        """Scan available serial ports and return the first one that responds.
+
+        Calls :meth:`open` and :meth:`test_communications` on each port in turn.
+
+        Returns:
+            str | None: The port name if found, otherwise None.
+        """
         with self.communications_lock:
             success = False
             for port_name, _, _ in serial.tools.list_ports.comports(
