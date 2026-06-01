@@ -1,4 +1,4 @@
-__author__ = 'alansanders'
+"""Spectral data classes and analysis utilities for pyopenlab."""
 from functools import cached_property
 from pathlib import Path
 import re
@@ -13,8 +13,17 @@ H5_TEMPLATE = r'\S*(\d{4})-(\d{2})-(\d{2})\S*.h5'
 
 
 def load_h5(location='.'):
-    '''return the latest h5 in a given directory. If location is left blank,
-    loads the latest file in the current directory.'''
+    """Return the most recent dated HDF5 file in a directory.
+
+    Args:
+        location: Path to the directory to search (default: current directory).
+
+    Returns:
+        h5py.File: The latest HDF5 file opened in read-only mode.
+
+    Raises:
+        ValueError: If no HDF5 file matching the expected date pattern is found.
+    """
     path = Path(location)
     candidates_dates = [(f, [int(m) for m in match.groups()]) for f in path.iterdir()\
                         if (match := re.match(H5_TEMPLATE, f.name))]
@@ -25,18 +34,39 @@ def load_h5(location='.'):
 
 
 def latest_scan(file):
-    '''returns the last ParticleScannerScan in a file'''
+    """Return the last ``ParticleScannerScan`` group in an HDF5 file.
+
+    Args:
+        file: An open h5py File object.
+
+    Returns:
+        h5py.Group: The ``ParticleScannerScan`` group with the highest index.
+    """
     return file[max(file,
                     key=lambda x: int(x.split('_')[-1])
                     if x.startswith('ParticleScannerScan') else -1)]
 
 
 class Spectrum(np.ndarray):
-    '''acts a an ndarray, but has a wavelengths attribute,
-    and several useful methods for spectra. Can be 1 or 2d (time series/z-scan)'''
+    """A numpy ndarray with a ``wavelengths`` attribute and spectral helper methods.
+
+    Can be 1-D (single spectrum) or 2-D (time series or z-scan), with the
+    wavelength axis always on the last dimension.
+    """
 
     def __new__(cls, spectrum, wavelengths, *args, **kwargs):
-        '''boilerplate numpy subclassing'''
+        """Create a Spectrum from array data and a wavelengths array.
+
+        Args:
+            spectrum: Array-like spectral data. The last dimension must match
+                the length of ``wavelengths``.
+            wavelengths: 1-D array of wavelength values in nm.
+            *args: Extra positional arguments forwarded to ``np.asarray``.
+            **kwargs: Extra keyword arguments forwarded to ``np.asarray``.
+
+        Returns:
+            Spectrum: The new spectrum with ``.wavelengths`` set.
+        """
         assert len(wavelengths) == np.shape(spectrum)[-1]
 
         obj = np.asarray(spectrum).view(cls)
@@ -44,7 +74,7 @@ class Spectrum(np.ndarray):
         return obj
 
     def __array_finalize__(self, obj):
-        '''boilerplate numpy subclassing'''
+        """Propagate ``.wavelengths`` when NumPy creates a derived array."""
         if obj is None:
             return
         if not obj.shape:
@@ -66,9 +96,18 @@ class Spectrum(np.ndarray):
 
     @classmethod
     def from_h5(cls, dataset):
-        '''create instance using a h5 dataset.
-        will background-subtract and reference the spectrum if these
-        attributes are saved'''
+        """Create a Spectrum from an HDF5 dataset, applying background and reference.
+
+        If ``background`` and ``reference`` attributes are present on the dataset
+        they are used to normalise: ``(data - bg) / (ref - bg)``.
+
+        Args:
+            dataset: An h5py Dataset with a ``wavelengths`` attribute and
+                optionally ``background`` and ``reference`` attributes.
+
+        Returns:
+            Spectrum: The loaded and normalised spectrum.
+        """
         attrs = dataset.attrs
         ref = attrs.get('reference', 1)
         bg = attrs.get('background', 0)
@@ -76,21 +115,28 @@ class Spectrum(np.ndarray):
 
     @property
     def wl(self):
-        '''convenient for accessing wavelengths'''
+        """Wavelengths array (shorthand for ``self.wavelengths``)."""
         return self.wavelengths
 
     @wl.setter
     def wl(self, value):
-        '''convenient for accessing wavelengths'''
         self.wavelengths = np.array(value)
 
     @property
     def x(self):
-        '''abstraction of x axis for using shifts or wavelengths'''
+        """The x axis used by :meth:`split` and related methods (wavelengths by default)."""
         return self.wavelengths  # wavelengths unless subclassed
 
     def split(self, lower=-np.inf, upper=np.inf):
-        '''returns the spectrum between the upper and lower bounds'''
+        """Return the portion of the spectrum between ``lower`` and ``upper``.
+
+        Args:
+            lower: Lower bound on the x axis (inclusive). Defaults to ``-inf``.
+            upper: Upper bound on the x axis (exclusive). Defaults to ``+inf``.
+
+        Returns:
+            Spectrum: Sliced spectrum with matching wavelengths.
+        """
         if upper < lower:
             upper, lower = lower, upper
         condition = (lower <= self.x) & (self.x < upper)
@@ -98,23 +144,57 @@ class Spectrum(np.ndarray):
         return self.__class__(self.T[condition].T, self.x[condition])
 
     def norm(self):
-        '''return an spectrum divided by its largest value'''
+        """Return the spectrum normalised by its maximum value.
+
+        Returns:
+            Spectrum: Spectrum divided by its peak intensity.
+        """
         return self.__class__(self / self.ravel().max(), self.x)
 
     def squash(self):
-        '''condense a time_series into one spectrum'''
+        """Condense a 2-D time series into a single summed spectrum.
+
+        Returns:
+            Spectrum: 1-D spectrum summed along axis 0.
+        """
         return self.__class__(self.sum(axis=0), self.x)
 
     def smooth(self, sigma):
-        '''smooth using scipy.ndimage.guassian_smooth'''
+        """Smooth the spectrum with a Gaussian filter.
+
+        Args:
+            sigma: Standard deviation of the Gaussian kernel in pixels.
+
+        Returns:
+            Spectrum: Smoothed spectrum.
+        """
         return self.__class__(gaussian_filter(self, sigma), self.x)
 
     def savgol_smooth(self, *args, **kwargs):
+        """Smooth the spectrum with a Savitzky-Golay filter.
+
+        Args:
+            *args: Forwarded to ``scipy.signal.savgol_filter``.
+            **kwargs: Forwarded to ``scipy.signal.savgol_filter``.
+
+        Returns:
+            Spectrum: Smoothed spectrum.
+        """
         return self.__class__(savgol_filter(self, *args, **kwargs), self.x)
 
     def remove_cosmic_ray(self, thresh=5, smooth=30, max_iterations=10):
-        '''wrapper around remove_cosmic_ray to allow 2d or 1d spectra
-        to be passed'''
+        """Remove cosmic ray spikes from the spectrum.
+
+        Args:
+            thresh: Number of noise standard deviations above which a point
+                is considered a spike (default 5).
+            smooth: Gaussian sigma used to estimate the underlying spectrum
+                (default 30).
+            max_iterations: Maximum cleaning passes (default 10).
+
+        Returns:
+            Spectrum: Cleaned spectrum with spikes replaced by smoothed values.
+        """
         func = lambda s: remove_cosmic_ray(
             s, thresh=thresh, smooth=smooth, max_iterations=max_iterations)
         if len(self.shape) == 2:
@@ -126,27 +206,45 @@ class Spectrum(np.ndarray):
 
 
 class RamanSpectrum(Spectrum):
-    '''
-    Uses shifts as its x axis. These are the values used in split() etc. 
-    When creating, either supply shifts directly, or they'll be calculated
-    the first time they're accessed using wavelengths and laser_wavelength.
-    
-    To use with a different laser wavelength, change the class attribute 
-    after importing:
+    """A :class:`Spectrum` whose x axis is Raman shift in cm⁻¹.
+
+    Shifts are computed from ``wavelengths`` and ``laser_wavelength`` on first
+    access, or can be supplied directly.
+
+    To use a different laser wavelength, change the class attribute:
+
     >>> RamanSpectrum.laser_wavelength = 785.
-    
-    if you frequently use two wavelengths in the same analysis, create a 
-    subclass:
+
+    For multiple excitation wavelengths in the same analysis, subclass:
+
     >>> class RamanSpectrum785(RamanSpectrum):
-            laser_wavelength = 785.
-        class RamanSpectrum532(RamanSpectrum):
-            laser_wavelength = 532.
-        
-    '''
+    ...     laser_wavelength = 785.
+    >>> class RamanSpectrum532(RamanSpectrum):
+    ...     laser_wavelength = 532.
+    """
 
     laser_wavelength = 632.8
 
     def __new__(cls, spectrum, shifts=None, wavelengths=None, *args, **kwargs):
+        """Create a RamanSpectrum from array data and either shifts or wavelengths.
+
+        Args:
+            spectrum: Array-like spectral data.
+            shifts: 1-D array of Raman shift values in cm⁻¹. If supplied,
+                ``wavelengths`` is not required and shifts are used directly.
+            wavelengths: 1-D array of wavelength values in nm. Shifts are
+                computed lazily from ``wavelengths`` and ``laser_wavelength``
+                on first access.
+            *args: Extra positional arguments (unused, for subclass compatibility).
+            **kwargs: Extra keyword arguments (unused, for subclass compatibility).
+
+        Returns:
+            RamanSpectrum: The new spectrum with ``.wavelengths`` and
+            ``._shifts`` set as appropriate.
+
+        Raises:
+            AssertionError: If both ``shifts`` and ``wavelengths`` are None.
+        """
         assert not (shifts is None and wavelengths is None),\
         'must supply shifts or wavelengths'
         obj = np.asarray(spectrum).view(cls)
@@ -163,7 +261,7 @@ class RamanSpectrum(Spectrum):
         return obj
 
     def __array_finalize__(self, obj):
-
+        """Propagate ``.wavelengths`` and ``._shifts`` when NumPy creates a derived array."""
         if obj is None:
             return
         if not obj.shape:
@@ -186,9 +284,19 @@ class RamanSpectrum(Spectrum):
 
     @classmethod
     def from_h5(cls, dataset):
-        '''create instance using a h5 dataset.
-        will background-subtract and reference the spectrum if these
-        attributes are saved'''
+        """Create a RamanSpectrum from an HDF5 dataset, applying background and reference.
+
+        If ``background`` and ``reference`` attributes are present on the dataset
+        they are used to normalise: ``(data - bg) / (ref - bg)``.
+
+        Args:
+            dataset: An h5py Dataset with a ``wavelengths`` attribute and
+                optionally ``background`` and ``reference`` attributes.
+
+        Returns:
+            RamanSpectrum: The loaded and normalised spectrum, with shifts
+            computed lazily from wavelengths on first access.
+        """
         attrs = dataset.attrs
         ref = attrs.get('reference', 1)
         bg = attrs.get('background', 0)
@@ -196,33 +304,40 @@ class RamanSpectrum(Spectrum):
 
     @cached_property  # only ever calculated once per instance
     def shifts(self):
+        """Raman shift axis in cm⁻¹, computed from wavelengths or returned directly if supplied."""
         if self._shifts is None:
             return (1. / (self.laser_wavelength * 1e-9) - 1. / (self.wl * 1e-9)) / 100.
         return self._shifts
 
     @property
     def x(self):
+        """The x axis used by :meth:`split` and related methods (Raman shifts in cm⁻¹)."""
         return self.shifts
 
 
 def remove_cosmic_ray(spectrum, thresh=5, smooth=30, max_iterations=10):
-    '''
-    
-    a way of removing cosmic rays from spectra. Mainly tested with Dark-Field
-    spectra, as the spikiness of Raman makes it very difficult to do simply.
-    
-    thresh: the height above the noise level a given data point should be 
-            to be considered a cosmic ray. Lower values will remove smaller cosmic rays,
-            but may start to remove higher parts of the noise if too low.
-    smooth: the 'sigma' value used to smooth the spectrum,
-            see scipy.ndimage.gaussian_filter. Should be high enough to
-            so that the shape of the spectrum is conserved, but the cosmic ray
-            is almost gone. 
-    max_iterations: 
-        maximum iterations. Shouldn't matter how high it is as most spectra
-        are done in 1-3. 
-    
-    '''
+    """Remove cosmic ray spikes from a 1-D spectrum.
+
+    Iteratively identifies and replaces sharp spikes by comparing each point
+    against a Gaussian-smoothed version of the spectrum. Mainly tested on
+    dark-field spectra; the spikiness of Raman spectra makes simple spike
+    removal unreliable there.
+
+    Args:
+        spectrum: 1-D array-like of spectral intensity values.
+        thresh: Number of noise standard deviations above which a point is
+            considered a cosmic ray spike. Lower values catch smaller spikes
+            but risk clipping genuine signal peaks. Defaults to 5.
+        smooth: Gaussian sigma (in pixels) used to estimate the underlying
+            spectrum. Should be large enough to preserve the spectral shape
+            while eliminating the spike. Defaults to 30.
+        max_iterations: Maximum cleaning passes. Most spectra converge in
+            1–3 iterations. Defaults to 10.
+
+    Returns:
+        numpy.ndarray: Cleaned spectrum with spike regions replaced by the
+        smoothed estimate.
+    """
     _len = len(spectrum)
     cleaned = np.copy(spectrum)  # prevent modification in place
 
