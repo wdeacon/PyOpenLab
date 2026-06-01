@@ -35,7 +35,10 @@ LOGGER.setLevel('INFO')
 class Instrument(ShowGUIMixin):
     """Base class for all instrument-control classes.
 
-    This class takes care of management of instruments, saving data, etc.
+    Handles instance tracking, HDF5 data storage, metadata bundling, and
+    per-instrument configuration files. Subclass this and set
+    ``metadata_property_names`` to the property names that should be
+    automatically saved alongside every dataset.
     """
     __instances = None
     metadata_property_names = (
@@ -50,6 +53,7 @@ class Instrument(ShowGUIMixin):
 
     @classmethod
     def instances_set(cls):
+        """Return the WeakSet that tracks all live Instrument instances."""
         if Instrument.__instances is None:
             Instrument.__instances = WeakSet()
         return Instrument.__instances
@@ -61,9 +65,22 @@ class Instrument(ShowGUIMixin):
 
     @classmethod
     def get_instance(cls, create=True, exceptions=True, *args, **kwargs):
-        """Return an instance of this class, if one exists.
+        """Return an existing instance of this class, creating one if needed.
 
-        Usually returns the first available instance.
+        Args:
+            create: If True (default) and no instance exists, instantiate one
+                using ``*args`` and ``**kwargs``.
+            exceptions: If True (default) and no instance exists and ``create``
+                is False, raise ``IndexError`` instead of returning ``None``.
+            *args: Passed to the constructor when creating a new instance.
+            **kwargs: Passed to the constructor when creating a new instance.
+
+        Returns:
+            An instance of this class.
+
+        Raises:
+            IndexError: If no instance exists, ``create`` is False, and
+                ``exceptions`` is True.
         """
         instances = cls.get_instances()
         if len(instances) > 0:
@@ -79,7 +96,14 @@ class Instrument(ShowGUIMixin):
 
     @classmethod
     def get_root_data_folder(cls):
-        """Return a sensibly-named data folder in the default file."""
+        """Return the HDF5 group used as the root data folder for this class.
+
+        Returns the current group override if one is set, otherwise opens (or
+        creates) a group named after the class in the current datafile.
+
+        Returns:
+            pyopenlab.datafile.Group: The root data folder for this instrument.
+        """
         if pyopenlab.datafile._use_current_group == True:
             if pyopenlab.datafile._current_group != None:
                 return pyopenlab.datafile._current_group
@@ -88,11 +112,19 @@ class Instrument(ShowGUIMixin):
 
     @classmethod
     def create_data_group(cls, name, *args, **kwargs):
-        """Return a group to store a reading.
+        """Create a uniquely-named HDF5 group to store one reading.
 
-        :param name: should be a noun describing what the reading is (image,
-        spectrum, etc.)
-        :param attrs: may be a dictionary, saved as HDF5 metadata
+        Args:
+            name: Noun describing the reading (e.g. ``"image"``, ``"spectrum"``).
+                A ``_%d`` suffix is appended and auto-incremented to keep names
+                unique.
+            attrs: Optional dict of HDF5 metadata attributes (passed through to
+                ``Group.create_group``).
+            *args: Extra positional arguments forwarded to ``Group.create_group``.
+            **kwargs: Extra keyword arguments forwarded to ``Group.create_group``.
+
+        Returns:
+            pyopenlab.datafile.Group: The newly created group.
         """
         if "%d" not in name:
             name = name + '_%d'
@@ -101,12 +133,21 @@ class Instrument(ShowGUIMixin):
 
     @classmethod
     def create_dataset(cls, name, flush=True, *args, **kwargs):
-        """Store a reading in a dataset (or make a new dataset to fill later).
+        """Create a uniquely-named HDF5 dataset to store one reading.
 
-        :param name: should be a noun describing what the reading is (image,
-        spectrum, etc.)
+        Args:
+            name: Noun describing the reading (e.g. ``"image"``, ``"spectrum"``).
+                A ``_%d`` suffix is appended and auto-incremented to keep names
+                unique.
+            flush: If True (default) and ``data`` is provided, flush the file
+                immediately so the dataset is written to disk.
+            *args: Extra positional arguments forwarded to
+                ``Group.create_dataset``.
+            **kwargs: Extra keyword arguments forwarded to
+                ``Group.create_dataset`` (e.g. ``data``, ``attrs``).
 
-        Other arguments are passed to `pyopenlab.datafile.Group.create_dataset`.
+        Returns:
+            h5py.Dataset: The newly created dataset.
         """
         if "%d" not in name:  # is this really necessary?
             name = name + '_%d'
@@ -119,30 +160,33 @@ class Instrument(ShowGUIMixin):
     def log(self, message, level='info'):
         """Save a log message to the current datafile.
 
-        This is the preferred way to output debug/informational messages.  They
-        will be saved in the current HDF5 file and optionally shown in the
-        pyopenlab console.
+        Preferred over ``print`` for debug/informational output — messages are
+        persisted in the HDF5 file alongside the data.
+
+        Args:
+            message: The message string to log.
+            level: Logging level string (default ``'info'``). Passed to
+                ``pyopenlab.utils.log.log``.
         """
         pyopenlab.utils.log.log(message, from_object=self, level=level)
 
     def get_metadata(self, property_names=[], include_default_names=True, exclude=None):
-        """A dictionary of settings, properties, etc. to save along with data.
+        """Return a dict of instrument properties to save alongside data.
 
-        This returns the value of each property specified in the arguments or
-        in `self.metadata_property_names`.
-        
-        Arguments:
-        property_names : list of strings, optional
-            A list specifying the names of properties (of this object) to be
-            retrieved and returned in the dictionary.
-        include_default_names : boolean, optional (default True)
-            If True (the default), include the default metadata along with the
-            specified names.  This means that get_metadata can be used with no
-            arguments to retrieve the default metadata.
-        exclude : list of strings, optional
-            A list of properties to exclude (primarily useful when you want to
-            remove some of the default entries).  Nothing is excluded by 
-            default.
+        Reads each property named in ``property_names`` and (optionally) in
+        ``self.metadata_property_names``, returning their current values.
+
+        Args:
+            property_names: Extra property names to include beyond the class
+                defaults.
+            include_default_names: If True (default), merge ``property_names``
+                with ``self.metadata_property_names``. Set to False to use only
+                the explicitly supplied names.
+            exclude: Property names to omit from the result. Useful for
+                suppressing specific entries from the class defaults.
+
+        Returns:
+            dict: Mapping of property name → current value.
         """
         # Convert everything to lists to:
         # * ensure we don't modify the arguments (it copies list arguments)
@@ -162,17 +206,18 @@ class Instrument(ShowGUIMixin):
     metadata = property(get_metadata)
 
     def bundle_metadata(self, data, enable=True, **kwargs):
-        """Add metadata to a dataset, returning an ArrayWithAttrs.
-        
-        Arguments:
-        data : np.ndarray
-            The data with which to bundle the metadata
-        enable : boolean (optional, default to True)
-            Set this argument to False to do nothing, i.e. just return data.
-        **kwargs
-            Addditional arguments are passed to get_metadata (for example, you 
-            can specify a list of `property_names` to add to the default
-            metadata, or a list of names to exclude.
+        """Attach instrument metadata to an array, returning an ArrayWithAttrs.
+
+        Args:
+            data: The numpy array to annotate.
+            enable: If False, return ``data`` unchanged (handy for toggling
+                metadata collection without changing call sites).
+            **kwargs: Forwarded to ``get_metadata`` — use ``property_names`` or
+                ``exclude`` to customise which properties are included.
+
+        Returns:
+            ArrayWithAttrs | np.ndarray: Annotated array when ``enable`` is
+            True, otherwise the original ``data`` unchanged.
         """
         if enable:
             return ArrayWithAttrs(data, attrs=self.get_metadata(**kwargs))
@@ -180,7 +225,15 @@ class Instrument(ShowGUIMixin):
             return data
 
     def open_config_file(self):
-        """Open the config file for the current spectrometer and return it, creating if it's not there"""
+        """Open (or create) the persistent HDF5 config file for this instrument.
+
+        The file is stored next to the instrument's source module and named
+        ``<ClassName>_config.h5``. The same file object is returned on
+        subsequent calls.
+
+        Returns:
+            pyopenlab.datafile.DataFile: The config file, opened in append mode.
+        """
         if not hasattr(self, '_config_file'):
             try:
                 f = inspect.getfile(self.__class__)  # fails in IPython
@@ -196,11 +249,14 @@ class Instrument(ShowGUIMixin):
     config_file = property(open_config_file)
 
     def update_config(self, name, data, attrs=None):
-        """Update the configuration file for this spectrometer.
-        
-        A file is created in the pyopenlab directory that holds configuration
-        data for the spectrometer, including reference/background.  This
-        function allows values to be stored in that file."""
+        """Write or overwrite a named dataset in this instrument's config file.
+
+        Args:
+            name: Dataset name within the config file.
+            data: Value to store (anything accepted by ``h5py`` as dataset data).
+            attrs: Optional dict of HDF5 metadata attributes to attach to the
+                dataset.
+        """
         f = self.config_file
         if name in f.keys():
             try:
@@ -213,14 +269,17 @@ class Instrument(ShowGUIMixin):
 
     @contextmanager
     def temporarily_set(self, **kwargs):
-        """Utility function for temporarily setting instrument parameters
+        """Context manager that temporarily overrides instrument properties.
 
-        :Example:
-        >>> with camera.temporarily_set(exposure=1, backgrounded=False):
-        >>>     image = camera.get_image()
+        Saves the current values, applies the overrides on entry, and restores
+        the originals on exit (even if an exception is raised).
 
-        :param kwargs: dict
-        :return:
+        Args:
+            **kwargs: Property name → temporary value pairs.
+
+        Example:
+            >>> with camera.temporarily_set(exposure=1, backgrounded=False):
+            ...     image = camera.get_image()
         """
         try:
             original_settings = dict()
