@@ -1,11 +1,9 @@
-﻿"""
-pyopenlab Data Files
-================
+﻿"""HDF5 data file management for pyopenlab.
 
-This module provides the DataFile class, a subclass of h5py's File class with a few extended functions.  The Groups returned by a DataFile are subclassed h5py Groups, again to facilitate extended functions.
-
-
-:author: Richard Bowman
+Provides :class:`DataFile` and :class:`Group`, subclasses of the h5py
+equivalents that add auto-incrementing dataset names, creation timestamps,
+metadata helpers, and a module-level "current file" registry used by
+instruments to route data without explicit file handles.
 """
 
 __author__ = "rwb27"
@@ -31,7 +29,15 @@ import pyopenlab.utils.version
 
 
 def attributes_from_dict(group_or_dataset, dict_of_attributes):
-    """Update the metadata of an HDF5 object with a dictionary."""
+    """Write a dictionary of values as HDF5 attributes on a group or dataset.
+
+    Values that cannot be stored natively in HDF5 are coerced to strings with
+    a warning printed to stdout.
+
+    Args:
+        group_or_dataset: The h5py Group or Dataset to annotate.
+        dict_of_attributes: Attribute name → value mapping to write.
+    """
     attrs = group_or_dataset.attrs
     for key, value in list(dict_of_attributes.items()):
         if value is not None:
@@ -46,14 +52,31 @@ def attributes_from_dict(group_or_dataset, dict_of_attributes):
 
 
 def h5_item_number(group_or_dataset):
-    """Returns the number at the end of a group/dataset name, or None."""
+    """Return the trailing integer in an HDF5 item's name, or None.
+
+    Args:
+        group_or_dataset: An h5py Group or Dataset.
+
+    Returns:
+        int | None: The number at the end of the name, or None if absent.
+    """
     m = re.search(r"(\d+)$", group_or_dataset.name)  # match numbers at the end of the name
     return int(m.groups()[0]) if m else None
 
 
 #TODO: merge with the current_datafile system
 def get_data_dir(destination='local', rel_path='Desktop/Data'):
-    """Creates a path to a specified data storage location."""
+    """Return (and create if needed) a data storage directory.
+
+    Args:
+        destination: ``'local'`` (default) resolves relative to the home
+            directory. ``'server'`` uses ``R:`` on Windows or
+            ``/Volumes/NPHome`` on macOS.
+        rel_path: Path relative to the destination root.
+
+    Returns:
+        str: Absolute path to the directory.
+    """
     if destination == 'local':
         home_dir = os.path.expanduser('~')
         path = os.path.join(home_dir, rel_path)
@@ -69,7 +92,18 @@ def get_data_dir(destination='local', rel_path='Desktop/Data'):
 
 
 def get_filename(data_dir, basename='data', fformat='.h5'):
-    """Creates a dated directory path and returns a file name to open a file there."""
+    """Return a dated file path inside ``data_dir``, creating directories as needed.
+
+    The path structure is ``data_dir/<year>/<MM. Mon>/<DD>/<basename><fformat>``.
+
+    Args:
+        data_dir: Root directory under which to create the dated subdirectory.
+        basename: Stem of the filename (default ``'data'``).
+        fformat: File extension including the dot (default ``'.h5'``).
+
+    Returns:
+        str: Full file path.
+    """
     date = datetime.datetime.now()
     output_dir = os.path.join(data_dir, str(date.year),
                               '{:02d}'.format(date.month) + '. ' + date.strftime('%b'),
@@ -81,7 +115,16 @@ def get_filename(data_dir, basename='data', fformat='.h5'):
 
 
 def get_unique_filename(data_dir, basename='data', fformat='.h5'):
-    """Creates a dated directory path and returns a unique file name to open a file there."""
+    """Return a unique dated file path, incrementing a counter until the name is free.
+
+    Args:
+        data_dir: Root directory under which to create the dated subdirectory.
+        basename: Stem of the filename (default ``'data'``).
+        fformat: File extension including the dot (default ``'.h5'``).
+
+    Returns:
+        str: Full file path that does not yet exist on disk.
+    """
     date = datetime.datetime.now()
     output_dir = os.path.join(data_dir, str(date.year),
                               '{:02d}'.format(date.month) + '. ' + date.strftime('%b'),
@@ -101,7 +144,20 @@ def get_file(destination='local',
              basename='data',
              fformat='.h5',
              set_current=True):
-    """Convenience function to quickly get a current DataFile object."""
+    """Open or create a DataFile at a standard dated path and return it.
+
+    Args:
+        destination: Passed to :func:`get_data_dir` (``'local'`` or
+            ``'server'``).
+        rel_path: Relative path within the destination root.
+        basename: Stem of the filename (default ``'data'``).
+        fformat: File extension including the dot (default ``'.h5'``).
+        set_current: If True (default), register the file as the current
+            datafile.
+
+    Returns:
+        DataFile: The opened file.
+    """
     data_dir = get_data_dir(destination, rel_path)
     fname = get_filename(data_dir, basename, fformat)
     f = DataFile(fname)
@@ -111,7 +167,12 @@ def get_file(destination='local',
 
 
 def transpose_datafile(data_set):
-    ''' A function that opens a datafile, transposes and resaves'''
+    """Transpose a dataset in-place, replacing it with its transposed copy.
+
+    Args:
+        data_set: The h5py Dataset to transpose. It is deleted and re-created
+            under the same name within its parent group.
+    """
     parent = data_set.parent
     transposed_datafile = np.copy(data_set[...].T)
     file_name = data_set.name.split('/')[-1]
@@ -129,13 +190,32 @@ def wrap_h5py_item(item):
 
 
 def ensure_str(str_or_bytes):
+    """Decode bytes to str, or coerce any other type with ``str()``.
+
+    Args:
+        str_or_bytes: Value to convert.
+
+    Returns:
+        str: String representation.
+    """
     if type(str_or_bytes) in (bytes, np.bytes_):
         return str_or_bytes.decode()
     return str(str_or_bytes)
 
 
 def sort_by_timestamp(hdf5_group):
-    """a quick function for sorting hdf5 groups (or files or dictionarys...) by timestamp """
+    """Return items in an HDF5 group sorted by their ``creation_timestamp`` attribute.
+
+    Falls back to alphabetical ordering by numeric suffix if timestamps are absent.
+
+    Args:
+        hdf5_group: An h5py Group (or Group-like mapping) whose values carry a
+            ``creation_timestamp`` attribute.
+
+    Returns:
+        list[tuple[str, h5py.Group | h5py.Dataset]]: ``(key, item)`` pairs in
+        chronological order.
+    """
     keys = list(hdf5_group.keys())
     try:
         time_stamps = []
@@ -158,9 +238,11 @@ def sort_by_timestamp(hdf5_group):
 
 
 class Group(h5py.Group, ShowGUIMixin):
-    """HDF5 Group, a collection of datasets and subgroups.
+    """An h5py Group extended for scientific data storage.
 
-    pyopenlab "wraps" h5py's Group objects to provide extra functions.
+    Adds auto-incrementing dataset and group names, creation timestamps,
+    metadata attribute helpers, and resizable dataset support. All group
+    lookups return ``Group`` instances rather than bare ``h5py.Group`` objects.
     """
 
     def __getitem__(self, key):
@@ -173,9 +255,16 @@ class Group(h5py.Group, ShowGUIMixin):
         return wrap_h5py_item(super(Group, self).parent)
 
     def find_unique_name(self, name):
-        """Find a unique name for a subgroup or dataset in this group.
+        """Return a unique name for a new child of this group.
 
-        :param name: If this contains a %d placeholder, it will be replaced with the lowest integer such that the new name is unique.  If no %d is included, _%d will be appended to the name if the name already exists in this group.
+        Args:
+            name: Desired name. If it contains ``%d``, that placeholder is
+                replaced with the lowest integer that makes the name unique.
+                If it does not contain ``%d`` and the name already exists,
+                ``_%d`` is appended before applying the same logic.
+
+        Returns:
+            str: A name not currently present in this group.
         """
         if "%d" not in name and name not in list(self.keys()):
             return name  # simplest case: it's a unique name
@@ -188,13 +277,16 @@ class Group(h5py.Group, ShowGUIMixin):
             return (name % n)
 
     def numbered_items(self, name):
-        """Get a list of datasets/groups that have a given name + number,
-        sorted by the number appended to the end.
+        """Return children whose names start with ``name`` followed by a number.
 
-        This function is intended to return items saved with
-        auto_increment=True, in the order they were added (by default they
-        come in alphabetical order, so 10 comes before 2).  `name` is the
-        name passed in without the _0 suffix.
+        Results are sorted numerically rather than lexicographically, so
+        ``item_10`` comes after ``item_9``.
+
+        Args:
+            name: Common name prefix to match (without the trailing number).
+
+        Returns:
+            list: Matching groups/datasets in ascending numeric order.
         """
         items = [
             wrap_h5py_item(v)
@@ -204,10 +296,15 @@ class Group(h5py.Group, ShowGUIMixin):
         return sorted(items, key=h5_item_number)
 
     def count_numbered_items(self, name):
-        """Count the number of items that would be returned by numbered_items
-        
-        If all you need to do is count how many items match a name, this is
-        a faster way to do it than len(group.numbered_items("name")).
+        """Count children whose names start with ``name`` followed by a number.
+
+        Faster than ``len(numbered_items(name))`` as it avoids wrapping items.
+
+        Args:
+            name: Common name prefix to match.
+
+        Returns:
+            int | None: The count, or None if no matching items exist.
         """
         n = 0
         for k in list(self.keys()):
@@ -216,17 +313,19 @@ class Group(h5py.Group, ShowGUIMixin):
                 return n
 
     def create_group(self, name, attrs=None, auto_increment=True, timestamp=True):
-        """Create a new group, ensuring we don't overwrite old ones.
+        """Create a subgroup, using auto-incrementing naming to avoid overwrites.
 
-        A new group is created within this group, with the specified name.
-        If auto_increment is True (the default) then a number is used to ensure
-        the name is unique.
+        Args:
+            name: Name for the new group. May contain a ``%d`` placeholder as
+                accepted by :meth:`find_unique_name`.
+            attrs: Optional dict of HDF5 metadata attributes to set on the group.
+            auto_increment: If True (default), ensure the name is unique via
+                :meth:`find_unique_name`. Set to False to raise an error if the
+                name already exists.
+            timestamp: If True (default), write a ``creation_timestamp`` attribute.
 
-        :param name: The name of the new group.  May contain a %d placeholder
-        as described in find_unique_name()
-        :param auto_increment: True by default, which invokes the unique name
-        behaviour described in find_unique_name.  Set this to False to cause
-        an error if the desired name exists already.
+        Returns:
+            Group: The newly created group.
         """
         if auto_increment and name is not None:
             name = self.find_unique_name(name)  #name is None if creating via the dict interface
@@ -252,18 +351,28 @@ class Group(h5py.Group, ShowGUIMixin):
                        autoflush=True,
                        *args,
                        **kwargs):
-        """Create a new dataset, optionally with an auto-incrementing name.
+        """Create a dataset, using auto-incrementing naming to avoid overwrites.
 
-        :param name: the name of the new dataset
-        :param auto_increment: if True (default), add a number to the dataset name to
-            ensure it's unique.  To force the addition of a number, append %d to the dataset name.
-        :param shape: a tuple describing the dimensions of the data (only needed if data is not specified)
-        :param dtype: data type to be saved (if not specifying data)
-        :param data: a numpy array or equivalent, to be saved - this specifies dtype and shape.
-        :param attrs: a dictionary of metadata to be saved with the data
-        :param timestamp: if True (default), we save a "creation_timestamp" attribute with the current time.
+        If ``data`` is an :class:`~pyopenlab.utils.array_with_attrs.ArrayWithAttrs`
+        its ``.attrs`` are merged into the dataset attributes automatically.
 
-        Further arguments are passed to h5py.Group.create_dataset.
+        Args:
+            name: Name for the new dataset. May contain a ``%d`` placeholder.
+            auto_increment: If True (default), ensure the name is unique via
+                :meth:`find_unique_name`.
+            shape: Dataset shape tuple (only needed when ``data`` is not provided).
+            dtype: Data type (only needed when ``data`` is not provided).
+            data: Array to store. Determines ``shape`` and ``dtype`` if given.
+            attrs: Optional dict of HDF5 metadata attributes.
+            timestamp: If True (default), write a ``creation_timestamp`` attribute.
+            autoflush: If True (default), flush the file after writing.
+            *args: Extra positional arguments forwarded to
+                ``h5py.Group.create_dataset``.
+            **kwargs: Extra keyword arguments forwarded to
+                ``h5py.Group.create_dataset``.
+
+        Returns:
+            h5py.Dataset: The newly created dataset.
         """
         if auto_increment and name is not None:  #name is None if we are creating via the dict interface
             name = self.find_unique_name(name)
@@ -290,7 +399,22 @@ class Group(h5py.Group, ShowGUIMixin):
                         timestamp=True,
                         *args,
                         **kwargs):
-        """Require a new dataset, optionally with an auto-incrementing name."""
+        """Return an existing dataset by name, or create it if absent.
+
+        Args:
+            name: Dataset name.
+            auto_increment: Passed to :meth:`create_dataset` if creating.
+            shape: Dataset shape (used when creating).
+            dtype: Data type (used when creating).
+            data: Array data (used when creating).
+            attrs: Metadata attributes (used when creating).
+            timestamp: Whether to write a creation timestamp (used when creating).
+            *args: Forwarded to :meth:`create_dataset`.
+            **kwargs: Forwarded to :meth:`create_dataset`.
+
+        Returns:
+            h5py.Dataset: Existing or newly created dataset.
+        """
         if name not in self:
             dset = self.create_dataset(name, auto_increment, shape, dtype, data, attrs, timestamp,
                                        *args, **kwargs)
@@ -308,7 +432,25 @@ class Group(h5py.Group, ShowGUIMixin):
                                  timestamp=True,
                                  *args,
                                  **kwargs):
-        """See create_dataset documentation"""
+        """Create a resizable dataset that can be extended along its first axis.
+
+        Convenience wrapper around :meth:`create_dataset` with ``chunks=True``
+        and a ``maxshape`` that allows unlimited growth along axis 0.
+
+        Args:
+            name: Dataset name.
+            shape: Initial shape (default ``(0,)``).
+            maxshape: Maximum shape (default ``(None,)`` — unlimited on axis 0).
+            auto_increment: If True (default), ensure the name is unique.
+            dtype: Data type.
+            attrs: Optional metadata attributes.
+            timestamp: If True (default), write a creation timestamp.
+            *args: Forwarded to :meth:`create_dataset`.
+            **kwargs: Forwarded to :meth:`create_dataset`.
+
+        Returns:
+            h5py.Dataset: The newly created resizable dataset.
+        """
         return self.create_dataset(name,
                                    auto_increment,
                                    shape,
@@ -378,15 +520,21 @@ class Group(h5py.Group, ShowGUIMixin):
         return self.name.rsplit("/", 1)[-1]
 
     def timestamp_sorted_items(self):
-        """Return a sorted list of items """
+        """Return items in this group sorted by their creation timestamp.
+
+        Returns:
+            list[tuple[str, h5py.Group | h5py.Dataset]]: ``(key, item)`` pairs
+            in chronological order.
+        """
         return sort_by_timestamp(self)
 
 
 class DataFile(Group):
-    """Represent an HDF5 file object.
+    """An HDF5 file represented as its root Group.
 
-    For the moment, this just represents the root group, as it's far easier!  May
-    change in the future...
+    Inherits all :class:`Group` functionality (auto-incrementing names,
+    metadata helpers, etc.) and adds file-level operations: open/close,
+    "current file" registration, and optional version-info recording.
     """
 
     def __init__(self,
@@ -398,20 +546,19 @@ class DataFile(Group):
                  **kwargs):
         """Open or create an HDF5 file.
 
-        :param name: The filename/path of the HDF5 file to open or create, or an h5py File object
-        :param mode: Mode to open the file in, one of:
-            r
-                Read-only, file must exist
-            r+
-                Read/write, file must exist
-            w
-                Create the file, deleting it if it exists
-            w-
-                Create the file, fail with an error if it exists
-            a
-                Open read/write if the file exists, otherwise create it.
-        :param save_version_info: If True (default), save a string attribute at top-level
-        with information about the current module and system.
+        Args:
+            name: File path, or an already-open ``h5py.Group`` / ``h5py.File``
+                to wrap directly.
+            mode: HDF5 open mode — ``'r'`` (read-only), ``'r+'`` (read/write,
+                must exist), ``'w'`` (create, truncate if exists), ``'w-'``
+                (create, fail if exists), ``'a'`` (read/write or create;
+                default).
+            save_version_info: If True, record a version-info string as a
+                top-level attribute on the file.
+            update_current_group: Stored on the instance; not used internally
+                by DataFile itself.
+            *args: Extra positional arguments forwarded to ``h5py.File``.
+            **kwargs: Extra keyword arguments forwarded to ``h5py.File``.
         """
         if isinstance(name, h5py.Group):
             f = name  #if it's already an open file, just use it
@@ -444,9 +591,11 @@ class DataFile(Group):
         self.update_current_group = update_current_group
 
     def flush(self):
+        """Flush pending writes to disk."""
         self.file.flush()
 
     def close(self):
+        """Close the underlying HDF5 file."""
         self.file.close()
 
     def make_current(self):
@@ -469,20 +618,22 @@ _current_datafile = None
 
 
 def current(create_if_none=True, create_if_closed=True, mode='a', working_directory=None):
-    """Return the current data file, creating one if it does not exist.
+    """Return the current datafile, creating one via a Qt dialog if necessary.
 
-    Arguments:
-        create_if_none : bool (optional, default True)
-            Attempt to pop up a file dialog and create a new file if necessary.
-            The default is True, i.e. do this if there's no current file.
-        create_if_closed: bool (optional, default True)
-            If the current data file is closed, create a new one.
-        mode : str (optional, default 'a')
-            The HDF5 mode to use for the file.  Sensible modes would be:
-                'a': create if it doesn't exist, or append to an existing file
-                'r': read-only
-                'w-': read-write, delete the file if it already exists
-                'r+': read-write, file must exist already.
+    Args:
+        create_if_none: If True (default), prompt the user when no current
+            file exists.
+        create_if_closed: If True (default), treat a closed file as absent
+            and prompt for a new one.
+        mode: HDF5 open mode for the new file (default ``'a'``).
+        working_directory: Directory shown in the file dialog (defaults to
+            ``os.getcwd()``).
+
+    Returns:
+        DataFile: The current datafile.
+
+    Raises:
+        IOError: If no current file exists and one could not be created.
     """
     # TODO: if file previously used but closed don't ask to recreate but use config to open
     global _current_datafile
@@ -532,7 +683,16 @@ def current(create_if_none=True, create_if_closed=True, mode='a', working_direct
 
 
 def set_current(datafile, **kwargs):
-    """Set the current datafile, specified by either an HDF5 file object or a filepath"""
+    """Set the module-level current datafile.
+
+    Args:
+        datafile: A :class:`DataFile`, an ``h5py.Group``, or a file path string.
+        **kwargs: Extra keyword arguments forwarded to :class:`DataFile` when
+            opening from a path.
+
+    Returns:
+        DataFile: The newly registered current datafile.
+    """
     global _current_datafile
     if isinstance(datafile, DataFile):
         _current_datafile = datafile
@@ -547,7 +707,13 @@ def set_current(datafile, **kwargs):
 
 
 def set_temporary_current_datafile():
-    """Create a temporary datafile, for testing purposes."""
+    """Create an in-memory HDF5 file and register it as the current datafile.
+
+    Intended for testing. Data is not persisted to disk.
+
+    Returns:
+        DataFile: The temporary in-memory datafile.
+    """
     pyopenlab.log("WARNING: using a temporary file")
     print("WARNING: using a file in memory as the current datafile.  DATA WILL NOT BE SAVED.")
     df = h5py.File("temporary_file.h5", driver='core', backing_store=False)
@@ -568,8 +734,16 @@ _use_current_group = False
 
 
 def set_current_group(selected_object):
-    '''Grabs the currently selected group, using the parent group if a dataset is selected.
-    This only works if the datafile the group resides in is the current datafile'''
+    """Set the module-level current group used by instruments for data routing.
+
+    If ``selected_object`` is a dataset, its parent group is used. Falls back
+    to the root of the current datafile if the object has no parent.
+
+    Args:
+        selected_object: A :class:`Group`, ``h5py.Group``, dataset, or
+            :class:`~pyopenlab.utils.array_with_attrs.DummyHDF5Group` from
+            which the target group is extracted.
+    """
     global _current_group
     try:
         if type(selected_object) == DummyHDF5Group:
@@ -585,7 +759,17 @@ def set_current_group(selected_object):
 
 
 def open_file(set_current_bool=True, mode='a'):
-    """Open an existing data file"""
+    """Open an existing HDF5 file via a Qt file dialog.
+
+    Args:
+        set_current_bool: If True (default), register the opened file as the
+            current datafile.
+        mode: HDF5 open mode (default ``'a'``).
+
+    Returns:
+        DataFile | None: The opened file, or the existing current datafile if
+        the dialog was cancelled.
+    """
     global _current_datafile
     try:  # we try to pop up a Qt file dialog
         import pyopenlab.utils.gui
@@ -616,7 +800,17 @@ def open_file(set_current_bool=True, mode='a'):
 
 
 def create_file(set_current_bool=False, mode='a'):
-    """Create a data file"""
+    """Create a new HDF5 file via a Qt file dialog.
+
+    Args:
+        set_current_bool: If True, register the new file as the current
+            datafile (default False).
+        mode: HDF5 open mode (default ``'a'``).
+
+    Returns:
+        DataFile | None: The created file, or the existing current datafile if
+        the dialog was cancelled.
+    """
     global _current_datafile
     try:  # we try to pop up a Qt file dialog
         import pyopenlab.utils.gui
