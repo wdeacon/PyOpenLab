@@ -12,7 +12,6 @@ import datetime
 import os
 import os.path
 import re
-import sys
 
 import h5py
 
@@ -65,27 +64,16 @@ def h5_item_number(group_or_dataset):
 
 
 #TODO: merge with the current_datafile system
-def get_data_dir(destination='local', rel_path='Desktop/Data'):
-    """Return (and create if needed) a data storage directory.
+def get_data_dir(rel_path='Desktop/Data'):
+    """Return (and create if needed) a data storage directory under the home folder.
 
     Args:
-        destination: ``'local'`` (default) resolves relative to the home
-            directory. ``'server'`` uses ``R:`` on Windows or
-            ``/Volumes/NPHome`` on macOS.
-        rel_path: Path relative to the destination root.
+        rel_path: Path relative to the user's home directory.
 
     Returns:
         str: Absolute path to the directory.
     """
-    if destination == 'local':
-        home_dir = os.path.expanduser('~')
-        path = os.path.join(home_dir, rel_path)
-    elif destination == 'server':
-        if sys.platform == 'windows':
-            network_dir = 'R:'
-        elif sys.platform == 'darwin':
-            network_dir = '/Volumes/NPHome'
-        path = os.path.join(network_dir, rel_path)
+    path = os.path.join(os.path.expanduser('~'), rel_path)
     if not os.path.exists(path):
         os.makedirs(path)
     return path
@@ -139,17 +127,11 @@ def get_unique_filename(data_dir, basename='data', fformat='.h5'):
     return file_path
 
 
-def get_file(destination='local',
-             rel_path='Desktop/Data',
-             basename='data',
-             fformat='.h5',
-             set_current=True):
+def get_file(rel_path='Desktop/Data', basename='data', fformat='.h5', set_current=True):
     """Open or create a DataFile at a standard dated path and return it.
 
     Args:
-        destination: Passed to :func:`get_data_dir` (``'local'`` or
-            ``'server'``).
-        rel_path: Relative path within the destination root.
+        rel_path: Path relative to the user's home directory.
         basename: Stem of the filename (default ``'data'``).
         fformat: File extension including the dot (default ``'.h5'``).
         set_current: If True (default), register the file as the current
@@ -158,7 +140,7 @@ def get_file(destination='local',
     Returns:
         DataFile: The opened file.
     """
-    data_dir = get_data_dir(destination, rel_path)
+    data_dir = get_data_dir(rel_path)
     fname = get_filename(data_dir, basename, fformat)
     f = DataFile(fname)
     if set_current:
