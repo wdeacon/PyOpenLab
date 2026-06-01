@@ -1,6 +1,4 @@
-﻿# -*- coding: utf-8 -*-
-
-__author__ = 'alansanders'
+﻿"""VISA instrument communication for pyopenlab."""
 
 from functools import partial
 
@@ -12,18 +10,30 @@ from pyopenlab.instrument.message_bus_instrument import queried_property
 
 
 class VisaInstrument(MessageBusInstrument):
-    """
-    An instrument primarily using VISA communications
+    """Base class for instruments communicating over VISA (GPIB, USB, TCP/IP, etc.).
+
+    Wraps a pyvisa Resource with the pyopenlab MessageBusInstrument interface
+    and thread-safe locking. Pass the VISA address string to the constructor.
+
+    Attributes:
+        idn: Instrument identification string, queried via ``*IDN?``.
     """
 
     def __init__(self, address, settings=None):
-        """
-        :param address: VISA address as a string
-        :param settings: dictionary of instrument settings, including:
-            'read_termination', 'write_termination', 'timeout' (0 for inf),
-            'send_end' (not recommended to remove end of line character),
-            delay (time between write and read during query)
-        :type object
+        """Open a VISA resource.
+
+        Args:
+            address: VISA resource string (e.g. ``'GPIB0::7::INSTR'`` or
+                ``'USB0::0x1234::0x5678::SN001::INSTR'``).
+            settings: Optional dict of pyvisa resource settings —
+                ``read_termination``, ``write_termination``, ``timeout``
+                (0 for infinite), ``send_end``, ``delay`` (seconds between
+                write and read in a query).
+
+        Raises:
+            AssertionError: If ``address`` is not among available VISA
+                resources (available resources are printed and execution
+                continues).
         """
         super(VisaInstrument, self).__init__()
         rm = visa.ResourceManager()
@@ -38,24 +48,53 @@ class VisaInstrument(MessageBusInstrument):
         self._settings = settings
 
     def __del__(self):
+        """Close the VISA resource on garbage collection."""
         try:
             self.instr.close()
         except Exception as e:
-            print("The serial port didn't close cleanly:", e)
+            print("The VISA resource didn't close cleanly:", e)
 
     def _write(self, *args, **kwargs):
+        """Write a message to the instrument.
+
+        Args:
+            *args: Forwarded to ``pyvisa.Resource.write``.
+            **kwargs: Forwarded to ``pyvisa.Resource.write``.
+
+        Returns:
+            tuple: ``(bytes_written, status_code)`` as returned by pyvisa.
+        """
         with self.communications_lock:
             return self.instr.write(*args, **kwargs)
 
     def read(self, *args, **kwargs):
+        """Read a response from the instrument.
+
+        Args:
+            *args: Forwarded to ``pyvisa.Resource.read``.
+            **kwargs: Forwarded to ``pyvisa.Resource.read``.
+
+        Returns:
+            str: The response string.
+        """
         with self.communications_lock:
             return self.instr.read(*args, **kwargs)
 
     def query(self, *args, **kwargs):
+        """Write a message and read the response in one call.
+
+        Args:
+            *args: Forwarded to ``pyvisa.Resource.query``.
+            **kwargs: Forwarded to ``pyvisa.Resource.query``.
+
+        Returns:
+            str: The response string.
+        """
         with self.communications_lock:
             return self.instr.query(*args, **kwargs)
 
     def clear_read_buffer(self):
+        """Drain the instrument's read buffer by reading until an exception occurs."""
         empty_buffer = False
         while not empty_buffer:
             try:
