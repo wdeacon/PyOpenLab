@@ -112,7 +112,7 @@ class Instrument(ShowGUIMixin):
 
     @classmethod
     def create_data_group(cls, name, *args, **kwargs):
-        """Create a uniquely-named HDF5 group to store one reading.
+        """Create a uniquely-named HDF5 group.
 
         Args:
             name: Noun describing the reading (e.g. ``"image"``, ``"spectrum"``).
@@ -133,7 +133,7 @@ class Instrument(ShowGUIMixin):
 
     @classmethod
     def create_dataset(cls, name, flush=True, *args, **kwargs):
-        """Create a uniquely-named HDF5 dataset to store one reading.
+        """Create a uniquely-named HDF5 dataset.
 
         Args:
             name: Noun describing the reading (e.g. ``"image"``, ``"spectrum"``).
