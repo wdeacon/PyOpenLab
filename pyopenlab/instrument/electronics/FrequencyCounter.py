@@ -1,9 +1,5 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Fri Sep 22 15:27:17 2017
-
-@author: William Deacon (fo263)
-"""
+"""Serial driver and live-view GUI for the TTi F390 frequency counter."""
 from collections import deque
 import threading
 import time
@@ -20,6 +16,14 @@ from pyopenlab.utils.notified_property import NotifiedProperty
 
 
 class Frequency_counter_F390(SerialInstrument):
+    """Serial driver for the Thurlby-Thandar (TTi) F390 frequency counter.
+
+    Note:
+        :meth:`get_function` calls ``self.function_dict(...)`` (a dict invoked
+        like a function), which raises ``TypeError``; it also reads
+        ``self._function`` before it is set. Pre-existing bug, left for a later
+        code pass.
+    """
     port_settings = dict(baudrate=115200,
                          bytesize=serial.EIGHTBITS,
                          parity=serial.PARITY_NONE,
@@ -29,6 +33,12 @@ class Frequency_counter_F390(SerialInstrument):
     update_data_signal = QtCore.Signal(np.ndarray)
 
     def __init__(self, port=None, integration_time=1):
+        """Open the serial port and configure the counter front end.
+
+        Args:
+            port: Serial port name. ``None`` triggers interactive selection.
+            integration_time: Initial gate/integration time in seconds.
+        """
         SerialInstrument.__init__(self, port=port)
         self.live_window = 100
         self._live_view = False
@@ -51,28 +61,26 @@ class Frequency_counter_F390(SerialInstrument):
         'D': 'C Input Period'}
 
     def get_function(self):
-        '''A property to set the required function of the frequency counter
-        Args:
-            f: the a string value of the function shown in the table below and in self.function_dict
-            
-            0 B Input Period
-            1 A Input Period
-            2 A Input Frequency
-            3 B Input Frequency
-            4 Frequency Ratio B:A
-            5 A Input Width High
-            6 A Input Width Low
-            7 A Input Count
-            8 A Input Ratio H:L
-            9 A Input Duty Cycle
-            C C Input Frequency
-            D C Input Period
-        returns:
-            the current function
-            '''
+        """Return the counter's current measurement function (backs ``function``).
+
+        Function codes (keys of :attr:`function_dict`): 0 B-input period, 1
+        A-input period, 2 A-input frequency, 3 B-input frequency, 4 frequency
+        ratio B:A, 5 A-input width high, 6 A-input width low, 7 A-input count, 8
+        A-input ratio H:L, 9 A-input duty cycle, C C-input frequency, D C-input
+        period.
+
+        Returns:
+            The human-readable name of the current function.
+        """
         return self.function_dict(self._function)
 
     def set_function(self, f):
+        """Set the counter's measurement function.
+
+        Args:
+            f: Function code (a key of :attr:`function_dict`, e.g. ``'2'`` for
+                A input frequency).
+        """
         self._function = str(f)
         self.write('F' + str(f))
 
@@ -112,11 +120,16 @@ class Frequency_counter_F390(SerialInstrument):
 #        self.write('STOP')
 
     def get_live_view_window(self):
+        """Return the number of points kept in the live-view window."""
         return self._live_window
 
     def set_live_view_window(self, window_length):
+        """Set the number of points kept in the live-view deque.
+
+        Args:
+            window_length: Maximum number of stored readings.
+        """
         self._live_window = window_length
-        '''Set the number of the stored values in the deque '''
         self.live_deque = deque(maxlen=window_length)
 
     live_window = NotifiedProperty(get_live_view_window, set_live_view_window)
@@ -130,6 +143,12 @@ class Frequency_counter_F390(SerialInstrument):
         return self._int_time
 
     def set_int_time(self, integration_time):
+        """Set the integration time.
+
+        Args:
+            integration_time: One of 0.3, 1, 10 or 100 seconds; other values
+                log a warning and are ignored.
+        """
         self._int_time = integration_time
         try:
             self.write('M' + self.int_times[integration_time])
@@ -139,16 +158,31 @@ class Frequency_counter_F390(SerialInstrument):
     int_time = NotifiedProperty(get_int_time, set_int_time)
 
     def get_qt_ui(self):
+        """Return the full Qt UI (preview plus controls) for the counter.
+
+        Returns:
+            CounterUI: The combined widget.
+        """
         self.ui = CounterUI(self)
         self.display_ui = self.ui.preview_widget
         self.control_ui = self.ui.control_widget
         return self.ui
 
     def get_preview_widget(self):
+        """Return the live-plot preview widget for the counter.
+
+        Returns:
+            CounterPreviewWidget: The preview widget.
+        """
         self.display_ui = CounterPreviewWidget(self)
         return self.display_ui
 
     def get_control_widget(self):
+        """Return the settings control widget for the counter.
+
+        Returns:
+            CounterControlUI: The control widget.
+        """
         self.control_ui = CounterControlUI(self)
         return self.control_ui
 
@@ -192,10 +226,15 @@ class Frequency_counter_F390(SerialInstrument):
 
 
 class CounterPreviewWidget(QtWidgets.QWidget):
-    """A Qt Widget to display the live feed from a camera."""
+    """A Qt widget that live-plots the frequency counter's readings over time."""
     update_data_signal = QtCore.Signal(np.ndarray)
 
     def __init__(self, counter):
+        """Build the live plot bound to a counter.
+
+        Args:
+            counter: The :class:`Frequency_counter_F390` to display.
+        """
         super(CounterPreviewWidget, self).__init__()
 
         #   self.plot_item = pg.pl
@@ -229,10 +268,14 @@ class CounterControlUI(QuickControlBox):
 
 
 class CounterUI(QtWidgets.QWidget):
-    """Generic user interface for a camera."""
+    """Combined preview-and-controls user interface for the frequency counter."""
 
     def __init__(self, counter):
-        #TODO: better checking (e.g. assert camera has color_image, gray_image methods)
+        """Build the combined UI bound to a counter.
+
+        Args:
+            counter: The :class:`Frequency_counter_F390` to display and control.
+        """
         super(CounterUI, self).__init__()
         self.counter = counter
 
