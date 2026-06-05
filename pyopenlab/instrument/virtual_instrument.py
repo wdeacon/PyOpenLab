@@ -1,13 +1,10 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Wed May 31 14:20:06 2017
+"""Run a 32-bit instrument from a 64-bit Python console (and vice versa).
 
-A control mechanism for running a 32-bit instrument from a 64-bit python console.
- It works creating by a pair of "virtual" instruments. One is the speaker element 
- (reciding in the original 64-bit console) and one is the listener (in the created 32-bit console).
- 
-
-@author: Will
+The bridge is a pair of "virtual" instruments that communicate through shared
+memory maps: a *speaker* in the original 64-bit console and a *listener* in a
+spawned 32-bit console. The speaker forwards method calls to the listener, which
+executes them against the real instrument and returns the results.
 """
 import inspect
 import mmap
@@ -20,17 +17,21 @@ from pyopenlab.instrument.message_bus_instrument import MessageBusInstrument
 
 
 class VirtualInstrument_listener(object):
+    """The listening half of the virtual-instrument bridge.
+
+    When subclassed alongside a real instrument, it creates shared memory maps
+    and waits for commands. On receiving one it runs the named method and writes
+    the result back through a second map. Runs in the 32-bit console.
+    """
 
     def __init__(self, memory_size=65536, memory_identifier='VirtualInstMemory'):
-        """
-        A class for creating the listening element of the "virtual" instrument, when subclassed this
-        essentially creates a memory map and waits for commands. Upon receiving a command the instrument
-        will execute the named command and pass back the results via a second map
-        Args:
-            memory_size(int):       The size of the in command memory map -
-                                    100 times this value is used for the out
+        """Create the inbound and outbound shared memory maps.
 
-            memory_identifier(str): The memory str identifier - this is usually set as the "VirtualInstMemory_'classname'"
+        Args:
+            memory_size: Size in bytes of the inbound command map; the outbound
+                map is 100 times larger.
+            memory_identifier: Base name for the memory maps, usually
+                ``"VirtualInstMemory_<classname>"``.
         """
         self.memory_map_in = mmap.mmap(0, memory_size, memory_identifier + 'In')
         self.memory_map_out = mmap.mmap(0, memory_size * 100, memory_identifier + 'Out')
@@ -42,9 +43,11 @@ class VirtualInstrument_listener(object):
         )  # Set the prints options so that the arrays are printed as strings with no shortening
 
     def begin_listening(self):
-        """ Start the listening loop, this is a never ending loop which looks for 
-        commands in the 'In' memory map. The command is run via the 'run_command_str' function.
-        The resulting data is then passed back through the out memory map.
+        """Run the never-ending listen loop.
+
+        Polls the inbound memory map for commands, runs each through
+        :meth:`run_command_str`, and writes any resulting data back through the
+        outbound memory map.
         """
         running = True
         while running:
@@ -76,9 +79,15 @@ class VirtualInstrument_listener(object):
                     self.memory_map_out.write('\n' + self.end_line)
 
     def run_command_str(self, input_str):
-        """
-        Parse and run the passed in command from the input string which can
-        also contain input arguments
+        """Parse and run a command encoded as a string.
+
+        Args:
+            input_str: Command of the form ``"method(name=value, ...)"``.
+                Arguments, if any, must be named.
+
+        Returns:
+            Whatever the named method returns, or ``None`` if the method does
+            not exist on this object.
         """
         command = re.sub(r'\((.*?)\)', '', input_str)
         if hasattr(self, command):
@@ -105,17 +114,21 @@ class VirtualInstrument_listener(object):
 
 
 class VirtualInstrument_speaker(MessageBusInstrument):
+    """The speaking half of the virtual-instrument bridge.
+
+    When subclassed, it exposes read/write methods that pass commands to, and
+    parse data from, the listener instrument over the shared memory maps. Runs
+    in the original 64-bit console.
+    """
 
     def __init__(self, memory_size=65536, memory_identifier='VirtualInstMemory'):
-        """
-        When subclassed creates the speaker half of the virtual instrument.
-        It does this by creating read and write functions pass and parse commands/data to
-        and from the listener instrument
-        Args:
-            memory_size(int):       The size of the in command memory map -
-                                    100 times this value is used for the out
+        """Create the inbound and outbound shared memory maps.
 
-            memory_identifier(str): The memory str identifier - this is usually set as the "VirtualInstMemory_'classname'"
+        Args:
+            memory_size: Size in bytes of the inbound command map; the outbound
+                map is 100 times larger.
+            memory_identifier: Base name for the memory maps, usually
+                ``"VirtualInstMemory_<classname>"``.
         """
         self.end_line = 'THE END\n'
         self.memory_map_in = mmap.mmap(0, memory_size, memory_identifier + 'In')
@@ -127,7 +140,11 @@ class VirtualInstrument_speaker(MessageBusInstrument):
         self.memory_identifier = memory_identifier
 
     def read(self):
-        """Function for reading from the memory map and parsing any data.
+        """Read the outbound memory map and parse any returned data.
+
+        Returns:
+            The parsed data string on success, or ``None`` if nothing was read
+            or the data could not be evaluated.
         """
         self.memory_map_out.seek(0)
         reading = True
@@ -157,8 +174,10 @@ class VirtualInstrument_speaker(MessageBusInstrument):
 
     #     return lines
     def _write(self, command):
-        """
-        Write the command name and arguments to the In memory map
+        """Write a command string to the inbound memory map.
+
+        Args:
+            command: The command (method name and arguments) to send.
         """
         self.memory_map_in.seek(0)
         self.memory_map_in.write(command + '\n')
@@ -166,8 +185,14 @@ class VirtualInstrument_speaker(MessageBusInstrument):
 
 
 def function_builder(command_name):
-    """A function for generating the write functions for intergrating classes with
-    the speaker instrument class.
+    """Build a speaker-side wrapper that forwards a method call to the listener.
+
+    Args:
+        command_name: Name of the method to forward.
+
+    Returns:
+        A function that serialises its arguments, writes the call to the inbound
+        memory map, and returns the listener's parsed reply.
     """
 
     def wrapped_function(*args, **kwargs):
@@ -190,9 +215,16 @@ def function_builder(command_name):
 
 
 def create_speaker_class(original_class):
-    """
-    A function that creates a speaker class by subclassing the original class
-    and replacing any function calls with write commands that pass the functions to the listener
+    """Create a speaker instance for an instrument class.
+
+    Subclasses ``original_class`` and replaces each method with a write command
+    that forwards the call to the listener.
+
+    Args:
+        original_class: The instrument class to wrap.
+
+    Returns:
+        An instance of the generated speaker class.
     """
 
     class original_class_Stripped(original_class):  # copies the class
@@ -218,9 +250,14 @@ def create_speaker_class(original_class):
 
 
 def create_listener_class(original_class):
-    """A function that creates a subclass of the orignal class and the listener class
+    """Create a listener class for an instrument class.
+
     Args:
-        original_class(class):  The instrument class the listener will be a subclass of 
+        original_class: The instrument class the listener will subclass.
+
+    Returns:
+        A new class subclassing both ``original_class`` and
+        :class:`VirtualInstrument_listener`.
     """
 
     class virtual_listener(original_class, VirtualInstrument_listener):
@@ -235,7 +272,14 @@ def create_listener_class(original_class):
 
 
 def create_listener_by_name(module_name, class_name):
-    """A convenceince function for creating the listener class via the name of the module and class
+    """Create a listener class from the names of its module and class.
+
+    Args:
+        module_name: Importable module path containing the instrument class.
+        class_name: Name of the instrument class within that module.
+
+    Returns:
+        The generated listener class.
     """
     exec('from ' + (module_name + " import " + class_name) + ' as ' + class_name)
     exec('virtual_listener=create_listener_class(' + class_name + ')')
@@ -243,13 +287,19 @@ def create_listener_by_name(module_name, class_name):
 
 
 def setup_communication(original_class):
-    """A function that creates both the speaker and the listener class, the speaker is created like a normal class
-    while the listener is created using subprocess to call a 32-bit python console.
+    """Create the paired speaker and listener for an instrument.
+
+    The speaker is created in the current console; the listener is launched in a
+    32-bit Python console via ``subprocess``.
+
     Args:
-        original_class(class):  The instrument you wish to create in the 32bit console
+        original_class: The instrument to create in the 32-bit console.
+
     Returns:
-        speaker_class(class): The instrument used within the 64 bit consle to control the 32 bit instrument
-        listner_console(subprocess.Popen): The subprocess console that the listner instrument exists within
+        tuple: ``(speaker_class, listener_console)`` where ``speaker_class`` is
+        the speaker instance used to control the instrument and
+        ``listener_console`` is the :class:`subprocess.Popen` running the
+        listener.
     """
     speaker_class = create_speaker_class(original_class)
     import subprocess
@@ -260,7 +310,11 @@ def setup_communication(original_class):
 
 # TODO: create an escape loop option for listening
 def inialise_listenser(module_name, class_name):
-    """The functions that is called within the 32bit console to create the listener and begin listening.
+    """Create the listener and start its loop. Called inside the 32-bit console.
+
+    Args:
+        module_name: Importable module path containing the instrument class.
+        class_name: Name of the instrument class within that module.
     """
     #   print 'start'
     listener_class = create_listener_by_name(module_name, class_name)

@@ -1,8 +1,9 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Mon Mar 20 20:43:17 2017
+"""Base serial driver for Thorlabs APT virtual COM port devices.
 
-@author: Will
+Provides :class:`APT_VCP`, which implements the fixed-length binary APT protocol
+shared by Thorlabs motor controllers, flippers and similar hardware, plus
+:func:`detect_APT_VCP_devices` for discovering connected units.
 """
 from collections import deque
 import struct
@@ -15,7 +16,15 @@ import pyopenlab.instrument.serial_instrument as serial_instrument
 
 
 def detect_APT_VCP_devices():
-    """Function to tell you what devices are connected to what comports """
+    """Scan all serial ports for APT devices.
+
+    Tries each known destination address on every COM port and records those
+    that respond.
+
+    Returns:
+        dict: Maps each port name to a dict with ``destination``,
+        ``Serial Number`` and ``Model`` for the device found there.
+    """
     possible_destinations = [0x50, 0x11, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A]
     device_dict = dict()
     for port_name, _, _ in list_ports.comports(
@@ -39,8 +48,11 @@ def detect_APT_VCP_devices():
 
 
 class APT_VCP(serial_instrument.SerialInstrument):
-    """
-    This class handles all the basic communication with APT virtual com ports
+    """Base driver for the APT virtual COM port binary protocol.
+
+    Handles the fixed-length message framing, channel/state encoding and
+    hardware discovery common to Thorlabs APT devices. Device-specific
+    subclasses must implement :meth:`get_status_update` and :meth:`update_status`.
     """
     port_settings = dict(baudrate=115200,
                          bytesize=8,
@@ -94,8 +106,18 @@ class APT_VCP(serial_instrument.SerialInstrument):
                  destination=None,
                  use_si_units=False,
                  stay_alive=False):
-        """
-        Set up the serial port, setting source and destinations, verbosity and hardware info.
+        """Open the serial port and read the device's hardware info.
+
+        Args:
+            port: Serial port name. ``None`` triggers interactive selection by
+                the base ``SerialInstrument``.
+            source: Source address for outgoing messages.
+            destination: Destination address, or a dict mapping channel keys to
+                addresses. Logged as an error if ``None``.
+            use_si_units: Reserved for subclasses that convert device units to
+                SI units.
+            stay_alive: If True, periodically send keep-alive messages so the
+                controller does not assume the PC has crashed.
         """
         serial_instrument.SerialInstrument.__init__(self, port=port)  # this opens the port
         self.source = source
@@ -115,20 +137,46 @@ class APT_VCP(serial_instrument.SerialInstrument):
 
     @staticmethod
     def unpack_binary_mask(value, size=13):
+        """Unpack an integer into a list of booleans, one per bit.
+
+        Args:
+            value: The integer to unpack.
+            size: Number of bits to extract.
+
+        Returns:
+            list[bool]: The bits of ``value``, least-significant first.
+        """
         lst = [bool(value & (1 << size - i - 1)) for i in range(size)]
         lst.reverse()
         return lst
 
     @staticmethod
     def _bit_mask_array(value, bit_mask):
+        """Test ``value`` against each entry of ``bit_mask``.
+
+        Args:
+            value: The integer to test.
+            bit_mask: Iterable of bit masks to AND against ``value``.
+
+        Returns:
+            list[bool]: One boolean per mask, True where the bit is set.
+        """
         final_mask = []
         for mask in bit_mask:
             final_mask += [bool(value & int(mask))]
         return final_mask
 
     def read(self):
-        """Overwrite the read command with a fixed length read, check
-            for additional data stream and error codes"""
+        """Read one APT message, handling extra data streams and error codes.
+
+        Reads the 6-byte header, then any trailing data block, recursing past
+        hardware response/keep-alive messages until a normal reply is reached.
+
+        Returns:
+            dict: The decoded message (ids, source/destination and any
+            ``data``), or ``None`` for an intercepted surprise message whose
+            real reply is handled by the recursive call.
+        """
         header = bytearray(self.ser.read(6))  # read 6 byte header
         msgid, length, dest, source = struct.unpack(
             '<HHBB', header
@@ -199,9 +247,21 @@ class APT_VCP(serial_instrument.SerialInstrument):
             return returned_message
 
     def _write(self, message_id, param1=0x00, param2=0x00, data=None, destination_id=None):
-        """Overwrite the serial write command to combine message_id,
-            two possible parameters (set to 0 if not given)
-            with the source and destinations """
+        """Frame and send an APT message.
+
+        Combines the message id, two parameters (or a data block) and the
+        source/destination addresses into a binary packet. Sends a keep-alive
+        first if the command log is full and ``stay_alive`` is set.
+
+        Args:
+            message_id: APT message id to send.
+            param1: First message parameter (overwritten by data length when
+                ``data`` is given).
+            param2: Second message parameter.
+            data: Optional payload bytes for a long-form message.
+            destination_id: Key into :attr:`destination`; defaults to the first
+                destination.
+        """
         if destination_id is None:
             destination = list(self.destination.values())[0]
         else:
@@ -232,7 +292,20 @@ class APT_VCP(serial_instrument.SerialInstrument):
               data=None,
               destination_id=None,
               blocking=False):
-        """Overwrite the query command to allow the correct passing of message_ids and parameters"""
+        """Send a message and read the reply.
+
+        Args:
+            message_id: APT message id to send.
+            param1: First message parameter.
+            param2: Second message parameter.
+            data: Optional payload bytes.
+            destination_id: Key into :attr:`destination`.
+            blocking: If True, wait (up to :attr:`timeout`) for a reply via
+                :meth:`_waitForReply`; otherwise read once.
+
+        Returns:
+            dict: The decoded reply message.
+        """
         with self.communications_lock:
             self.flush_input_buffer()
             self._write(message_id, param1, param2, data=data, destination_id=destination_id)
@@ -253,13 +326,27 @@ class APT_VCP(serial_instrument.SerialInstrument):
         self.write(0x0223)
 
     def set_channel_state(self, channel_number, new_state, destination_id=None):
-        """Enable or disable a channel"""
+        """Enable or disable a channel.
+
+        Args:
+            channel_number: 1-based channel number.
+            new_state: ``True`` to enable, ``False`` to disable.
+            destination_id: Key into :attr:`destination`.
+        """
         channel_identity = self.channel_number_to_identity[channel_number]
         new_state = self.state_conversion[new_state]
         self.write(0x0210, param1=channel_identity, param2=new_state, destination_id=destination_id)
 
     def get_channel_state(self, channel_number, destination_id=None):
-        """Get the current state of a channel"""
+        """Get the current state of a channel.
+
+        Args:
+            channel_number: 1-based channel number.
+            destination_id: Key into :attr:`destination`.
+
+        Returns:
+            bool: ``True`` if the channel is enabled, ``False`` otherwise.
+        """
         message_dict = self.query(
             0x0211,
             param1=self.channel_number_to_identity[channel_number],
@@ -269,18 +356,39 @@ class APT_VCP(serial_instrument.SerialInstrument):
         return current_state
 
     def disconnect(self, destination_id=None):
-        """Disconnect the controller from the usb bus"""
+        """Disconnect the controller from the USB bus.
+
+        Args:
+            destination_id: Key into :attr:`destination`.
+        """
         self.write(0x002, destination_id=destination_id)
 
     def enable_updates(self, enable_state, update_rate=10, destination_id=None):
-        """Enable or disable hardware updates"""
+        """Enable or disable periodic hardware status updates.
+
+        Args:
+            enable_state: ``True`` to start updates, ``False`` to stop them.
+            update_rate: Update rate (in device units) when enabling.
+            destination_id: Key into :attr:`destination`.
+        """
         if enable_state:
             self.write(0x0011, param1=update_rate, destination_id=destination_id)
         else:
             self.write(0x0012, destination_id=destination_id)
 
     def get_hardware_info(self, destination_id=None):
-        """Manually get a status update"""
+        """Query the device's hardware info and cache key fields.
+
+        Sets :attr:`serial_number`, :attr:`model` and
+        :attr:`number_of_channels` as a side effect.
+
+        Args:
+            destination_id: Key into :attr:`destination`.
+
+        Returns:
+            dict: Serial number, model, hardware/software versions, notes and
+            channel count.
+        """
         message_dict = self.query(0x0005, destination_id=destination_id)
         serialnum, model, hwtype, swversion, notes, hwversion, modstate, nchans = struct.unpack(
             '<I8sHI48s12xHHH', message_dict['data'])
@@ -307,21 +415,34 @@ class APT_VCP(serial_instrument.SerialInstrument):
         return hardware_dict
 
     def get_status_update(self):
-        """This need subclassing and written over as the commands and format
-        varies between devices"""
+        """Request a status update. Must be overridden per device.
+
+        Raises:
+            NotImplementedError: Always, unless overridden by a subclass.
+        """
         raise NotImplementedError
 
-    def update_status(self):
-        """This  command should update device properties from the update message
-            however this has to be defined for every device as the status update format
-            and commands vary,
-            please implement me
-            Args:
-                The returned message from a status update request           (dict)"""
+    def update_status(self, returned_message):
+        """Update device properties from a status update message.
+
+        Must be overridden per device, since the status format and commands
+        vary between models.
+
+        Args:
+            returned_message: The decoded message from a status update request.
+
+        Raises:
+            NotImplementedError: Always, unless overridden by a subclass.
+        """
         raise NotImplementedError
 
     def staying_alive(self, destination_id=None):
-        """Keeps the motor controller from thinking the Pc has crashed """
+        """Send keep-alive messages so the controller knows the PC is up.
+
+        Args:
+            destination_id: Key(s) into :attr:`destination`; defaults to all
+                destinations.
+        """
         if destination_id is None:
             destination_id = list(self.destination.keys())
         else:

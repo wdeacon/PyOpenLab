@@ -53,7 +53,6 @@ import sys
 import threading
 
 import numpy as np
-from past.utils import old_div
 
 from pyopenlab.utils.array_with_attrs import ArrayWithAttrs
 from pyopenlab.utils.log import create_logger
@@ -63,10 +62,14 @@ message_end = 'tcp_termination'.encode()
 
 
 def parse_arrays(value):
-    """Utility function to convert arrays to strings to be sent over TCP
+    """Convert a value (including arrays) to a string for sending over TCP.
 
-    :param value: array to be converted
-    :return:
+    Args:
+        value: The value to serialise. ``ArrayWithAttrs`` and ``ndarray`` are
+            encoded as dicts; anything else is passed through ``repr``.
+
+    Returns:
+        str: The ``repr`` of the serialisable form of ``value``.
     """
     if type(value) == ArrayWithAttrs:
         reply = repr(dict(array=value.tolist(), attrs=value.attrs))
@@ -78,10 +81,15 @@ def parse_arrays(value):
 
 
 def parse_strings(value):
-    """Utility function to convert strings back into arrays
+    """Convert a TCP string back into a value, reconstructing arrays.
 
-    :param value: string containing an array
-    :return:
+    Args:
+        value: A string (or already-decoded dict) produced by
+            :func:`parse_arrays`.
+
+    Returns:
+        The reconstructed value: an ``ArrayWithAttrs``, ``ndarray``, or the
+        original value.
     """
     if not isinstance(value, dict):
         value = ast.literal_eval(value)
@@ -95,11 +103,15 @@ def parse_strings(value):
 
 
 def subselect(string, size=100):
-    """Utility function to create a shortened version of strings for logging
+    """Shorten a string for logging, keeping its head and tail.
 
-    :param string: string to be shortened
-    :param size: maximum size of string allowed
-    :return:
+    Args:
+        string: The string to shorten.
+        size: Maximum length before the middle is elided.
+
+    Returns:
+        The original string if short enough, otherwise its first and last
+        ``size/2`` characters joined by ``" ... "``.
     """
     if len(string) > size:
         return '%s ... %s' % (string[:int(size / 2)], string[-int(size / 2):])
@@ -108,8 +120,16 @@ def subselect(string, size=100):
 
 
 class ServerHandler(socketserver.BaseRequestHandler):
+    """Request handler that maps one TCP message to one instrument action."""
 
     def handle(self):
+        """Read a command, run it against the instrument, and send the reply.
+
+        Reads a complete (``message_end``-terminated) request, dispatches it as
+        an attribute listing, method call, or variable get/set, then serialises
+        the result back to the client. Errors are caught and returned as an
+        ``{'error': ...}`` reply.
+        """
         try:
             raw_data = self.request.recv(BUFFER_SIZE).strip()
             while message_end not in raw_data:
@@ -163,23 +183,25 @@ class ServerHandler(socketserver.BaseRequestHandler):
 
 
 def create_server_class(original_class):
-    """
-    Given an pyopenlab instrument class, returns a class that acts as a TCP server for that instrument.
+    """Build a TCP server class wrapping a PyOpenLab instrument class.
 
-    :param original_class: an pyopenlab instrument class
-    :return: server class
+    Args:
+        original_class: A PyOpenLab instrument class.
+
+    Returns:
+        A ``socketserver.TCPServer`` subclass that owns an instrument instance
+        and serves it over TCP.
     """
 
     class Server(socketserver.TCPServer):
 
         def __init__(self, server_address, *args, **kwargs):
-            """
-            To instantiate the server class, the TCP address needs to be given first, and then the arguments that would
-            be passed normally to the pyopenlab instrument
+            """Create the server and the instrument it serves.
 
-            :param server_address: 2-tuple. IP address and port for the server to listen on
-            :param args: arguments to be passed to the pyopenlab instrument
-            :param kwargs: named arguments for the pyopenlab instrument
+            Args:
+                server_address: ``(ip, port)`` for the server to listen on.
+                *args: Positional arguments forwarded to the instrument.
+                **kwargs: Keyword arguments forwarded to the instrument.
             """
             socketserver.TCPServer.__init__(self, server_address, ServerHandler, True)
             self.instrument = original_class(*args, **kwargs)
@@ -187,12 +209,13 @@ def create_server_class(original_class):
             self.thread = None
 
         def run(self, with_gui=True, backgrounded=False):
-            """
-            Start running the server
+            """Start serving requests.
 
-            :param with_gui: bool. Runs the server in the background and opens the pyopenlab instrument GUI
-            :param backgrounded: bool. Runs the server in the background
-            :return:
+            Args:
+                with_gui: If True, serve in a background thread and open the
+                    instrument GUI.
+                backgrounded: If True, serve in a background thread without a
+                    GUI. Ignored when ``with_gui`` is set.
             """
             if with_gui or backgrounded:
                 if self.thread is not None:
@@ -213,30 +236,36 @@ def create_client_class(original_class,
                         excluded_methods=('get_qt_ui', "get_control_widget", "get_preview_widget"),
                         tcp_attributes=None,
                         excluded_attributes=('ui', '_ShowGUIMixin__gui_instance')):
-    """
-    Given an pyopenlab instrument, returns a class that overrides a series of class methods, so that instead of running
-    those methods, it sends a string over TCP an instrument server of the same type. It is also able to get and set
-    attributes in the specific class instance of the server.
+    """Build a TCP client class for a PyOpenLab instrument class.
 
-    :param original_class: an pyopenlab instrument class
-    :param tcp_methods: an iterable of method names that are to be sent over TCP. By default it is the
-                        original_class.__dict__.keys() excluding magic methods
-    :param excluded_methods: methods you do not want to send over TCP. By default the get_qt_ui isn't sent over TCP,
-            since it doesn't return something that can be sent over TCP (a pointer to an instance local to the server)
-    :param tcp_attributes: attributes you do want to read over TCP.
-    :param excluded_attributes: attributes you do not want to read over TCP, e.g. attributes that are inherently local.
-            Hence, by default, the GUI attributes are not read over TCP.
-    :return: new_class
+    The returned class overrides selected methods so that, instead of running
+    locally, they send a string over TCP to an instrument server of the same
+    type. It can also get and set attributes on the server's instrument
+    instance.
+
+    Args:
+        original_class: A PyOpenLab instrument class.
+        tcp_methods: Iterable of method names to send over TCP. Defaults to
+            ``original_class.__dict__.keys()`` excluding magic methods.
+        excluded_methods: Methods that must not be sent over TCP (e.g.
+            ``get_qt_ui``, which returns a server-local object).
+        tcp_attributes: Attributes that should be read over TCP.
+        excluded_attributes: Attributes that must stay local (e.g. GUI
+            attributes), never read over TCP.
+
+    Returns:
+        A subclass of ``original_class`` acting as the TCP client.
     """
 
     def method_builder(method_name):
-        """
-        Given a method name, return a function that takes in any number of arguments and named arguments, creates a
-        dictionary with at most three keys (command, args, kwargs) and sends it to the server that the instance is
-        connected to
+        """Build a client method that forwards a call to the server.
 
-        :param method_name: string
-        :return: method (function)
+        Args:
+            method_name: Name of the method to forward.
+
+        Returns:
+            A function that packs its arguments into a command dict, sends it to
+            the server, and returns the (array-aware) reply.
         """
 
         def method(*args, **kwargs):
@@ -260,22 +289,24 @@ def create_client_class(original_class,
     class NewClass(original_class):
 
         def __init__(self, address):
-            """
-            The client instantiation also gets a list of attributes present in the server instrument instance
+            """Connect to the server and fetch its instrument's attribute list.
 
-            :param address: 2-tuple of IP and port to connect to
+            Args:
+                address: ``(ip, port)`` of the server to connect to.
             """
             self.address = address
             self._logger = create_logger(original_class.__name__ + '_client')
             self.instance_attributes = self.send_to_server("list_attributes", address)
 
         def __setattr__(self, item, value):
-            """
-            Overriding the base __setattr__
+            """Set an attribute locally or forward it to the server.
 
-            :param item:
-            :param value:
-            :return:
+            Methods and explicitly-local attributes are set locally; attributes
+            belonging to the server's instrument are sent over TCP.
+
+            Args:
+                item: Attribute name.
+                value: Value to assign.
             """
             # print "Setting: ", item
             # If the item is a method, pass it to the NewClass so that it can be sent to the server
@@ -293,13 +324,20 @@ def create_client_class(original_class,
                 original_class.__setattr__(self, item, value)
 
         def send_to_server(self, tcp_string, address=None):
-            """
-            Opens a TCP port, connects it to address, sends the tcp_string, collects the reply, and returns it after
-            literal_eval
+            """Send a string to the server and return its evaluated reply.
 
-            :param tcp_string: string to be sent over TCP
-            :param address: address to send to
-            :return: ast.literal_eval(reply_string)
+            Opens a socket, sends ``tcp_string``, reads the full reply, and
+            evaluates it with :func:`ast.literal_eval`.
+
+            Args:
+                tcp_string: String (or bytes) to send over TCP.
+                address: ``(ip, port)`` to send to; defaults to ``self.address``.
+
+            Returns:
+                The reply parsed with :func:`ast.literal_eval`.
+
+            Raises:
+                RuntimeError: If the server reports an error in its reply.
             """
             if address is None:
                 address = self.address

@@ -1,9 +1,10 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Mon Jul 03 09:23:39 2017
+"""Entry-point script that starts a 32-bit listener for the 64/32-bit bridge.
 
-@author: wmd22
-A scipt for creating the 32 bit listener in the 64-32 control method
+Run by :func:`pyopenlab.instrument.virtual_instrument.setup_communication` in a
+32-bit interpreter. It takes the instrument's module and class name as command
+line arguments and starts the listening loop. See ``virtual_instrument`` for
+the full mechanism.
 """
 import sys
 
