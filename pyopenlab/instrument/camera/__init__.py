@@ -1,8 +1,9 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Wed Jun 11 12:28:18 2014
+"""Generic :class:`Camera` base class and its Qt control/preview widgets.
 
-@author: Richard Bowman
+Provides the shared acquisition, live-view and metadata machinery that
+camera-specific drivers subclass, plus the ``CameraParameter`` descriptor for
+exposing hardware settings as Python attributes.
 """
 
 import datetime
@@ -20,6 +21,7 @@ from pyqtgraph.graphicsItems.GradientEditorItem import Gradients
 
 from pyopenlab.instrument import Instrument
 from pyopenlab.ui.ui_tools import UiTools
+from pyopenlab.utils.array_with_attrs import ArrayWithAttrs
 from pyopenlab.utils.gui import QtCore
 from pyopenlab.utils.gui import QtGui
 from pyopenlab.utils.gui import QtWidgets
@@ -115,24 +117,29 @@ class Camera(Instrument):
 
     def get_next_frame(self, timeout=60, discard_frames=0, assert_live_view=True, raw=True):
         """Wait for the next frame to arrive and return it.
-        
-        This function is mostly intended for acquiring frames from a video
-        stream that's running in live view - it returns a fresh frame without
-        interrupting the video.  If called with timeout=None when live view is
-        false, it may take a very long time to return.
-        
-        @param: timeout: Maximum length of time to wait for a new frame.  None
-        waits forever, but this may be a bad idea (could hang your script).
-        @param: discard_frames: Wait for this many new frames before returning
-        one.  This option is useful if the camera buffers frames, so you must
-        wait for several frames to be acquired before getting a "fresh" one.
-        The default setting of 0 means the first new frame that arrives is
-        returned.
-        @param: assert_live_view: If True (default) raise an assertion error if
-        live view is not enabled - this function is intended only to be used
-        when that is the case.
-        @param: raw: The default (True) returns a raw frame - False returns the
-        frame after processing by the filter function if any.
+
+        Intended for acquiring frames from a running live-view video stream: it
+        returns a fresh frame without interrupting the video. Called with
+        ``timeout=None`` while live view is off, it may block for a very long
+        time.
+
+        Args:
+            timeout: Maximum time in seconds to wait for a new frame. ``None``
+                waits forever (risks hanging the script).
+            discard_frames: Number of new frames to skip before returning one,
+                useful when the camera buffers frames. ``0`` returns the first
+                new frame.
+            assert_live_view: If True, raise an assertion error when live view
+                is not enabled.
+            raw: If True, return the raw frame; if False, return it after the
+                filter function (if any).
+
+        Returns:
+            The next frame, raw or filtered according to ``raw``.
+
+        Raises:
+            AssertionError: If ``assert_live_view`` is set and live view is off.
+            IOError: If no fresh frame arrives before ``timeout`` elapses.
         """
         if assert_live_view:
             assert self.live_view, """Can't wait for the next frame if live view is not enabled!"""
@@ -156,20 +163,44 @@ class Camera(Instrument):
                 return self.latest_frame
 
     def raw_snapshot(self):
-        """Take a snapshot and return it.  No filtering or conversion."""
+        """Take a snapshot and return it, without filtering or conversion.
+
+        Must be overridden by subclasses.
+
+        Returns:
+            tuple: ``(success, frame)`` where ``success`` is a bool and
+            ``frame`` is the acquired image array.
+
+        Raises:
+            NotImplementedError: Always, unless overridden by a subclass.
+        """
         raise NotImplementedError("Cameras must subclass raw_snapshot!")
         return True, np.zeros((640, 480, 3), dtype=np.uint8)
 
     def get_image(self):
+        """Deprecated alias for :meth:`raw_image`.
+
+        Returns:
+            The image returned by :meth:`raw_image`.
+        """
         print("Warning: get_image is deprecated, use raw_image() instead.")
         return self.raw_image()
 
     def raw_image(self, bundle_metadata=False, update_latest_frame=False):
         """Take an image from the camera, respecting video priority.
-        
-        If live view is enabled and video_priority is true, return the next
-        frame in the video stream.  Otherwise, return a specially-acquired
-        image from raw_snapshot.
+
+        If live view is enabled and :attr:`video_priority` is True, return the
+        next frame from the video stream; otherwise acquire a fresh image via
+        :meth:`raw_snapshot`.
+
+        Args:
+            bundle_metadata: If True, return an ``ArrayWithAttrs`` carrying the
+                instrument metadata.
+            update_latest_frame: If True, store the frame as
+                :attr:`latest_raw_frame`.
+
+        Returns:
+            The acquired image, optionally bundled with metadata.
         """
         frame = None
         if self.live_view and self.video_priority:
@@ -182,9 +213,17 @@ class Camera(Instrument):
         return self.bundle_metadata(frame, bundle_metadata)
 
     def color_image(self, **kwargs):
-        """Get a colour image (bypass filtering, etc.)
-        
-        Additional keyword arguments are passed to raw_image."""
+        """Get a colour (RGB) image, converting from grayscale if needed.
+
+        Args:
+            **kwargs: Forwarded to :meth:`raw_image`.
+
+        Returns:
+            An NxMx3 colour image.
+
+        Raises:
+            Exception: If the raw image cannot be converted to colour.
+        """
         frame = self.raw_image(**kwargs)
         try:
             assert frame.shape[2] == 3
@@ -201,9 +240,17 @@ class Camera(Instrument):
                 raise Exception("Couldn't convert the camera's raw image to colour.")
 
     def gray_image(self, **kwargs):
-        """Get a colour image (bypass filtering, etc.)
-        
-        Additional keyword arguments are passed to raw_image."""
+        """Get a grayscale image, converting from colour if needed.
+
+        Args:
+            **kwargs: Forwarded to :meth:`raw_image`.
+
+        Returns:
+            An NxM grayscale image.
+
+        Raises:
+            Exception: If the raw image cannot be converted to grayscale.
+        """
         frame = self.raw_image(**kwargs)
         try:
             assert len(frame.shape) == 2
@@ -216,7 +263,13 @@ class Camera(Instrument):
                 raise Exception("Couldn't convert the camera's raw image to grayscale.")
 
     def save_raw_image(self, update_latest_frame=True, attrs={}):
-        """Save an image to the default place in the default HDF5 file."""
+        """Save an image to the default location in the default HDF5 file.
+
+        Args:
+            update_latest_frame: If True, also store the frame as
+                :attr:`latest_raw_frame`.
+            attrs: Extra attributes to attach to the saved dataset.
+        """
         d = self.create_dataset(self.filename,
                                 data=self.raw_image(bundle_metadata=True,
                                                     update_latest_frame=update_latest_frame))
@@ -298,6 +351,9 @@ class Camera(Instrument):
         
         If you need more sophisticated control, I suggest subclassing
         `CameraParameter`, though I can't currently see how that would help...
+
+        Returns:
+            list[str]: Names of the class's ``CameraParameter`` attributes.
         """
         # first, identify all the CameraParameter properties we've got
         p_list = []
@@ -319,11 +375,26 @@ class Camera(Instrument):
 #              if isinstance(getattr(self.__class__, p), CameraParameter)]
 
     def get_camera_parameter(self, parameter_name):
-        """Return the named property from the camera"""
+        """Read the named parameter from the camera. Must be overridden.
+
+        Args:
+            parameter_name: Name of the camera parameter to read.
+
+        Raises:
+            NotImplementedError: Always, unless overridden by a subclass.
+        """
         raise NotImplementedError("You must override get_camera_parameter to use it")
 
     def set_camera_parameter(self, parameter_name, value):
-        """Return the named property from the camera"""
+        """Write the named parameter to the camera. Must be overridden.
+
+        Args:
+            parameter_name: Name of the camera parameter to set.
+            value: New value for the parameter.
+
+        Raises:
+            NotImplementedError: Always, unless overridden by a subclass.
+        """
         raise NotImplementedError("You must override set_camera_parameter to use it")
 
     _live_view = False
@@ -417,9 +488,14 @@ class Camera(Instrument):
 
     def get_qt_ui(self, control_only=False, parameters_only=False):
         """Create a QWidget that controls the camera.
-        
-        Specifying control_only=True returns just the controls for the camera.
-        Otherwise, you get both the controls and a preview window.
+
+        Args:
+            control_only: If True, return just the camera controls.
+            parameters_only: If True, return just the parameters widget.
+
+        Returns:
+            A Qt widget: controls only, parameters only, or the full UI
+            (controls plus preview) by default.
         """
         if control_only:
             return self.get_control_widget()
@@ -680,7 +756,7 @@ class CameraPreviewWidget(pg.GraphicsView):
 
 
 class DummyCamera(Camera):
-    """A version of the Camera code  """
+    """A simulated camera that returns random images, for testing without hardware."""
     exposure = CameraParameter("exposure", "The exposure time in ms.")
     gain = CameraParameter("gain", "The gain in units of bananas.")
 
