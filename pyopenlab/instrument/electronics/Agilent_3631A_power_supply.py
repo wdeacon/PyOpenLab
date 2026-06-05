@@ -1,8 +1,12 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Mon Apr 17 11:51:22 2023
+"""VISA driver for the Agilent E3631A triple-output DC power supply.
 
-@author: jb2444
+Note:
+    The per-channel voltage/current methods (``set_voltage``, ``get_voltage``,
+    ``set_current``, ``get_current``, ``measure_voltage``, ``measure_current``)
+    refer to a module-level ``S`` rather than ``self`` and will raise
+    ``NameError`` unless such a global exists. This is a pre-existing bug left
+    for a later code pass; the docstrings below describe the intended behavior.
 """
 
 from functools import partial
@@ -16,28 +20,40 @@ from pyopenlab.instrument.visa_instrument import VisaInstrument
 
 
 class PowerSupply(VisaInstrument):
+    """Control for the Agilent E3631A triple-output DC power supply."""
 
     def __init__(self, address='GPIB0::5::INSTR'):
+        """Open VISA communication with the power supply.
+
+        Args:
+            address: VISA resource address.
+        """
         super(PowerSupply, self).__init__(address)
         self.instr.read_termination = '\n'
         self.instr.write_termination = '\n'
 
     def reset(self):
+        """Reset the supply to its default state (``*RST``)."""
         self.write('*rst')
 
     def output_is_on(self):
+        """Return the output enable state as reported by the supply."""
         return self.query('OUTP:STAT?')
 
     def output_on(self):
+        """Enable the supply output."""
         return self.write('OUTPUT ON')
 
     def output_off(self):
+        """Disable the supply output."""
         return self.write('OUTPUT OFF')
 
     def operation_complete(self):
+        """Return True once pending operations finish (``*OPC?``)."""
         return bool(self.query('*OPC?'))
 
     def clear_errors(self):
+        """Drain the error queue, printing each entry until it is empty."""
         is_error = True
         while is_error:
             ans = self.query('SYST:ERR?')
@@ -47,25 +63,27 @@ class PowerSupply(VisaInstrument):
         print('error cleared')
 
     def set_channel(self, channel=1):
-        ''' channels:
-            1: positive 6 V
-            2: Positive 25 V
-            3: Negative 25 V'''
+        """Select the active output channel.
+
+        Args:
+            channel: 1 (+6 V), 2 (+25 V) or 3 (-25 V).
+        """
         if channel in [1, 2, 3]:
             self.write('instrument:nselect ' + str(channel))
         else:
             print(' channel has to be 1/2/3')
 
     def get_channel(self):
-        # channels:
-        # 1: positive 6 V
-        # 2: Positive 25 V
-        # 3: Negative 25 V
+        """Return the active channel number: 1 (+6 V), 2 (+25 V), 3 (-25 V)."""
         return self.float_query('instrument:nselect?')
 
     def set_voltage(self, value=0.5):
-        # set voltage to selected channel
-        # performs test to see if voltage within limits for this channel
+        """Set the output voltage of the active channel, within its limits.
+
+        Args:
+            value: Target voltage in volts. Ignored (with a message) if outside
+                the active channel's range.
+        """
         channel = S.int_query('instrument:nselect?')
         if channel == 1:
             ulim = 6
@@ -82,16 +100,20 @@ class PowerSupply(VisaInstrument):
             S.write('voltage ' + str(value))
 
     def get_voltage(self):
-        # return the voltage setting
+        """Return the voltage setpoint of the active channel."""
         return S.float_query('voltage?')
 
     def measure_voltage(self):
-        # measure actual voltage of port
+        """Measure the actual output voltage of the active channel."""
         return S.float_query('measure:voltage?')
 
     def set_current(self, value=0.01):
-        # set voltage to selected channel
-        # performs test to see if voltage within limits for this channel
+        """Set the output current limit of the active channel, within its range.
+
+        Args:
+            value: Target current in amps. Ignored (with a message) if outside
+                the active channel's range.
+        """
         channel = S.int_query('instrument:nselect?')
         if channel == 1:
             ulim = 5
@@ -108,21 +130,27 @@ class PowerSupply(VisaInstrument):
             S.write('current ' + str(value))
 
     def get_current(self):
-        # return the current setting
+        """Return the current setpoint of the active channel."""
         return S.float_query('current?')
 
     def measure_current(self):
-        # measure the actual current of port
+        """Measure the actual output current of the active channel."""
         return S.float_query('measure:current?')
 
     def set_channel_values(self, channel=1, voltage=2, current=0.05):
-        # set a n output channel to voltage and current values
+        """Select a channel and set both its voltage and current.
+
+        Args:
+            channel: Channel to configure (1, 2 or 3).
+            voltage: Voltage setpoint in volts.
+            current: Current limit in amps.
+        """
         self.set_channel(channel)
         self.set_current(current)
         self.set_voltage(voltage)
 
     def get_channel_values(self):
-        # print channel numbers and current\voltage values
+        """Print the active channel's set and measured voltage and current."""
         channel = self.get_channel()
         set_voltage_value = self.get_voltage()
         measured_voltage_value = self.measure_voltage()
@@ -135,7 +163,12 @@ class PowerSupply(VisaInstrument):
         print('measured current is ' + str(measured_current_value) + 'A')
 
     def increase_voltage(self, step_size=0.05, print_flag=True):
-        # increase voltage of current channel by step_size in volts
+        """Increase the active channel's voltage by ``step_size`` volts.
+
+        Args:
+            step_size: Increment in volts.
+            print_flag: If True, print the channel values before and after.
+        """
         if print_flag:
             self.get_channel_values()
         v = self.get_voltage()
@@ -145,7 +178,12 @@ class PowerSupply(VisaInstrument):
             self.get_channel_values()
 
     def decrease_voltage(self, step_size=0.05, print_flag=True):
-        # increase voltage of current channel by step_size in volts
+        """Decrease the active channel's voltage by ``step_size`` volts.
+
+        Args:
+            step_size: Decrement in volts.
+            print_flag: If True, print the channel values before and after.
+        """
         if print_flag:
             self.get_channel_values()
         v = self.get_voltage()

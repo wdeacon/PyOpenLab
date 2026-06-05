@@ -8,19 +8,22 @@ from ctypes import *
 import time
 
 import numpy as np
-from past.utils import old_div
 
 from pyopenlab.instrument import Instrument
 
 
 class NewportPowermeter(Instrument):
+    """Driver for the Newport 1918 USB optical power meter (via ``usbdll.dll``)."""
 
     def __init__(self, product_id, **kwargs):
-        """
+        """Load the USB DLL and open the device.
 
-        :param product_id: go to Device Manager, double click on instrument, go to Details, in the Property drop-down,
-                select Hardware IDs. If the ID is something like PID_ABC1, use product_id = 0xACB1
-        :param kwargs:
+        Args:
+            product_id: USB product id of the meter. Find it in Device Manager
+                under the instrument's Details > Hardware IDs; e.g. for
+                ``PID_ABC1`` pass ``0xABC1``.
+            **kwargs: Optional ``libname`` to override the default
+                ``usbdll.dll``.
         """
         super(NewportPowermeter, self).__init__()
         if "libname" in kwargs:
@@ -41,11 +44,14 @@ class NewportPowermeter(Instrument):
     #     self.close_device()
 
     def _dllWrapper(self, command, *args):
-        """Simple dll wrapper
-        Takes care of the error checking for all dll calls
-        :param command: string with the command name
-        :param args: list of (optional) arguments to pass to the dll function
-        :return:
+        """Call a DLL function by name and check its status code.
+
+        Args:
+            command: Name of the DLL function to call.
+            *args: Arguments forwarded to the DLL function.
+
+        Raises:
+            Exception: If the DLL call returns a non-zero status.
         """
         self._logger.debug("Calling DLL with: %s %s" % (command, args))
         status = getattr(self.dll, command)(*args)
@@ -55,14 +61,12 @@ class NewportPowermeter(Instrument):
             pass
 
     def open_device_all_products_all_devices(self):
+        """Open every connected Newport USB device."""
         self._dllWrapper("newp_usb_init_system")
         self._logger.info("You have connected to one or more Newport products")
 
     def open_device_with_product_id(self):
-        """
-        opens a device with a certain product id
-
-        """
+        """Open the USB device matching :attr:`product_id`."""
         cproductid = c_int(self.product_id)
         useusbaddress = c_bool(1)  # We will only use deviceids or addresses
         num_devices = c_int()
@@ -70,9 +74,15 @@ class NewportPowermeter(Instrument):
         self._dllWrapper("newp_usb_open_devices", cproductid, useusbaddress, byref(num_devices))
 
     def close_device(self):
+        """Close all open Newport USB devices and release the driver."""
         self._dllWrapper("newp_usb_uninit_system")
 
     def get_instrument_list(self):
+        """Query the connected instrument's identifiers.
+
+        Returns:
+            list: ``[device_id, model_number, serial_number]``.
+        """
         arInstruments = c_int()
         arInstrumentsModel = c_int()
         arInstrumentsSN = c_int()
@@ -83,16 +93,23 @@ class NewportPowermeter(Instrument):
         return instrument_list
 
     def query(self, query_string):
-        """
-        Write a query and read the response from the device
-        :rtype : String
-        :param query_string: Check Manual for commands, ex '*IDN?'
-        :return:
+        """Write a command and read the device's response.
+
+        Args:
+            query_string: Command to send; see the manual, e.g. ``'*IDN?'``.
+
+        Returns:
+            The device's response string.
         """
         self.write(query_string)
         return self.read()
 
     def read(self):
+        """Read an ASCII response from the device.
+
+        Returns:
+            bytes: The response with trailing CR/LF stripped.
+        """
         cdevice_id = c_long(self.device_id)
         time.sleep(0.2)
         response = create_string_buffer(('\000' * 1024).encode())
@@ -103,11 +120,10 @@ class NewportPowermeter(Instrument):
         return answer
 
     def write(self, command_string):
-        """
-        Write a string to the device
+        """Write a command string to the device.
 
-        :param command_string: Name of the string to be sent. Check Manual for commands
-        :raise:
+        Args:
+            command_string: Command to send; see the manual for commands.
         """
         command = create_string_buffer(command_string.encode())
         length = c_ulong(sizeof(command))
@@ -117,6 +133,7 @@ class NewportPowermeter(Instrument):
 
     @property
     def channel(self):
+        """The active detector channel (1 or 2)."""
         return self.query("PM:CHANnel?")
 
     @channel.setter
@@ -127,14 +144,17 @@ class NewportPowermeter(Instrument):
 
     @property
     def wavelength(self):
+        """The detector's operating wavelength in nm."""
         self._logger.debug("Reading wavelength")
         return self.query('PM:Lambda?')
 
     @wavelength.setter
     def wavelength(self, wavelength):
-        """
-        Sets the wavelength on the device
-        :param wavelength int: float
+        """Set the wavelength on the device.
+
+        Args:
+            wavelength: Wavelength to set; coerced to ``int`` and checked
+                against :attr:`wvl_range`.
         """
         self._logger.debug("Setting wavelength")
         if not isinstance(wavelength, int):
@@ -145,13 +165,14 @@ class NewportPowermeter(Instrument):
         self.write('PM:Lambda ' + str(wavelength))
 
     def set_filtering(self, filter_type=0):
-        """
-        Set the filtering on the device
-        :param filter_type:
-        0:No filtering
-        1:Analog filter
-        2:Digital filter
-        3:Analog and Digital filter
+        """Set the device's filtering mode.
+
+        Args:
+            filter_type: 0 (none), 1 (analog), 2 (digital) or 3 (analog and
+                digital).
+
+        Raises:
+            ValueError: If ``filter_type`` is not in 0-3.
         """
         if filter_type in [0, 1, 2, 3]:
             self.write("PM:FILT %d" % filter_type)
@@ -159,12 +180,15 @@ class NewportPowermeter(Instrument):
             raise ValueError("filter_type needs to be between 0 and 3")
 
     def read_buffer(self, wavelength=700, buff_size=1000, interval_ms=1):
-        """
-        Stores the power values at a certain wavelength.
-        :param wavelength: float: Wavelength at which this operation should be done. float.
-        :param buff_size: int: nuber of readings that will be taken
-        :param interval_ms: float: Time between readings in ms.
-        :return: [actualwavelength,mean_power,std_power]
+        """Acquire a buffer of power readings and return their statistics.
+
+        Args:
+            wavelength: Wavelength in nm to measure at.
+            buff_size: Number of readings to acquire.
+            interval_ms: Time between readings in ms.
+
+        Returns:
+            list: ``[actual_wavelength, mean_power, std_power]``.
         """
         self.wavelength = wavelength
         self.write('PM:DS:Clear')
@@ -174,7 +198,7 @@ class NewportPowermeter(Instrument):
         )  # to set 1 ms rate we have to give int value of 10. This is strange as manual says the INT should be in ms
         self.write('PM:DS:ENable 1')
         while int(self.query('PM:DS:COUNT?')) < buff_size:  # Waits for the buffer is full or not.
-            time.sleep(old_div(0.001 * interval_ms * buff_size, 10))
+            time.sleep((0.001 * interval_ms * buff_size) / 10)
         actualwavelength = self.query('PM:Lambda?')
         mean_power = self.query('PM:STAT:MEAN?')
         std_power = self.query('PM:STAT:SDEV?')
@@ -183,10 +207,7 @@ class NewportPowermeter(Instrument):
 
     @property
     def power(self):
-        """
-        Reads the instantaneous power
-        """
-
+        """float: The instantaneous power reading."""
         power = self.query('PM:Power?')
         return float(power)
 
