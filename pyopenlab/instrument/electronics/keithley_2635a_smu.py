@@ -16,6 +16,11 @@ class Keithley2635A(VisaInstrument):
     """Interface to the Keithley 2635A SMU."""
 
     def __init__(self, address='GPIB0::26::INSTR'):
+        """Open VISA communication with the SMU and reset it.
+
+        Args:
+            address: VISA resource address.
+        """
         super(Keithley2635A, self).__init__(address)
         self.instr.read_termination = '\n'
         self.instr.write_termination = '\n'
@@ -147,6 +152,17 @@ class Keithley2635A(VisaInstrument):
         return '{0:s}: {1:s}'.format(code, msg)
 
     def check_current_range(self, i):
+        """Autorange the measurement current range to suit a current value.
+
+        Steps the range up while the current overflows, then down while it
+        sits well below range (subject to a 10 nA floor).
+
+        Args:
+            i: A reference current in amps to range around.
+
+        Returns:
+            float: The current re-measured at the final range.
+        """
         i_range = self.get_meas_current_range()
         while abs(i) >= i_range:
             i_range = 10**(np.ceil(np.log10(i_range) + 1))  # go up one order of magnitude
@@ -165,6 +181,17 @@ class Keithley2635A(VisaInstrument):
         return i
 
     def check_voltage_range(self, v):
+        """Autorange the source voltage range to suit a voltage value.
+
+        Steps the range up while the voltage overflows, then down while it sits
+        well below range (subject to a 200 mV floor).
+
+        Args:
+            v: A reference voltage in volts to range around.
+
+        Returns:
+            float: The source voltage re-read at the final range.
+        """
         v_range = self.get_src_voltage_range()
         while abs(v) >= v_range:  # say v=1.2 and v_range=1, aim for v_range=10
             v_range = 2 * 10**(np.ceil(np.log10(abs(v))))
@@ -184,12 +211,24 @@ class Keithley2635A(VisaInstrument):
         return v
 
     def get_qt_ui(self):
+        """Return the Qt control widget for this SMU.
+
+        Returns:
+            SmuUI: A widget bound to this instrument.
+        """
         return SmuUI(self)
 
 
 class SmuUI(QtWidgets.QWidget):
+    """Qt control panel for a :class:`Keithley2635A` SMU."""
 
     def __init__(self, smu, parent=None):
+        """Build the UI and bind its controls to the SMU.
+
+        Args:
+            smu: The :class:`Keithley2635A` instance to control.
+            parent: Optional parent widget.
+        """
         super(SmuUI, self).__init__()
         self.smu = smu
         self.parent = parent
@@ -219,6 +258,11 @@ class SmuUI(QtWidgets.QWidget):
         self.output.setChecked(False)
 
     def set_parameter(self):
+        """Push the edited source/measurement field to the SMU.
+
+        Validates the sending widget's text and writes it to the matching SMU
+        property, depending on whether voltage or current sourcing is selected.
+        """
         sender = self.sender()
         value = sender.text()
         if sender.validator() is not None:
@@ -253,6 +297,11 @@ class SmuUI(QtWidgets.QWidget):
                 self.smu.meas_voltage_limit = float(value)
 
     def state_changed(self, state):
+        """Handle a toggled control (source mode, autorange or output).
+
+        Args:
+            state: Qt check state from the sending widget.
+        """
         sender = self.sender()
         value = True if state == QtCore.Qt.Checked else False
         if sender == self.voltage_button:
@@ -284,6 +333,7 @@ class SmuUI(QtWidgets.QWidget):
                 self.smu.output = 0
 
     def measure_button_clicked(self):
+        """Read V, I, R and P from the SMU and show them in the readout label."""
         voltage = self.smu.read_voltage()
         current = self.smu.read_current()
         resistance = self.smu.read_resistance()
@@ -292,7 +342,12 @@ class SmuUI(QtWidgets.QWidget):
             voltage, current, resistance, power))
 
     def on_activated(self, value):
-        # print self.sender(), index, value
+        """Set the SMU front-panel display to the selected measurement.
+
+        Args:
+            value: One of ``'voltage'``, ``'current'``, ``'resistance'`` or
+                ``'power'``.
+        """
         if value == 'voltage':
             self.smu.display = 1
         elif value == 'current':

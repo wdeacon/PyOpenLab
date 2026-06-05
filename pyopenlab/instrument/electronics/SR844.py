@@ -1,9 +1,5 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Tue Jul 14 18:50:08 2015
-
-@author: wmd22
-"""
+"""VISA driver for the Stanford Research Systems SR844 lock-in amplifier."""
 
 from time import sleep
 
@@ -13,24 +9,18 @@ import pyopenlab.instrument.visa_instrument as vi
 
 
 class Lockin_SR844(vi.VisaInstrument):
-    '''Software control for the Stanford Research Systems SR844 Lockin
-    '''
+    """Software control for the Stanford Research Systems SR844 lock-in."""
 
     def __init__(self, address='GPIB0::8::INSTR'):
-        '''Sets up visa communication and class dictionaries
-        
-        The class dictionaries are manully inputed translations between what 
-        the lockin will send/recieve and the real values. 
-        These have been built for:
-            - channel number i.e. X,Y ...   
-            - Sensitivity i.e. Voltage range
-            - time constant i.e. integration time
-            - Filter options i.e. 6 dB etc
-            
+        """Set up VISA communication and the value-translation dictionaries.
+
+        The dictionaries translate between the integer codes the lock-in
+        sends/receives and real-world values, for channel number, sensitivity,
+        time constant and filter options.
+
         Args:
-            address(str):   Visa address
-        
-        '''
+            address: VISA resource address.
+        """
         super(Lockin_SR844, self).__init__(address)
         self.instr.read_termination = '\n'
         self.instr.write_termination = '\n'
@@ -110,125 +100,92 @@ class Lockin_SR844(vi.VisaInstrument):
         return variables
 
     def measure_X(self):
-        '''Measure the current X value
-        Notes :
-            Offsets and Ratio applied'''
+        """Measure the in-phase component X (offsets and ratio applied).
+
+        Returns:
+            float: The current X value.
+        """
         return self.float_query("OUTP? 1")
 
     def measure_Y(self):
-        '''Measure the current Y value
-        Notes :
-            Offsets and Ratio applied'''
+        """Measure the quadrature component Y (offsets and ratio applied).
+
+        Returns:
+            float: The current Y value.
+        """
         return self.float_query("OUTP? 2")
 
     def measure_R(self):
-        '''Measure the current R value
-        Notes :
-            Offsets and Ratio applied'''
+        """Measure the magnitude R (offsets and ratio applied).
+
+        Returns:
+            float: The current R value.
+        """
         output = -1
         while output > 1 or output < 0:
             output = self.float_query("OUTP? 3")
         return self.float_query("OUTP? 3")
 
     def measure_theta(self):
-        '''Measure the current phase (theta) 
-        Notes :
-            Offsets and Ratio applied'''
+        """Measure the phase theta (offsets and ratio applied).
+
+        Returns:
+            float: The current phase value.
+        """
         return self.float_query("OUTP? 5")
 
     def check_frequency(self):
-        ''' Return current measurement frequesncy
+        """Read the current reference frequency.
+
         Returns:
-            Current measreument frequency'''
+            float: The measurement frequency in Hz.
+        """
         return self.float_query("FREQ?")
 
     def get_sens(self):
-        ''' The sensitivity property 
-        
-        Gettr:
-            Gets the Current sensitivity as an integer and a real value
-            
-            Returns:
-                num (int):  The integer returned by the lockin
-                sens_list[num](float):  The real value for sensitivty in Vrms
-                        
-        Settr:
-            Sets the current sensitivity as a integer 
-            
-            Args:
-                i(int): Sets the sensitivty of the lockin as shown by the dict 
-                        self.sens_list typed out below.
-                        
-                        i               Sensitivity
-                        0               100 nVrms / -127 dBm 
-                        1               300 nVrms / -117 dBm 
-                        2               1 μVrms / -107 dBm 
-                        3               3 μVrms / -97 dBm 
-                        4               10 μVrms / -87 dBm 
-                        5               30 μVrms / -77 dBm 
-                        6               100 μVrms / -67 dBm 
-                        7               300 μVrms / -57 dBm
-                        8               1 mVrms / -47 dBm
-                        9               3 mVrms / -37 dBm
-                        10              10 mVrms / -27 dBm
-                        11              30 mVrms / -17 dBm
-                        12              100 mVrms / -7 dBm
-                        13              300 mVrms / +3 dBm
-                        14              1 Vrms / +13 dBm
-        '''
+        """Read the current sensitivity (backs the ``sensitivity`` property).
+
+        Returns:
+            tuple: ``(num, value)`` — the integer index reported by the lock-in
+            and the corresponding sensitivity in Vrms from ``self.sens_list``.
+        """
         num = self.int_query("SENS?")
         return num, self.sens_list[num]
 
     def set_sens(self, i):
+        """Set the sensitivity by integer index.
+
+        Args:
+            i: Sensitivity index, from 0 (100 nVrms / -127 dBm) up to 14
+                (1 Vrms / +13 dBm); see ``self.sens_list``.
+        """
         self.write("SENS%s" % i)
 
     sensitivity = property(get_sens, set_sens)
+    """tuple: Sensitivity as an ``(index, Vrms)`` pair; set with an integer index."""
 
     def get_time_costant(self):
-        ''' The time_constant property 
-        
-        Gettr:
-            Gets the Current time constant as an integer and a real value
-            
-            Returns:
-                num (int):  The integer returned by the lockin
-                time_list[num](float):  The real value for sensitivty in Seconds
-                        
-        Settr:
-            Sets the current time constant as an integer 
-            
-            Args:
-                i(int): Sets the time constant of the lockin as shown by the dict 
-                        self.time_list typed out below.
-                        
-                        i       time constant
-                        0       100 μs 
-                        1       300 μs 
-                        2       1 ms 
-                        3       3 ms 
-                        4       10 ms 
-                        5       30 ms
-                        6       100 ms 
-                        7       300 ms 
-                        8       1 s 
-                        9       3 s
-                        10      10 s
-                        11      30 s
-                        12      100 s
-                        13      300 s
-                        14      1 ks
-                        15      3 ks
-                        16      10 ks
-                        17      30 ks
-        '''
+        """Read the current time constant (backs ``time_constant``).
 
+        Returns:
+            tuple: ``(num, value)`` — the integer index reported by the lock-in
+            and the corresponding time constant in seconds from
+            ``self.time_list``.
+        """
         num = self.int_query("OFLT?")
         return num, self.time_list[num]
 
     def set_time_costant(self, i):
+        """Set the time constant by integer index.
+
+        Args:
+            i: Time-constant index, from 0 (100 us) up to 17 (30 ks); see
+                ``self.time_list``.
+        """
         self.write("OFLT" + str(i))
 
     time_constant = property(get_time_costant, set_time_costant)
+    """tuple: Time constant as an ``(index, seconds)`` pair; set with an integer index."""
 
     def set_time_constant_from_int(self, integrationtime):
         '''Command to reverse read a dictionary and set the time_constant
@@ -246,69 +203,59 @@ class Lockin_SR844(vi.VisaInstrument):
         return False
 
     def get_filter(self):
-        ''' The filterslope property 
-        
-        Gettr:
-            Gets the filter as an integer and a real value
-            
-            Returns:
-                num (int):  The integer returned by the lockin
-                time_list[num](str):  The real value for filter 
-                        
-        Settr:
-            Sets the current filter as an integer 
-            
-            Args:
-                i(int): Sets the filter of the lockin as shown by the dict 
-                        self.time_list typed out below.
-                        
-                        i       Filter
-                        0       No filter
-                        1       6 dB
-                        2       12 dB
-                        3       18 dB
-                        4       24 dB 
-        '''
+        """Read the current filter slope (backs ``filterslope``).
+
+        Returns:
+            tuple: ``(num, value)`` — the integer index reported by the lock-in
+            and the corresponding filter description from ``self.filter_list``.
+        """
         num = self.int_query("OFSL?")
         return num, self.filter_list[num]
 
     def set_filter(self, i):
+        """Set the low-pass filter slope by integer index.
+
+        Args:
+            i: Filter index: 0 (no filter), 1 (6 dB), 2 (12 dB), 3 (24 dB);
+                see ``self.filter_list``.
+        """
         self.write("OFSL%s" % i)
 
     filterslope = property(get_filter, set_filter)
+    """tuple: Filter slope as an ``(index, description)`` pair; set with an integer index."""
 
     def get_close_res(self):
-        ''' The close_res property represents the close reserve of the lockin
-        Gettr:
-            Returns:
-                i(int):     The close reserve of the lockin where
-                            high = 0, normal = 1, low noise = 2
-        Settr:
-            Args:
-                i(int):     Set the close reserve of the lockin where
-                            high = 0, normal = 1, low noise = 2
-        '''
+        """Read the close dynamic reserve (backs ``close_res``).
+
+        Returns:
+            int: The close reserve: 0 (high), 1 (normal), 2 (low noise).
+        """
         return self.int_query("CRSV?")
 
     def set_close_res(self, i):
+        """Set the close dynamic reserve.
+
+        Args:
+            i: Reserve index: 0 (high), 1 (normal), 2 (low noise).
+        """
         self.write("CRSV%s" % i)
 
     close_res = property(get_close_res, set_close_res)
 
     def get_wide_res(self):
-        ''' The wide_res property represents the wide reserve of the lockin
-        Gettr:
-            Returns:
-                i(int):     The close reserve of the lockin where
-                            high = 0, normal = 1, low noise = 2
-        Settr:
-            Args:
-                i(int):     Set the close reserve of the lockin where
-                            high = 0, normal = 1, low noise = 2
-        '''
+        """Read the wide dynamic reserve (backs ``wide_res``).
+
+        Returns:
+            int: The wide reserve: 0 (high), 1 (normal), 2 (low noise).
+        """
         return self.int_query("WRSV?")
 
     def set_wide_res(self, i):
+        """Set the wide dynamic reserve.
+
+        Args:
+            i: Reserve index: 0 (high), 1 (normal), 2 (low noise).
+        """
         self.write("WRSV%s" % i)
 
     wide_res = property(get_wide_res, set_wide_res)
@@ -357,6 +304,11 @@ class Lockin_SR844(vi.VisaInstrument):
     #  print "Measurement within range"
 
     def set_phase(self, phase=0):
+        """Set the reference phase shift in degrees.
+
+        Args:
+            phase: Phase shift in degrees.
+        """
         self.write("PHAS" + str(phase))
 
 
