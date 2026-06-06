@@ -1,12 +1,5 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Mon Aug  9 16:22:04 2021
-
-@author: Hera
-"""
-'''
-author: im354
-'''
+"""Driver for the Thorlabs ELL20 elliptical translation stage over the ELLB bus."""
 
 import sys
 import time
@@ -21,9 +14,15 @@ from pyopenlab.utils.notified_property import NotifiedProperty
 
 
 def bytes_to_binary(bytearr, debug=0):
-    '''
-    Helper method for converting a bytearray datatype to a binary representation
-    '''
+    """Convert an iterable of hex characters into a binary string.
+
+    Args:
+        bytearr: Iterable of hex digit characters.
+        debug (int): If greater than 0, print intermediate values.
+
+    Returns:
+        str: Concatenated binary representation.
+    """
     if debug > 0:
         print(bytearr)
     bytes_as_binary = [format(int(b, base=16), "#06b").replace("0b", "") for b in bytearr]
@@ -34,9 +33,15 @@ def bytes_to_binary(bytearr, debug=0):
 
 
 def twos_complement_to_int(binary, debug=0):
-    '''
-    Compute 2s complement of binary number representation
-    '''
+    """Interpret a two's-complement binary string as a signed integer.
+
+    Args:
+        binary (str): Binary digit string, MSB first.
+        debug (int): If greater than 0, print intermediate values.
+
+    Returns:
+        float: The signed value.
+    """
     if debug > 0:
         print(binary)
     N = len(binary)
@@ -45,24 +50,39 @@ def twos_complement_to_int(binary, debug=0):
 
 
 def int_to_hex(integer, padded_length=8, debug=0):
-    '''
-    Convert integer number to hexidecimal. Return value is zero-padded at the beginning
-    until its length matches the value passed in "padded_length"
-    '''
+    """Convert an integer to an upper-case, zero-padded hex string.
+
+    Args:
+        integer (int): Value to convert.
+        padded_length (int): Minimum number of hex digits in the result.
+        debug (int): Unused; retained for call-signature compatibility.
+
+    Returns:
+        str: Hex representation without the ``0x`` prefix.
+    """
     outp = (format(integer, "#0{}x".format(padded_length + 2)).replace("0x", "")).upper()
     return outp
 
 
 def int_to_twos_complement(integer, padded_length=16, debug=0):
-    '''
-    Two's complement in integer representation. Padded length specifies the padding on the 
-    binary representation used to compute the twos complement
-    '''
-    #number is above 0 - return binary representation:
+    """Encode a signed integer as an (unsigned) two's-complement integer.
+
+    Non-negative values are returned unchanged; negative values are converted
+    to their two's-complement representation.
+
+    Args:
+        integer (int): Value to encode.
+        padded_length (int): Padding applied to the intermediate binary form.
+        debug (int): If greater than 0, print intermediate values.
+
+    Returns:
+        int: The (unsigned) two's-complement value.
+    """
+    # number is above 0 - return binary representation:
     if integer >= 0:
         return integer
 
-    #number is below zero - return twos complement representation:
+    # number is below zero - return twos complement representation:
     elif integer < 0:
         if debug > 0:
             print("Below zero - returning twos complement")
@@ -81,11 +101,12 @@ def int_to_twos_complement(integer, padded_length=16, debug=0):
 
 
 class BusDistributor(SerialInstrument):
-    ''' a class to handle the port settings of a thorlabs ELLB distributor bus.
-    Each of these can have several devices attached. They are assigned device
-    indices by the thorlabs Ello software - otherwise they all default to 0 and
-    don't work separately. 
-    '''
+    """Serial port wrapper for a Thorlabs ELLB distributor bus.
+
+    A single bus can host several devices. They are assigned distinct device
+    indices by the Thorlabs Ello software; otherwise they all default to index
+    0 and cannot be addressed separately.
+    """
 
     def __init__(self, port):
         self.termination_character = '\n'
@@ -132,7 +153,17 @@ class Thorlabs_ELL20(Stage):
         "OutOfBounds": "Reserved"}
 
     def __init__(self, serial_device, device_index=0, debug=0):
-        '''can be passed either a BusDistributor instance, or  "COM5"  '''
+        """Connect to a stage on the ELLB bus and read its configuration.
+
+        Args:
+            serial_device: Either a :class:`BusDistributor` instance or a COM
+                port string such as ``"COM5"`` (a new bus is created for it).
+            device_index (int): Index of this device on the bus (0-F).
+            debug (int): If greater than 0, print diagnostic output.
+
+        Raises:
+            ValueError: If ``device_index`` is not a valid device ID.
+        """
         if type(serial_device) is str:
             self.serial_device = BusDistributor(serial_device)
         else:
@@ -157,10 +188,14 @@ class Thorlabs_ELL20(Stage):
             print("Device status:", self.get_device_status())
 
     def query_device(self, query):
-        '''
-        Wrap a generic query with the ID of the device (integer in range: 0-F)
-        so that we dont need to be explicit about this id
-        '''
+        """Send a query prefixed with this device's index and return the reply.
+
+        Args:
+            query (str): Command without the leading device index.
+
+        Returns:
+            str: The raw response from the device.
+        """
         raw_query = "{0}{1}".format(self.device_index, query)
         if self.debug > 0:
             print("raw_query", raw_query)
@@ -170,15 +205,17 @@ class Thorlabs_ELL20(Stage):
         return raw_response
 
     def _position_to_pulse_count(self, position):
-        '''
-        Convert from an position (specified in degrees) into the number of pulses
-        that need to be applied to the motor to turn it. 
+        """Convert a position into the motor pulse count required to reach it.
 
-        pulses_per_revolution - specified by Thorlabs as number of pulses for a revolution (360 deg) of stage
-        travel - the maximum angular motion of stage (==360 for ELL8K)
+        Used when sending move instructions to the stage. ``PULSES_PER_MM`` is
+        reported by the device at initialization.
 
-        Method used when sending instructions to move to stage
-        '''
+        Args:
+            position (float): Target position in the stage's native units.
+
+        Returns:
+            int: Number of motor pulses.
+        """
         pulses = int(np.rint(position * self.PULSES_PER_MM))
         if self.debug > 0:
             print("Input position:", position)
@@ -186,50 +223,67 @@ class Thorlabs_ELL20(Stage):
         return pulses
 
     def _pulse_count_to_position(self, pulse_count):
-        '''
-        Convert from an pulse count into the degrees. 
+        """Convert a motor pulse count into a position.
 
-        pulses_per_revolution - specified by Thorlabs as number of pulses for a revolution (360 deg) of stage
-        travel - the maximum angular motion of stage (==360 for ELL8K)
+        Used when decoding responses received from the stage.
 
-        Method used when reading data received from stage
-        '''
+        Args:
+            pulse_count (float): Number of motor pulses.
+
+        Returns:
+            float: Position in the stage's native units.
+        """
         return pulse_count / self.PULSES_PER_MM
 
     def _position_to_hex_pulses(self, position):
-        '''
-        Convert position in range (-360.0,360.0) (exclusive of edges) into a hex representation of pulse
-        count required for talking to the ELL8K stage
-        
-        '''
+        """Convert a position into the hex pulse count the stage expects.
 
-        #convert position to number of pulses used to drive motors:
+        Args:
+            position (float): Target position in the stage's native units.
+
+        Returns:
+            str: Hex-encoded, two's-complement pulse count.
+        """
+
+        # convert position to number of pulses used to drive motors:
         pulses_int = self._position_to_pulse_count(position)
         if self.debug > 0:
             print("Pulses (int)", pulses_int)
-        #make two's complement to allow for -ve values
+        # make two's complement to allow for -ve values
         pulses_int = int_to_twos_complement(pulses_int)
         if self.debug > 0:
             print("Pulses (int,2s compl)", pulses_int)
-        #convert integer to hex
+        # convert integer to hex
         pulses_hex = int_to_hex(pulses_int)
         if self.debug > 0:
             print("Pulses hex:", pulses_hex)
         return pulses_hex
 
     def _hex_pulses_to_position(self, hex_pulse_position):
-        '''
-        Convert position to position - full method for processing responses from stage
-        '''
+        """Decode a hex pulse-count response into a position.
+
+        Args:
+            hex_pulse_position (str): Hex-encoded pulse count from the stage.
+
+        Returns:
+            float: Position in the stage's native units.
+        """
         binary_pulse_position = bytes_to_binary(hex_pulse_position)
         int_pulse_position = twos_complement_to_int(binary_pulse_position)
         return self._pulse_count_to_position(int_pulse_position)
 
     def _decode_position_response(self, response):
-        '''
-        Method for decoding positional response from stage for responses from:
-            mode_absolute, mode_relative, move_home
-        '''
+        """Decode a status/position response from a move or home command.
+
+        Args:
+            response (str): Raw response from ``move_absolute``,
+                ``move_relative`` or ``move_home``.
+
+        Returns:
+            dict: ``{"header", "status"}`` if the stage is still moving, or
+            ``{"header", "position"}`` if a position was returned. None if the
+            header is unrecognised.
+        """
         header = response[0:3]
         if header == "{0}GS".format(self.device_index):
             #still moving
@@ -244,11 +298,12 @@ class Thorlabs_ELL20(Stage):
             return outp
 
     def _block_until_stopped(self):
-        '''
-       Method for blocking move_absolute and move_relative and move_home commands until stage has stopped
-       Spins on get_position command comparing returned results. If between two calls position doesn't change
-       Then assume stage has stopped and exit
-       '''
+        """Block until the stage stops moving.
+
+        Polls ``get_position`` and assumes the stage has stopped once two
+        successive readings differ by less than ``POSITION_JITTER_THRESHOLD``.
+        Returns early on a KeyboardInterrupt.
+        """
         stopped = False
         previous_position = 0.0
         current_position = 1.0
@@ -265,14 +320,21 @@ class Thorlabs_ELL20(Stage):
         return
 
     def get_position(self, axis=None):
-        '''
-        Query stage for its current position, in degrees
-        This method overrides the Stage class' method
-        '''
+        """Query the stage for its current position. Overrides Stage.
+
+        Args:
+            axis: Unused; present for Stage interface compatibility.
+
+        Returns:
+            float: Current position in the stage's native units.
+
+        Raises:
+            ValueError: If the response header is not a position reply.
+        """
         response = self.query_device("gp")
         header = response[0:3]
         if header == "{0}PO".format(self.device_index):
-            #position given in twos complement representation
+            # position given in twos complement representation
             byte_position = response[3:11]
             binary_position = bytes_to_binary(byte_position)
             pulse_position = twos_complement_to_int(binary_position)
@@ -282,35 +344,35 @@ class Thorlabs_ELL20(Stage):
             raise ValueError("Incompatible Header received:{}".format(header))
 
     def move(self, pos, axis=None, relative=False):
-        '''
-        Send command to move stage.
-        pos:  specified in degrees and can be in range (-360,360)
-        relative: whether motion is relative to current position or relative to global home
-        This method overrides the Stage class' method
-        '''
+        """Move the stage to a position. Overrides Stage.
+
+        Args:
+            pos (float): Target position in the stage's native units.
+            axis: Unused; present for Stage interface compatibility.
+            relative (bool): If True, move relative to the current position;
+                otherwise move to an absolute position.
+        """
         if relative:
             self.move_relative(pos)
         else:
             self.move_absolute(pos)
 
     def get_device_info(self):
-        '''
-        Instruct hardware to identify itself. 
-        Give information about model, serial numbner, firmware. 
+        """Query the device identity and motion parameters.
 
-        This MUST be called at initialization of the stage as the key parameters:
+        Must be called at initialization: the ``travel`` and ``pulses`` values
+        it extracts define the pulse-to-position scaling for the stage. The
+        ratio ``pulses / travel`` gives the number of pulses per unit of travel.
 
-        TRAVEL, PULSES are extracted here
-
-        TRAVEL - the range of travel of the stage, specified in units (mm or deg) relevant to the type of stage
-        PULSES - specifieid the number of pulses applied to motors to move stage over entire range of travel
-
-        Hence: ratio of PULSES/TRAVEL gives number of pulses to move 1 mm or 1 deg
-        '''
+        Returns:
+            dict: Device information with keys ``header``, ``ell``, ``sn``,
+            ``year``, ``firmware_release``, ``hardware_release``, ``travel``
+            (range of travel) and ``pulses`` (pulses over the full travel).
+        """
 
         response = self.query_device("in")
 
-        #decode the response
+        # decode the response
         header = response[0:3]
         ell = response[3:5]
         sn = response[5:13]
@@ -339,12 +401,14 @@ class Thorlabs_ELL20(Stage):
         return outp
 
     def get_device_status(self):
-        '''
-        Query device to get its status code  - for testing that device is functioning correctly
-        '''
+        """Query the device status code to check it is functioning correctly.
+
+        Returns:
+            dict: ``{"header", "status"}`` with a human-readable status string.
+        """
 
         response = self.query_device("gs")
-        #read response and decode it:
+        # read response and decode it:
         header = response[0:3]
         byte_status = response[3:5]
         if self.debug > 0:
@@ -361,10 +425,17 @@ class Thorlabs_ELL20(Stage):
             return {"header": header, "status": self.DEVICE_STATUS_CODES["OutOfBounds"]}
 
     def move_home(self, blocking=True):
-        '''
-        Move stage to factory default home location. 
-        Note: Thorlabs API allows resetting stages home but this not implemented as it isnt' advised 
-        '''
+        """Move the stage to its factory default home location.
+
+        Resetting the stage's home is supported by the Thorlabs API but is not
+        implemented here, as Thorlabs advises against it.
+
+        Args:
+            blocking (bool): If True, wait until the stage stops moving.
+
+        Returns:
+            dict: Decoded position/status response.
+        """
 
         response = self.query_device("ho")
         if blocking:
@@ -372,17 +443,14 @@ class Thorlabs_ELL20(Stage):
         return self._decode_position_response(response)
 
     def move_absolute(self, position, blocking=True):
-        """Move to absolute position relative to home setting
+        """Move to an absolute position relative to the home setting.
 
         Args:
-            position (float): position to move to, specified in degrees.
+            position (float): Target position in the stage's native units.
+            blocking (bool): If True, wait until the stage stops moving.
 
         Returns:
-            None
-
-        Raises:
-            None
-
+            dict: Decoded position/status response.
         """
 
         pulses_hex = self._position_to_hex_pulses(position)
@@ -395,19 +463,14 @@ class Thorlabs_ELL20(Stage):
         return self._decode_position_response(response)
 
     def move_relative(self, position, blocking=True):
-        """Moves relative to current position
+        """Move relative to the current position.
 
         Args:
-            position (float): relative position to move to, specified in degrees.
-            clockwise(bool): specifies whether we are moving in the clockwise direction. 
-                    False if moving anticlockwise
-        
+            position (float): Relative displacement in the stage's native units.
+            blocking (bool): If True, wait until the stage stops moving.
+
         Returns:
-            None
-
-        Raises:
-            None
-
+            dict: Decoded position/status response.
         """
         pulses_hex = self._position_to_hex_pulses(position)
         response = self.query_device("mr{0}".format(pulses_hex))
@@ -416,32 +479,43 @@ class Thorlabs_ELL20(Stage):
         return self._decode_position_response(response)
 
     def optimize_motors(self, save_new_params=False):
-        '''Due to load, build tolerances and other mechanical variances, the
-        default resonating frequency of a particular motor may not be that
-        which delivers best performance.
-        This message fine tunes the frequency search performed by the
-        SEARCHFREQ messages. When this message is called, the
-        SEARCHFREQ message is called first automatically to optimize the
-        operating frequency. After completion, another frequency search is
-        performed and the mechanical performance is monitored to further
-        optimize the operating frequencies for backward and forward
-        movement. The values then need to be saved
-        '''
+        """Fine-tune the motor operating frequencies for the current load.
+
+        Load, build tolerances and other mechanical variation mean the default
+        resonant frequency may not give the best performance. This runs a
+        frequency search (the SEARCHFREQ routine is invoked first
+        automatically), then optimises the forward and backward operating
+        frequencies. The new values are only persisted if saved.
+
+        Args:
+            save_new_params (bool): If True, persist the optimised values via
+                ``save_new_parameters``.
+
+        Returns:
+            str: Raw reply from the device.
+        """
         reply = self.query_device('om')
         if save_new_params:
             self.save_new_parameters()
         return reply
 
     def save_new_parameters(self):
+        """Persist the current motor parameters to device memory.
+
+        Returns:
+            str: Raw reply from the device.
+        """
         return self.query_device('us')
 
     position = NotifiedProperty(get_position, move_absolute)
 
     def get_qt_ui(self):
+        """Return a Qt control widget for this stage."""
         return ELL20UI(self)
 
 
 class ELL20UI(QuickControlBox):
+    """Minimal Qt control panel exposing the stage position."""
 
     def __init__(self, stage):
         super().__init__()

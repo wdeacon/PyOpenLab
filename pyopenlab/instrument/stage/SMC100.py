@@ -1,9 +1,9 @@
-﻿"""
+﻿"""Driver for the Newport SMC100 single-axis motion controller.
 
-
-Issues:
-    - The waitStop property for moving doesn't really work, and if you send two move commands quickly after each other,
-    the system doesn't react fast enough and doesn't reach the final destination.
+Note:
+    The ``waitStop`` blocking behaviour is unreliable: sending two move
+    commands in quick succession can leave the controller unable to react fast
+    enough, so the stage may not reach its final destination.
 """
 import time
 
@@ -74,25 +74,32 @@ class SMC100(SerialInstrument, Stage):
     Some effort is made to take up backlash, but this should not be trusted too
     much.
     The move commands must be used with care, because they make assumptions
-    about the units which is dependent on the STAGE. I only have TRB25CC, which
-    has native units of mm. A more general implementation will move the move
-    methods into a stage class.
+    about the units, which depend on the STAGE. The original author only had a
+    TRB25CC, which has native units of mm. A more general implementation would
+    move the move methods into a stage class.
+
+    Note:
+        ``reset_and_configure`` calls ``self._send_cmd('ID', '?', True)``, which
+        binds ``axes='?'`` and ``argument=True`` rather than requesting the
+        stage ID. This is a bug (it should pass ``argument='?',
+        expect_response=True``); the method is not used by the normal connect
+        path and the bug has been left unfixed.
     """
 
     def __init__(self, port, smcID=(1,), **kwargs):
-        """
-        If backlash_compensation is False, no backlash compensation will be done.
-        If silent is False, then additional output will be emitted to aid in
-        debugging.
-        If sleepfunc is not None, then it will be used instead of time.sleep. It
-        will be given the number of seconds (float) to sleep for, and is provided
-        for ease integration with single threaded GUIs.
-        Note that this method only connects to the controller, it otherwise makes
-        no attempt to home or configure the controller for the attached stage. This
-        delibrate to minimise realworld side effects.
-        If the controller has previously been configured, it will suffice to simply
-        call home() to take the controller out of not referenced mode. For a brand
-        new controller, call reset_and_configure().
+        """Connect to the controller without homing or configuring it.
+
+        Connecting only tests communication; it deliberately makes no attempt
+        to home or configure the controller, to minimise real-world side
+        effects. If the controller was previously configured, call
+        :meth:`home` to take it out of not-referenced mode; for a brand new
+        controller, call :meth:`reset_and_configure`.
+
+        Args:
+            port (str): Serial port the controller is on.
+            smcID: Controller ID, or an iterable of IDs for multi-axis setups.
+                A scalar is wrapped into a single-element tuple.
+            **kwargs: Forwarded to the SerialInstrument base class.
         """
         self.port_settings = dict(baudrate=57600,
                                   bytesize=8,
@@ -212,6 +219,12 @@ class SMC100(SerialInstrument, Stage):
         which makes sense... except pySerial doesn't pass the newline= keyword
         argument along to the underlying class, and so you can't actually change
         it.
+
+        Note:
+            On Python 3 ``self.ser.read()`` returns ``bytes``, so the ``c ==
+            '\\r'``/``c == '\\n'`` comparisons against ``str`` never match and
+            ``ord(c)`` raises. Left unfixed as correcting it is a behavioural
+            change.
         """
         done = False
         line = str()
@@ -307,20 +320,29 @@ class SMC100(SerialInstrument, Stage):
         self._wait_states(STATE_NOT_REFERENCED_FROM_CONFIGURATION)
 
     def get_position(self, axis=None):
+        """Query the current position of one or all axes.
+
+        Args:
+            axis: Axis ID(s) to query, or None for all configured axes.
+
+        Returns:
+            list[float]: Current position(s).
+        """
         pos = self._send_cmd('TP', axes=axis, argument='?', expect_response=True, retry=10)
         pos = list(map(float, pos))
         return pos
 
     def home(self, **kwargs):
-        """
-        Homes the controller. If waitStop is True, then this method returns when
-        homing is complete.
-        Note that because calling home when the stage is already homed has no
-        effect, and homing is generally expected to place the stage at the
-        origin, an absolute move to 0 um is executed after homing. This ensures
-        that the stage is at origin after calling this method.
-        Calling this method is necessary to take the controller out of not referenced
+        """Home the controller and move it to the origin.
+
+        Homing an already-homed stage has no effect, so an absolute move to 0
+        is executed after homing to guarantee the stage ends at the origin.
+        Calling this is necessary to take the controller out of not-referenced
         state after a restart.
+
+        Args:
+            **kwargs: Passed to :meth:`move`. If ``waitStop`` is True, this
+                returns only once homing is complete.
         """
         self._send_cmd('OR')
         if 'waitStop' in kwargs and kwargs['waitStop']:
@@ -332,12 +354,17 @@ class SMC100(SerialInstrument, Stage):
             self.move([0] * len(self.axis_names), **kwargs)
 
     def stop(self):
+        """Stop motion on all axes."""
         self._send_cmd('ST')
 
     def get_status(self):
-        """
-        Executes TS? and returns the the error code as integer and state as string
-        as specified on pages 64 - 65 of the manual.
+        """Query the error code and state of each axis.
+
+        Executes ``TS?`` and decodes the response per pages 64-65 of the manual.
+
+        Returns:
+            tuple: One ``[error_code, state]`` pair per axis, where
+            ``error_code`` is an int and ``state`` is a two-character string.
         """
 
         resps = self._send_cmd('TS', argument='?', expect_response=True, retry=10)
@@ -351,6 +378,16 @@ class SMC100(SerialInstrument, Stage):
         return reply
 
     def move(self, pos, axis=None, relative=False, waitStop=True):
+        """Move one or more axes to a position.
+
+        Args:
+            pos: Target position(s); a scalar is wrapped into a single-element
+                list. With multiple axes, positions are applied in axis order.
+            axis: Axis ID(s) to move, or None for all configured axes.
+            relative (bool): If True, move relative to the current position
+                (``PR``); otherwise move to an absolute position (``PA``).
+            waitStop (bool): If True, block until the axes reach a ready state.
+        """
         if axis is None:
             axis = self.axis_names
         if not hasattr(pos, '__iter__'):
@@ -374,15 +411,14 @@ class SMC100(SerialInstrument, Stage):
             self._wait_states((STATE_READY_FROM_MOVING, STATE_READY_FROM_HOMING))
 
     def move_referenced(self, position_mm, **kwargs):
-        """
-        Moves to an absolute position referenced from the software home
+        """Move to a position measured relative to the software home.
+
+        Requires :meth:`set_software_home` to have been called first.
 
         Args:
-            position_mm: position from the software home
-            **kwargs: kwargs to be passed to the move command
-
-        Returns:
-
+            position_mm: Position(s) relative to the software home; a scalar is
+                wrapped into a single-element tuple.
+            **kwargs: Passed through to :meth:`move`.
         """
 
         if not hasattr(position_mm, '__iter__'):
@@ -393,18 +429,28 @@ class SMC100(SerialInstrument, Stage):
         self.move(final_pos, **kwargs)
 
     def set_software_home(self):
-        """
-        Sets a software home, so that we can easily go back to similar sample positions
+        """Record the current position as the software home.
 
-        Returns:
-
+        Lets the stage be returned to a similar sample position later.
         """
         self.software_home = self.get_position()
 
     def go_software_home(self):
+        """Move back to the recorded software home position."""
         self.move_referenced([0] * len(self.axis_names))
 
     def set_velocity(self, velocity):
+        """Set the axis velocity.
+
+        Note:
+            This sends the command ``VA_Set``, which is not a valid SMC100
+            command (the documented velocity command is ``VA``); the controller
+            will reject it. Left unfixed as a behavioural change is out of
+            scope for this docstring pass.
+
+        Args:
+            velocity (float): Requested velocity.
+        """
         self._send_cmd('VA_Set', velocity)
 
     # def get_qt_ui(self):

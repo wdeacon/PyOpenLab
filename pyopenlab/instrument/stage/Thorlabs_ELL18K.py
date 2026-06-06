@@ -1,16 +1,9 @@
-﻿"""
-Author: jpg66
+﻿"""Driver for the Thorlabs ELL18K elliptical motor rotation stage.
 
-Class to control the Thorlabs Elliptical Motor Rotation Stages. Optimised to work with revised stage from 2019.
-
-Does backlash correction.
-
+Optimised for the revised (2019) hardware revision and performs backlash
+correction so that a target angle is always approached from the same side.
 """
 
-from builtins import hex
-from builtins import object
-from builtins import range
-from builtins import str
 import struct
 
 import numpy as np
@@ -21,16 +14,16 @@ from pyopenlab.instrument import serial_instrument as serial
 class ELL18K(object):
 
     def __init__(self, Port=None, Backlash_Correct=True):
+        """Open the serial port, read the encoder resolution and calibrate.
+
+        The number of counts per revolution varies between hardware iterations
+        and so is queried from the device rather than hard-coded.
+
+        Args:
+            Port (str): COM port the stage is connected to.
+            Backlash_Correct (bool): If True, always approach the target angle
+                from the same side to remove mechanical backlash.
         """
-		Class for Thorlabs Ellipical Motor Rotation Stage.
-
-		Inputs:
-		Port = COM Port (String)
-		Counts_per_Rev = Number of intervals a 360 degree is split into.
-						 This varies between iterations of the device
-		Backlash_Correct = Bool
-
-		"""
 
         self.Port = serial.SerialInstrument(Port)
         self.Port.open()
@@ -43,10 +36,16 @@ class ELL18K(object):
     #------Utility functions----------
 
     def Number_to_Hex(self, Input, Min_Digits=8):
+        """Convert an integer to an upper-case, zero-padded hex string.
+
+        Args:
+            Input (int): Value to convert.
+            Min_Digits (int): Minimum string length; the result is left-padded
+                with zeros until it reaches this width.
+
+        Returns:
+            str: Hex representation without the ``0x`` prefix.
         """
-		Takes an Input integer and returns the corresponding hex as a string.
-		If resulting string has less than Min_Digits digits, zeros are added to the front
-		"""
         Hex = str(hex(Input))[2:].upper()  #All letters should be upper case
 
         while len(Hex) < Min_Digits:
@@ -54,9 +53,14 @@ class ELL18K(object):
         return Hex
 
     def Convert_Status(self, Code):
+        """Convert a numeric device status code into a human-readable string.
+
+        Args:
+            Code (int): Status code returned by the device.
+
+        Returns:
+            str: Description of the status, or a placeholder for codes >= 14.
         """
-		Converts integer Code into a status string
-		"""
         Responses = [
             'No Error', 'Communication time out', 'Mechanical time out', 'Command error',
             'Value out of range', 'Module isolated']
@@ -71,9 +75,14 @@ class ELL18K(object):
             return Responses[Code]
 
     def Write_Hex(self, String):
+        """Send a command string to the port and return the device's reply.
+
+        Args:
+            String (str): Command to transmit, sent one character at a time.
+
+        Returns:
+            str: The line read back from the device.
         """
-		Writes Hex string to port. Reads following line from port and returns string.
-		"""
 
         Seperate = []
         Format = ''
@@ -87,9 +96,18 @@ class ELL18K(object):
         return Response
 
     def Two_Compliment(self, Integer, Bits=32):
+        """Return the two's complement of an integer for a given bit width.
+
+        Used to decode negative positions, which the device reports as large
+        unsigned values.
+
+        Args:
+            Integer (int): Value to convert.
+            Bits (int): Bit width of the representation.
+
+        Returns:
+            int: The two's-complement value.
         """
-		Converts an integer into its 2s compliment with respect to a certain number of bits
-		"""
         String = bin(Integer)[2:]
         while len(String) < Bits:
             String = '0' + String
@@ -114,25 +132,35 @@ class ELL18K(object):
     #------Stage Commands----------
 
     def Calibrate_Motors(self):
+        """Sweep both motors to find their optimal resonance frequency.
+
+        Compensates for load and other mechanical variation on the stage.
         """
-		Causes both motors to do a frequency sweep to find optimal resonance frequency
-		"""
         self.Write_Hex('0s1')
         self.Write_Hex('0s2')
         self.Write_Hex('0us')
 
     def Get_Status(self):
+        """Request and decode the current device status.
+
+        Returns:
+            str: Human-readable status description.
         """
-		Requests a status message
-		"""
         Status = self.Write_Hex('0gs')
         Code = int('0x' + Status[3:], 0)
         return self.Convert_Status(Code)
 
     def Read_Position(self, Integer=None):
+        """Return the current stage angle in degrees.
+
+        Args:
+            Integer (int, optional): A raw motor-step count to convert. If
+                None, the count is queried from the device.
+
+        Returns:
+            float: Stage angle in degrees, or a status string if the device
+            returned a status code instead of a position.
         """
-		Returns current stage angle. Can also take in a motor step Integer instead of requesting one from the device
-		"""
         if Integer is None:
             Pos = self.Write_Hex('0gp')
             if Pos[:3] == '0PO':  #Position_Returned
@@ -147,9 +175,20 @@ class ELL18K(object):
         return Integer
 
     def Rotate_To(self, Angle):
+        """Rotate the stage to an absolute angle.
+
+        If backlash correction is enabled the target is first overshot by 5
+        degrees and then approached, so the final move is always in the same
+        direction. The move is skipped if the stage is already within one
+        encoder count of the target.
+
+        Args:
+            Angle (float): Target angle in degrees (taken modulo 360).
+
+        Returns:
+            float: Final stage angle, or a status string if the device
+            returned a status code.
         """
-		Rotates the stage to a given angle. Returns final angle or status report
-		"""
 
         Angle = (Angle % 360)
 
@@ -186,6 +225,16 @@ class ELL18K(object):
             return Current_Angle
 
     def Rotate(self, Angle):
+        """Rotate the stage by a relative angle.
+
+        Args:
+            Angle (float): Angle to rotate by, in degrees, added to the
+                current position.
+
+        Returns:
+            float: Final stage angle, or a status string if the device
+            returned a status code.
+        """
         Current_Angle = self.Read_Position()
         if isinstance(Current_Angle, str) == True:  #Check is status returned
             return Current_Angle
