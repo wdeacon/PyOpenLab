@@ -1,10 +1,15 @@
 ﻿# -*- coding: utf-8 -*-
+"""Spatial light modulator (SLM) instrument, phase display widget and control GUI.
+
+Provides the :class:`Slm` instrument, which builds greyscale phase holograms by sequentially
+applying named pattern generators, the :class:`SlmDisplay` widget that renders those holograms on
+the SLM panel, and the :class:`SlmUi` control GUI.
+"""
 
 import math
 import os
 
 import numpy as np
-from past.utils import old_div
 import pyqtgraph.dockarea as dockarea
 from scipy.interpolate import interp1d
 
@@ -21,17 +26,24 @@ from . import pattern_generators
 
 
 def zernike_polynomial(array_size, n, m, beam_size=1, unit_circle=True):
-    """
-    Creates an image of a Zernike polynomial of order n,m (https://en.wikipedia.org/wiki/Zernike_polynomials)
-    Keep in mind that they are technically only defined inside the unit circle, but the output of this function is a
-    square, so the corners are wrong.
+    """Create an image of the Zernike polynomial of order (n, m).
 
-    :param array_size: int
-    :param n: int
-    :param m: int
-    :param beam_size: float
-    :param unit_circle: bool
-    :return:
+    See https://en.wikipedia.org/wiki/Zernike_polynomials. The polynomials are only defined inside
+    the unit circle, but the output of this function is a square array, so the corners are wrong.
+
+    Args:
+        array_size (int or tuple): Side length in pixels. An int gives a square array; a 2-tuple
+            gives (height, width).
+        n (int): Radial order of the polynomial. Must satisfy ``n >= 0`` and ``n >= abs(m)``.
+        m (int): Azimuthal order. A negative value selects the odd (sine) variant.
+        beam_size (float): Radius (in normalised units) the polynomial is scaled to.
+        unit_circle (bool): If True, zero the polynomial outside the unit circle.
+
+    Returns:
+        numpy.ndarray: The Zernike polynomial, normalised to unit power within the unit circle.
+
+    Raises:
+        AssertionError: If ``n < 0`` or ``abs(m) > n``.
     """
     assert n >= 0
     if m < 0:
@@ -52,15 +64,14 @@ def zernike_polynomial(array_size, n, m, beam_size=1, unit_circle=True):
         _y = np.linspace(-1 / im_rat, 1 / im_rat, array_size[0])
     x, y = np.meshgrid(_x, _y)
     # By normalising the radius to the beamsize, we can make Zernike polynomials of different sizes
-    rho = old_div(np.sqrt(x**2 + y**2), beam_size)
+    rho = np.sqrt(x**2 + y**2) / beam_size
     phi = np.arctan2(x, y)
 
     summ = []
-    for k in range(1 + old_div((n - m), 2)):
-        summ += [
-            old_div(((-1)**k * math.factorial(n - k) * (rho**(n - 2 * k))),
-                    (math.factorial(k) * math.factorial(old_div((n + m), 2) - k) *
-                     math.factorial(old_div((n - m), 2) - k)))]
+    for k in range(1 + (n - m) // 2):
+        summ += [((-1)**k * math.factorial(n - k) * (rho**(n - 2 * k))) /
+                 (math.factorial(k) * math.factorial((n + m) // 2 - k) *
+                  math.factorial((n - m) // 2 - k))]
     r = np.sum(summ, 0)
     if (n - m) % 2:
         r = 0
@@ -79,8 +90,9 @@ def zernike_polynomial(array_size, n, m, beam_size=1, unit_circle=True):
 
 
 class SlmDisplay(QtWidgets.QWidget):
-    """Widget for displaying the greyscale holograms on the SLM
-    It is simply a plain window with a QImage + QLabel.setPixmap combination for displaying phase arrays
+    """Widget for displaying greyscale holograms on the SLM panel.
+
+    It is a plain window using a QImage + QLabel.setPixmap combination to display phase arrays.
     """
     update_image = QtCore.Signal(np.ndarray)
 
@@ -90,17 +102,20 @@ class SlmDisplay(QtWidgets.QWidget):
                  bitness=8,
                  hide_border=True,
                  lut=None):
-        """
-        :param shape: 2-tuple of int. Width and height of the SLM panel in pixels
-        :param resolution:
-        :param bitness: int. Number of addressing levels of the SLM
-        :param hide_border: bool. Whether to show the standard window border in your OS. Set to False only for debugging
-        :param lut: tuple. Parameters passed to set_lut. The default LUT assumes that the phase goes from 0 to 2 pi, and
-        we want to display it from 0 to 256
+        """Build the SLM display widget.
+
+        Args:
+            shape (tuple): Width and height of the SLM panel in pixels.
+            resolution (tuple): Per-axis downscaling factors applied to ``shape``.
+            bitness (int): Number of addressing (greyscale) levels of the SLM.
+            hide_border (bool): Whether to hide the standard OS window border. Set False only for
+                debugging.
+            lut (tuple or str or None): Parameters passed to :meth:`set_lut`. The default LUT maps
+                phase from 0 to 2 pi onto greyscale values 0 to ``2**bitness``.
         """
         super(SlmDisplay, self).__init__()
 
-        self._pixels = [int(old_div(x[0], x[1])) for x in zip(shape, resolution)]
+        self._pixels = [int(x[0] / x[1]) for x in zip(shape, resolution)]
         self._bitness = bitness
 
         self._QImage = None
@@ -115,9 +130,10 @@ class SlmDisplay(QtWidgets.QWidget):
         self.update_image.connect(self._set_image, type=QtCore.Qt.QueuedConnection)
 
     def _make_gui(self, hide_border=True):
-        """Creates and sets the widget layout
-        :param hide_border: bool. See __init__
-        :return:
+        """Create and apply the widget layout.
+
+        Args:
+            hide_border (bool): See :meth:`__init__`.
         """
         self._QLabel = QtWidgets.QLabel(self)
 
@@ -132,13 +148,20 @@ class SlmDisplay(QtWidgets.QWidget):
                                 QtCore.Qt.WindowStaysOnTopHint)
 
     def set_lut(self, lut):
+        """Set the lookup table that maps phase (in radians) to greyscale display values.
+
+        Args:
+            lut (str or array-like): A filename to load with :func:`numpy.loadtxt`, a 1D array of
+                :class:`numpy.poly1d` coefficients, or a 2D array of ``[phase, gray_level]`` pairs
+                to interpolate between.
+        """
         if type(lut) == str:
             lut = np.loadtxt(lut)
 
         lut = np.array(lut)
         if len(lut.shape) == 1:
             # Assumes the lut corresponds to poly1d parameters
-            params = [old_div(x, (2 * np.pi)) for x in lut]
+            params = [x / (2 * np.pi) for x in lut]
             self.LUT = np.poly1d(params)
         elif len(lut.shape) == 2:
             phase = lut[0]
@@ -146,6 +169,15 @@ class SlmDisplay(QtWidgets.QWidget):
             self.LUT = interp1d(phase, gray_level)
 
     def set_image(self, phase, slm_monitor=None):
+        """Convert a phase array to greyscale, emit it for display, and optionally reposition.
+
+        Args:
+            phase (numpy.ndarray): Phase array in radians.
+            slm_monitor (int, optional): If given, move the widget onto this monitor index.
+
+        Returns:
+            numpy.ndarray: The phase mapped through the LUT to SLM display values.
+        """
         # Makes phase go from 0 to 2*pi, and removes floating point errors
         phase = (phase + 0.1 * np.pi / 2**self._bitness) % (2 *
                                                             np.pi) - 0.1 * np.pi / 2**self._bitness
@@ -166,11 +198,13 @@ class SlmDisplay(QtWidgets.QWidget):
         return phase
 
     def _set_image(self, phase):
-        """Sets an array on the QLabel.Pixmap
+        """Render a greyscale array onto the QLabel pixmap.
 
-        :param phase: np.array from 0 to 2 pi
-        :param slm_monitor: int. Optional. If given, it will move the SLM widget to the specified monitor
-        :return:
+        Args:
+            phase (numpy.ndarray): Array of display values to render.
+
+        Raises:
+            ValueError: If ``self._bitness`` is not 8 (other bit depths are not implemented).
         """
         img = phase.ravel()
 
@@ -184,19 +218,25 @@ class SlmDisplay(QtWidgets.QWidget):
 
 
 class Slm(Instrument):
+    """Spatial light modulator instrument that builds phase holograms from pattern generators."""
 
     def __init__(self, options, slm_monitor, correction_phase=None, display_kwargs=None, **kwargs):
-        """
-        :param options: list of strings. Names of the functionalities you want your SLM to have:
-            - gratings
-            - vortexbeam
-            - focus
-            - astigmatism
-            - linear_lut
-            The order you give these in is important, as they act on the phase pattern sequentially (see make_phase)
-        :param slm_monitor: int. Monitor index for the SLM. See _get_monitor_size
-        :param correction_phase: array. Some SLMs require a large spatial correction to provide a flat phase
-        :param kwargs:
+        """Build the SLM instrument.
+
+        Args:
+            options (list of str): Names of the functionalities the SLM should have (e.g.
+                ``gratings``, ``vortexbeam``, ``focus``, ``astigmatism``, ``linear_lut``). The order
+                matters: the generators act on the phase pattern sequentially (see
+                :meth:`make_phase`).
+            slm_monitor (int): Monitor index for the SLM. See :meth:`_get_monitor_size`.
+            correction_phase (numpy.ndarray or str, optional): Spatial correction some SLMs require
+                for a flat phase. May be an array or a filename to load.
+            display_kwargs (dict, optional): Keyword arguments forwarded to :class:`SlmDisplay`.
+            **kwargs: Unused; accepted for compatibility.
+
+        Raises:
+            AssertionError: If ``correction_phase`` is an array whose shape does not match the
+                detected panel shape.
         """
         super(Slm, self).__init__()
 
@@ -219,9 +259,16 @@ class Slm(Instrument):
 
     @staticmethod
     def _get_monitor_size(monitor_index):
-        """Utility function to automatically detect the SLM panel size
-        :param monitor_index: int. Monitor number
-        :return: tuple of two integers, width and height in pixels
+        """Detect the SLM panel size from the monitor geometry.
+
+        Args:
+            monitor_index (int): Monitor number.
+
+        Returns:
+            list: Width and height of the monitor in pixels.
+
+        Raises:
+            AssertionError: If ``monitor_index`` is out of range.
         """
         app = get_qt_app()
         desktop = app.desktop()
@@ -232,14 +279,17 @@ class Slm(Instrument):
         return [slm_screen.width(), slm_screen.height()]
 
     def make_phase(self, parameters):
-        """Creates and returns the phase pattern
+        """Create and return the phase pattern.
 
-        Iterates over self.options, getting the correct pattern_generator by name and applying them sequentially to an
-        array initially full of zeros.
+        Iterates over ``self.options``, looking up each pattern generator by name and applying them
+        sequentially to an array initially full of zeros.
 
-        :param parameters: dict. Keys correspond to the self.options keys, values are the arguments to be passed to the
-        pattern_generators as unnamed arguments
-        :return:
+        Args:
+            parameters (dict): Keys correspond to ``self.options`` entries; each value is the
+                sequence of positional arguments passed to the matching pattern generator.
+
+        Returns:
+            numpy.ndarray: The combined phase pattern.
         """
         self._logger.debug('Making phases: %s, %s' % (self._shape, parameters))
         self.phase = np.zeros(self._shape[::-1])
@@ -253,12 +303,14 @@ class Slm(Instrument):
         return self.phase
 
     def display_phase(self, phase, slm_monitor=None):
-        """Display a phase array, creating/displaying the appropriate widget if necessary
+        """Display a phase array, creating the display widget if necessary.
 
-        :param phase: 2D array of phase values
-        :param slm_monitor: index of the monitor to display the array in
-        :param kwargs: named arguments to be passed to the display widget
-        :return:
+        Args:
+            phase (numpy.ndarray): 2D array of phase values.
+            slm_monitor (int, optional): Index of the monitor to display the array on.
+
+        Returns:
+            numpy.ndarray: The phase (including correction) mapped through the LUT.
         """
         if self.Display is None:
             self.Display = SlmDisplay(self._shape, **self.display_kwargs)
@@ -272,14 +324,22 @@ class Slm(Instrument):
         return phase
 
     def get_qt_ui(self):
+        """Return a new Qt control GUI for this SLM.
+
+        Returns:
+            SlmUi: The control widget bound to this instrument.
+        """
         return SlmUi(self)
 
 
 class SlmUi(QtWidgets.QWidget, UiTools):
+    """Qt control GUI for an :class:`Slm`, assembling one dock per SLM option."""
 
     def __init__(self, slm):
-        """
-        :param slm: instance of Slm
+        """Build the control GUI.
+
+        Args:
+            slm (Slm): The SLM instrument to control.
         """
         super(SlmUi, self).__init__()
         self.all_widgets = None
@@ -290,11 +350,10 @@ class SlmUi(QtWidgets.QWidget, UiTools):
         self.setup_gui()
 
     def setup_gui(self):
-        """Creates a DockArea and fills it with the Slm.options given
+        """Create a DockArea and fill it with one widget per SLM option.
 
-        For each option, it extracts the correct ui from gui by name, loads it into a widget and adds it to the DockArea
-
-        :return:
+        For each option, the matching UI is looked up from :mod:`gui` by name, loaded into a widget
+        and added to the DockArea.
         """
         uic.loadUi(os.path.join(os.path.dirname(__file__), 'ui_base.ui'), self)
         self.dockarea = dockarea.DockArea()
@@ -316,6 +375,7 @@ class SlmUi(QtWidgets.QWidget, UiTools):
 
     @property
     def settings_filename(self):
+        """str: Path of the settings file, defaulting to ``settings.ini`` beside this module."""
         filename = self.filename_lineEdit.text()
         if filename == '':
             filename = os.path.join(os.path.dirname(__file__), 'settings.ini')
@@ -327,6 +387,7 @@ class SlmUi(QtWidgets.QWidget, UiTools):
         self.filename_lineEdit.setText(value)
 
     def make(self):
+        """Build the phase from the current GUI parameters and display it on the SLM and preview."""
         parameters = self.get_gui_phase_params()
         self.SLM._logger.debug('SlmUi.make called with args=%s' % (parameters,))
         phase = self.SLM.make_phase(parameters)
@@ -344,6 +405,7 @@ class SlmUi(QtWidgets.QWidget, UiTools):
         self.PhaseDisplay.setImage(np.copy(phase).transpose())
 
     def save(self):
+        """Save the base GUI settings and every option widget's settings to the settings file."""
         gui_settings = QtCore.QSettings(self.settings_filename, QtCore.QSettings.IniFormat)
         self.save_settings(gui_settings, 'base')
         for name, widget in list(self.all_widgets.items()):
@@ -351,6 +413,7 @@ class SlmUi(QtWidgets.QWidget, UiTools):
         return
 
     def load(self):
+        """Load the base GUI settings and every option widget's settings from the settings file."""
         gui_settings = QtCore.QSettings(self.settings_filename, QtCore.QSettings.IniFormat)
         self.load_settings(gui_settings, 'base')
         for name, widget in list(self.all_widgets.items()):
@@ -358,9 +421,11 @@ class SlmUi(QtWidgets.QWidget, UiTools):
         return
 
     def get_gui_phase_params(self):
-        """Iterates over all widgets, calling get_params, and storing the returns in a dictionary
+        """Collect phase parameters from every option widget.
 
-        :return: dict. Keys are the self.options.keys() and the values are whatever the widgets return from get_params
+        Returns:
+            dict: Keys are the option names; values are whatever each widget returns from
+            ``get_params``.
         """
         all_params = dict()
         for name, widget in list(self.all_widgets.items()):
@@ -369,6 +434,11 @@ class SlmUi(QtWidgets.QWidget, UiTools):
         return all_params
 
     def closeEvent(self, event):
+        """Close the SLM display widget when the control GUI is closed.
+
+        Args:
+            event (QtGui.QCloseEvent): The Qt close event.
+        """
         if self.SLM.Display is not None:
             self.SLM.Display.close()
 
