@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Fri Oct 12 13:17:20 2018
+"""Standalone UDP listener that prints messages received on port 13000.
 
-@author: fo263
+This module runs its receive loop at import time (it is meant to be executed as a
+script), so importing it will block waiting for datagrams.
+
+Note:
+    Carries unfixed Python-3 bugs inherited from the original nplab code, logged
+    rather than corrected here: ``recvfrom`` yields ``bytes``, but the code does
+    ``"Received message: " + data`` (raises ``TypeError``) and ``data == "exit"``
+    (always False, so the loop never exits cleanly).
 """
 
 # Save as server.py

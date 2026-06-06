@@ -1,9 +1,5 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Fri Aug  6 16:52:49 2021
-
-@author: Hera
-"""
+"""Drivers for Thorlabs ELL-series filter/flipper holders on an ELLB serial bus."""
 from pyopenlab.instrument import Instrument
 from pyopenlab.instrument.serial_instrument import SerialInstrument
 from pyopenlab.ui.ui_tools import QuickControlBox
@@ -11,9 +7,15 @@ from pyopenlab.utils.notified_property import NotifiedProperty
 
 
 def bytes_to_binary(bytearr, debug=0):
-    '''
-    Helper method for converting a bytearray datatype to a binary representation
-    '''
+    """Convert an iterable of hex-string bytes to a binary-string representation.
+
+    Args:
+        bytearr: Iterable of hexadecimal byte strings (base 16).
+        debug: If greater than 0, print intermediate values.
+
+    Returns:
+        The concatenated binary representation as a string.
+    """
     if debug > 0:
         print(bytearr)
     bytes_as_binary = [format(int(b, base=16), "#06b").replace("0b", "") for b in bytearr]
@@ -24,9 +26,15 @@ def bytes_to_binary(bytearr, debug=0):
 
 
 def twos_complement_to_int(binary, debug=0):
-    '''
-    Compute 2s complement of binary number representation
-    '''
+    """Decode a two's-complement binary string to a signed value.
+
+    Args:
+        binary: Binary string whose leading bit is the sign bit.
+        debug: If greater than 0, print the input.
+
+    Returns:
+        The signed value as a float.
+    """
     if debug > 0:
         print(binary)
     N = len(binary)
@@ -35,19 +43,34 @@ def twos_complement_to_int(binary, debug=0):
 
 
 def int_to_hex(integer, padded_length=8, debug=0):
-    '''
-    Convert integer number to hexidecimal. Return value is zero-padded at the beginning
-    until its length matches the value passed in "padded_length"
-    '''
+    """Convert an integer to an upper-case, zero-padded hex string (no ``0x``).
+
+    Args:
+        integer: The integer to convert.
+        padded_length: Minimum number of hex digits; the result is left-padded
+            with zeros to this width.
+        debug: Unused; accepted for signature parity with the other helpers.
+
+    Returns:
+        The hexadecimal representation as an upper-case string.
+    """
     outp = (format(integer, "#0{}x".format(padded_length + 2)).replace("0x", "")).upper()
     return outp
 
 
 def int_to_twos_complement(integer, padded_length=16, debug=0):
-    '''
-    Two's complement in integer representation. Padded length specifies the padding on the
-    binary representation used to compute the twos complement
-    '''
+    """Encode a signed integer as its two's-complement integer value.
+
+    Args:
+        integer: Signed integer to encode. Non-negative values are returned
+            unchanged; negative values are converted to two's complement.
+        padded_length: Bit width used when building the binary representation.
+        debug: If greater than 0, print intermediate values.
+
+    Returns:
+        For non-negative input, ``integer`` itself; for negative input, the integer
+        value of its two's-complement bit pattern.
+    """
     #number is above 0 - return binary representation:
     if integer >= 0:
         return integer
@@ -71,11 +94,12 @@ def int_to_twos_complement(integer, padded_length=16, debug=0):
 
 
 class BusDistributor(SerialInstrument):
-    ''' a class to handle the port settings of a thorlabs ELLB distributor bus.
-    Each of these can have several devices attached. They are assigned device
-    indices by the thorlabs Ello software - otherwise they all default to 0 and
-    don't work separately.
-    '''
+    """Serial port wrapper for a Thorlabs ELLB distributor bus.
+
+    Each bus can host several devices, which are assigned distinct device indices
+    by the Thorlabs Ello software; without that they all default to index 0 and
+    cannot be addressed separately.
+    """
 
     def __init__(self, port):
         self.termination_character = '\n'
@@ -90,6 +114,7 @@ class BusDistributor(SerialInstrument):
 
 
 class ThorlabsELL6(Instrument):
+    """Driver for the Thorlabs ELL6 two-position filter slider."""
 
     #default id is 0, but if multiple devices of same type connected may have others
     VALID_DEVICE_IDs = [str(v) for v in list(range(11)) + ["A", "B", "C", "D", "E", "F"]]
@@ -123,7 +148,18 @@ class ThorlabsELL6(Instrument):
     positions = 2
 
     def __init__(self, serial_device, device_index=0, debug=0):
-        '''can be passed either a BusDistributor instance, or  "COM5"  '''
+        """Initialise the holder and home it.
+
+        Args:
+            serial_device: Either a :class:`BusDistributor` instance or a serial
+                port name (e.g. ``"COM5"``), in which case a bus is created for it.
+            device_index: Device index on the ELLB bus (must be in
+                :attr:`VALID_DEVICE_IDs`).
+            debug: If greater than 0, print raw queries and responses.
+
+        Raises:
+            ValueError: If ``device_index`` is not a valid ELLB device id.
+        """
         super().__init__()
         if type(serial_device) is str:
             self.serial_device = BusDistributor(serial_device)
@@ -137,10 +173,16 @@ class ThorlabsELL6(Instrument):
         self.home()
 
     def home(self):
+        """Home the device and reset the tracked position to 0."""
         self.query_device('ho')
         self._position = 0
 
     def set_position(self, pos):
+        """Step the holder to an absolute slot.
+
+        Args:
+            pos: Target slot index; must satisfy ``0 <= pos < positions``.
+        """
         assert 0 <= pos < self.positions
 
         while pos > self._position:
@@ -149,15 +191,20 @@ class ThorlabsELL6(Instrument):
             self.move_backward()
 
     def get_position(self):
+        """Return the current slot index."""
         return self._position
 
     position = NotifiedProperty(get_position, set_position)
 
     def query_device(self, query):
-        '''
-        Wrap a generic query with the ID of the device (integer in range: 0-F)
-        so that we dont need to be explicit about this id
-        '''
+        """Send a query prefixed with this device's bus index.
+
+        Args:
+            query: The device command (without the leading device index).
+
+        Returns:
+            The raw response string from the serial device.
+        """
         raw_query = "{0}{1}".format(self.device_index, query)
         if self.debug > 0:
             print("raw_query", raw_query)
@@ -167,33 +214,32 @@ class ThorlabsELL6(Instrument):
         return raw_response
 
     def get_qt_ui(self):
-        '''
-        Get UI for stage
-        '''
-
+        """Return the Qt control widget for this ELL6 holder."""
         return ELL6UI(self)
 
     def move_forward(self):
+        """Advance one slot and increment the tracked position."""
         self.query_device('fw')
         self._position += 1
 
     def move_backward(self):
+        """Retreat one slot and decrement the tracked position."""
         self.query_device('bw')
         self._position -= 1
 
 
 class ThorlabsELL9(ThorlabsELL6):
+    """Driver for the Thorlabs ELL9 four-position filter slider."""
+
     positions = 4
 
     def get_qt_ui(self):
-        '''
-        Get UI for stage
-        '''
-
+        """Return the Qt control widget for this ELL9 holder."""
         return ELL9UI(self)
 
 
 class ELL6UI(QuickControlBox):
+    """Qt control box with a 0-1 position spin box for an ELL6 holder."""
 
     def __init__(self, instr):
         super().__init__('ELL6')
@@ -202,6 +248,7 @@ class ELL6UI(QuickControlBox):
 
 
 class ELL9UI(QuickControlBox):
+    """Qt control box with a 0-3 position spin box for an ELL9 holder."""
 
     def __init__(self, instr):
         super().__init__('ELL9')
