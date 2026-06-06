@@ -1,20 +1,14 @@
 ﻿# -*- coding: utf-8 -*-
-# Generalised from https://github.com/trautsned/thorlabs_kenesis_python/blob/master/lts300_xyz_sweep.py
-# So far only tested on PRM1-Z8 actuators
-"""
-This is a Python 3 wrapper for the Thorlabs BPC203 Benchtop Piezo controller.
+"""Python 3 wrappers for Thorlabs Kinesis motion controllers (.NET API via pythonnet).
 
-It relies on the Thorlabs Kinesis API (so you should copy in, or add to your
-Python path, the Kinesis DLLs).  The easiest way to copy the right DLLs is
-to use the "DLL copying utility" which is probably located in 
-c:/Program Files/Thorlabs/Kinesis
+Covers K-Cube and T-Cube DC servos and a benchtop piezo controller. It relies on
+the Thorlabs Kinesis .NET API, accessed through the ``pythonnet`` (``clr``)
+package, so the Kinesis DLLs must be importable. ``C:\\Program Files\\Thorlabs\\Kinesis``
+is appended to ``sys.path`` at import time (a hack, but it works) so the
+assemblies can be found.
 
-Currently, we append this directory to the system path - that is a nasty hack
-but it works for now.
-
-It also uses the excellent ``pythonnet`` package to get access to the .NET API.
-This is by far the least painful way to get Kinesis to work nicely as it 
-avoids the low-level faffing about.
+Generalised from the trautsned/thorlabs_kenesis_python LTS300 example; so far
+only tested on PRM1-Z8 actuators.
 """
 import sys
 import time
@@ -41,7 +35,7 @@ DeviceManagerCLI.DeviceManagerCLI.BuildDeviceList()
 
 
 def list_devices():
-    """Return a list of Kinesis serial numbers"""
+    """Rebuild the device list and return the connected Kinesis serial numbers."""
     DeviceManagerCLI.DeviceManagerCLI.BuildDeviceList()
     return DeviceManagerCLI.DeviceManagerCLI.GetDeviceList()
 
@@ -52,9 +46,16 @@ import Thorlabs.MotionControl.KCube.DCServoCLI as KcubeDCServoCLI
 
 
 class KCube(Stage):
+    """K-Cube DC servo controller (single rotation/translation axis)."""
+
     axis_names = ('theta',)
 
     def __init__(self, serial_number):
+        """Connect to the K-Cube, wait for settings to load and enable it.
+
+        Args:
+            serial_number: Kinesis serial number string of the K-Cube.
+        """
         super(Stage, self).__init__()
 
         DeviceManagerCLI.DeviceManagerCLI.BuildDeviceList()
@@ -64,9 +65,17 @@ class KCube(Stage):
         self.device.EnableDevice()
 
     def move(self, pos, axis=None, relative=False):
+        """Move to an absolute position, blocking up to 60 s.
+
+        Args:
+            pos: Target position in device units.
+            axis: Ignored (single axis).
+            relative: Ignored; the move is always absolute.
+        """
         self.device.MoveTo(Decimal(pos), 60000)
 
     def get_position(self, axis=None):
+        """Return the current position as a float (in device units)."""
         return float(self.device.Position.ToString())
 
 
@@ -76,9 +85,16 @@ import Thorlabs.MotionControl.TCube.DCServoCLI as TcubeDCServoCLI
 
 
 class TCube(Stage):
+    """T-Cube DC servo controller (single rotation/translation axis)."""
+
     axis_names = ('theta',)
 
     def __init__(self, serial_number):
+        """Connect to the T-Cube, wait for settings to load and enable it.
+
+        Args:
+            serial_number: Kinesis serial number string of the T-Cube.
+        """
         super(Stage, self).__init__()
 
         DeviceManagerCLI.DeviceManagerCLI.BuildDeviceList()
@@ -88,9 +104,17 @@ class TCube(Stage):
         self.device.EnableDevice()
 
     def move(self, pos, axis=None, relative=False):
+        """Move to an absolute position, blocking up to 60 s.
+
+        Args:
+            pos: Target position in device units.
+            axis: Ignored (single axis).
+            relative: Ignored; the move is always absolute.
+        """
         self.device.MoveTo(Decimal(pos), 60000)
 
     def get_position(self, axis=None):
+        """Return the current position as a float (in device units)."""
         return float(self.device.Position.ToString())
 
 
@@ -103,12 +127,23 @@ import Thorlabs.MotionControl.Benchtop.PiezoCLI as BenchtopPiezoCLI
 
 
 class BenchtopPiezo(Stage):
+    """Multi-channel Thorlabs benchtop piezo controller (tested with BPC203).
+
+    Each Kinesis channel becomes an axis named ``channel_<i>``; positions here
+    are output voltages rather than displacements.
+    """
+
     axis_names = None
     connected = False
     channels = []
     device = None
 
     def __init__(self, serial_number):
+        """Connect to the benchtop piezo and initialise its channels.
+
+        Args:
+            serial_number: Kinesis serial number string of the controller.
+        """
         self._serial_number = serial_number
         DeviceManagerCLI.DeviceManagerCLI.BuildDeviceList()
         self.device = BenchtopPiezoCLI.BenchtopPiezo.CreateBenchtopPiezo(serial_number)
@@ -182,6 +217,14 @@ class BenchtopPiezo(Stage):
         chan.SetOutputVoltage(Decimal(pos))
 
     def get_position(self, axis=None):
+        """Return the output voltage of one axis, or a list for all axes.
+
+        Args:
+            axis: Axis name; if None, return a list of voltages for every axis.
+
+        Returns:
+            The output voltage (float), or a list of voltages when axis is None.
+        """
         if axis is None:
             return [self.get_position(ax) for ax in self.axis_names]
         else:

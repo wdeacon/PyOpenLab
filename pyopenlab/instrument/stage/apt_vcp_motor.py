@@ -1,15 +1,18 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Tue Mar 21 17:04:11 2017
+"""Thorlabs APT virtual-COM-port motor controllers (base classes and converters).
 
-@author: Will, Yago
+This module implements the Thorlabs APT serial protocol for stepper and DC-servo
+motor controllers. Communication is built on :class:`APT_VCP`, which frames the
+fixed 6-byte APT message header plus optional data packet; positions, velocities
+and accelerations are exchanged as raw encoder counts and converted to/from real
+units (mm, deg, mm/s, mm/s^2) by the per-controller ``convert`` method using the
+stage-specific encoder-count calibration (``EncCnt``) and timer constants.
 """
 import struct
 import time
 import types
 
 import numpy as np
-from past.utils import old_div
 import serial
 
 from pyopenlab.instrument.apt_virtual_com_port import APT_VCP
@@ -34,13 +37,20 @@ class APT_parameter(NotifiedProperty):
     """
 
     def __init__(self, parameter_name, doc=None, read_back=True):
-        """Create a property that reads and writes the given parameter.
+        """Create a property that reads and writes the given APT parameter.
 
-        This internally uses the `get_camera_parameter` and
-        `set_camera_parameter` methods, so make sure you override them.
+        This internally uses the ``get_APT_parameter`` and ``set_APT_parameter``
+        methods, so make sure the owning class provides them.
+
+        Args:
+            parameter_name: Name of the APT parameter to read/write.
+            doc: Docstring for the property; a default is generated if omitted.
+            read_back: If True, re-read the parameter after writing so listeners
+                receive the value the hardware actually accepted, not the
+                requested value.
         """
         if doc is None:
-            doc = "Adjust the camera parameter '{0}'".format(parameter_name)
+            doc = "Adjust the APT parameter '{0}'".format(parameter_name)
         super(APT_parameter, self).__init__(fget=self.fget,
                                             fset=self.fset,
                                             doc=doc,
@@ -55,8 +65,17 @@ class APT_parameter(NotifiedProperty):
 
 
 class APT_VCP_motor(APT_VCP, Stage):
-    """
-    This class handles all the basic communication with APT virtual com for motors
+    """Common APT virtual-COM-port communication for Thorlabs motor controllers.
+
+    Subclasses supply the unit/count conversion (``convert``) and any
+    controller-specific status decoding; this base class wires up the serial
+    link, the per-axis destination map, the status bit masks and the standard
+    APT parameter properties.
+
+    Note:
+        ``convert`` here is a no-op that prints a message and returns the value
+        unchanged; subclasses (``DC_APT``, ``Stepper_APT_*``) must override it,
+        otherwise positions/velocities are sent and read as raw encoder counts.
     """
 
     axis_names = ('x',)
@@ -69,8 +88,18 @@ class APT_VCP_motor(APT_VCP, Stage):
                  stay_alive=False,
                  unit='m',
                  **kwargs):
-        """
-        Set up the serial port, setting source and destinations, and hardware info.
+        """Open the serial port and configure source/destination and status masks.
+
+        Args:
+            port: Serial port name (e.g. ``'COM12'`` or ``'/dev/ttyUSB0'``).
+            source: APT source address byte for this host (default ``0x01``).
+            destination: APT destination address(es). Either a single address
+                (mapped to axis ``'x'``) or a dict mapping axis name to address;
+                the dict keys become ``axis_names``.
+            use_si_units: Passed through to :class:`APT_VCP`.
+            stay_alive: If True, keep the controller's watchdog alive.
+            unit: Stage unit string passed to :class:`Stage` (default ``'m'``).
+            **kwargs: Ignored; accepted for subclass compatibility.
         """
         APT_VCP.__init__(self,
                          port=port,
@@ -132,7 +161,12 @@ class APT_VCP_motor(APT_VCP, Stage):
     #        return True
 
     def _waitFinishMove(self, axis=None, debug=False):
-        """A simple function to force movement to block the console """
+        """Block until the given axis (or all axes) report no 'in motion' status.
+
+        Args:
+            axis: Axis to wait on; if None, wait on every configured axis.
+            debug: If truthy (or module-level ``DEBUG``), print each status poll.
+        """
         if axis is None:
             destination_ids = list(self.destination.keys())
         else:
@@ -147,7 +181,11 @@ class APT_VCP_motor(APT_VCP, Stage):
                 status = self.get_status_update(axis=dest)
 
     def home(self, axis=None):
-        """Rehome the stage with an axis input """
+        """Send the APT home command and block until homing completes.
+
+        Args:
+            axis: Axis to home; if None, home every axis in ``axis_names``.
+        """
         if axis == None:
             destination_ids = self.axis_names
         else:
@@ -158,8 +196,24 @@ class APT_VCP_motor(APT_VCP, Stage):
             self._waitFinishMove()
 
     def move(self, pos, axis=None, relative=False, channel_number=None, block=True):
-        """ Move command allowing specification of axis, 
-        relative, channel and if we want the function to be blocking"""
+        """Move one or more axes to absolute or relative positions.
+
+        Positions are converted from real units to encoder counts via
+        ``convert`` and packed into an APT ``MGMSG_MOT_MOVE_ABSOLUTE`` (0x0453)
+        message. On a :class:`struct.error` the move is retried recursively up
+        to 10 times before raising.
+
+        Args:
+            pos: Target position, or an iterable of positions (one per axis when
+                ``axis`` is None and the length matches ``axis_names``).
+            axis: Axis or iterable of axes to move; if None, infer from ``pos``.
+            relative: If True, add ``pos`` to the current position of each axis.
+            channel_number: APT channel number (defaults to 1).
+            block: If True, wait for the move to finish before returning.
+
+        Raises:
+            Exception: If the move fails more than 10 times in a row.
+        """
         if channel_number is None:
             channel_number = 1
         if not hasattr(pos, '__iter__'):
@@ -205,6 +259,15 @@ class APT_VCP_motor(APT_VCP, Stage):
     '''PARAMETERS'''
 
     def get_status_update(self, channel_number=1, axis=None):
+        """Query the controller status (0x0490 for DC, 0x0480 otherwise).
+
+        Args:
+            channel_number: APT channel number (defaults to 1).
+            axis: Destination axis to query.
+
+        Returns:
+            The decoded status rows from :meth:`update_status`.
+        """
         if self.model[1] in DC_status_motors:
             returned_message = self.query(0x0490,
                                           param1=self.channel_number_to_identity[channel_number],
@@ -216,13 +279,21 @@ class APT_VCP_motor(APT_VCP, Stage):
         return self.update_status(returned_message['data'])
 
     def update_status(self, returned_message, debug=False):
-        '''This command should update device properties from the update message
-            however this has to be defined for every device as the status update format
-            and commands vary,
-            please implement me
-            Args:
-                The returned message from a status update request           (dict)
-        '''
+        """Decode an APT status-update data packet into active status flags.
+
+        The packet layout differs between DC controllers and stepper/motor
+        controllers, so the struct format is chosen from ``model``. The status
+        bits are matched against ``status_bit_mask`` and the matching rows are
+        stored on ``self.status`` and returned.
+
+        Args:
+            returned_message: Raw ``data`` bytes from a status-update reply.
+            debug: If truthy (or module-level ``DEBUG``), print packet length
+                and decoded status.
+
+        Returns:
+            numpy.ndarray: The ``[mask, description]`` rows whose bit is set.
+        """
         if debug > 0 or DEBUG == True:
             N = len(returned_message)
             print("returned_message length:", N)
@@ -255,15 +326,20 @@ class APT_VCP_motor(APT_VCP, Stage):
         self.write(0x0018)
 
     def get_position(self, axis=None, channel_number=1):
-        '''Sets/Gets the live position count in the controller
-            generally this should not be used to set the position
-            instead the controller should determine its own position
-            by performing a homing manoeuvre
-            Args:
-                postion:    (float) this is the real position value
-                            which is then converted to APT units within the setter
-                channel_number:     (int) This defaults to 1
-        '''
+        """Read the live position from the controller, converted to real units.
+
+        Args:
+            axis: Axis to read; if None, return an array of positions for every
+                axis in ``axis_names``.
+            channel_number: APT channel number (defaults to 1).
+
+        Returns:
+            The position in real units (via ``convert``), or a numpy array of
+            positions when ``axis`` is None.
+
+        Raises:
+            ValueError: If ``axis`` is not one of ``axis_names``.
+        """
         if axis is None:
             return np.array(([self.get_position(axis) for axis in self.axis_names]))
         else:
@@ -280,7 +356,17 @@ class APT_VCP_motor(APT_VCP, Stage):
             return self.convert(position, 'counts', 'position')
 
     def set_position(self, position, channel_number=1, axis=None):
-        # position = self.convert_to_APT_position(position)
+        """Overwrite the controller's live position counter (0x0410).
+
+        This sets the controller's internal count without moving the motor and
+        is rarely needed; prefer homing to establish a reference. The value is
+        sent verbatim as counts (no unit conversion).
+
+        Args:
+            position: New position counter value, in encoder counts.
+            channel_number: APT channel number (defaults to 1).
+            axis: Destination axis.
+        """
         data = bytearray(
             struct.pack('<HL', self.channel_number_to_identity[channel_number], position))
         self.write(0x0410, data=data, destination_id=axis)
@@ -288,40 +374,48 @@ class APT_VCP_motor(APT_VCP, Stage):
     position = property(get_position, set_position)
 
     def convert(self, value, from_, to_):
+        """Convert between counts and real units; base implementation is a no-op.
+
+        Subclasses override this to apply the stage calibration. Here it simply
+        prints and returns ``value`` unchanged.
+
+        Args:
+            value: Value to convert.
+            from_: Source unit name (e.g. ``'counts'``).
+            to_: Target unit name (e.g. ``'position'``).
+
+        Returns:
+            ``value`` unchanged.
+        """
         print('Not doing anything from ', from_, ' to ', to_)
         return value
 
     def make_parameter(self, param_dict, destination_id=None):
-        """Makes a parameter dictionary and sets it as a property
+        """Create a getter, setter and property for one APT parameter.
 
-        All parameters in the Thorlabs APT basically require the same command structure, so this function wraps any
-        parameter creation to simplify the code. It takes a dictionary containing the name of the parameter you want to
-        make, which will be used to create a property attribute by that name and a getter and a setter. The dictionary
-        should also containg the getter and setter command codes, and the structure of the data that is passed in the
-        getter and setter. Finally the dictionary should contain the names of each of the sub_parameters given by the
-        setter and getter, whose values can be converted into normal units by overwriting the self.convert() function
+        Most APT parameters share the same get/set command structure, so this
+        wraps their creation. It attaches ``get_<name>`` and ``set_<name>``
+        methods plus a ``<name>`` property to the instance. Entries in
+        ``param_names`` that are plain strings are passed through; entries that
+        are ``[name, unit]`` lists are converted via ``convert`` on read/write.
 
         Examples:
-            Make self.velocity_params property, together with a self.get_velocity_params and self.set_velocity_params
-            functions. self.velocity_params will be a dictionary, containing 'channel_num', 'min_velocity',
-            'acceleration' and 'max_velocity'. The velocities will be converted into velocity through the convert
-            function and the acceleration will be converted into acceleration.
+            Create ``velocity_params`` together with ``get_velocity_params`` and
+            ``set_velocity_params``; the dict has ``channel_num``,
+            ``min_velocity``, ``acceleration`` and ``max_velocity``::
 
-                >>> self.make_parameter(dict(name='velocity_params', set=0x0413, get=0x0414, structure='HLLL',
-                >>>                     param_names=['channel_num', ['min_velocity', 'velocity'],
-                >>>                                 ['acceleration', 'acceleration'], ['max_velocity', 'velocity']]))
-
+                self.make_parameter(dict(
+                    name='velocity_params', set=0x0413, get=0x0414,
+                    structure='HLLL',
+                    param_names=['channel_num', ['min_velocity', 'velocity'],
+                                 ['acceleration', 'acceleration'],
+                                 ['max_velocity', 'velocity']]))
 
         Args:
-            param_dict:
-                name        :   internal name that you want the parameter to have
-                set         :   setter function
-                get         :   getter function
-                structure   :   binary structure of the data packets
-                param_names :   names of the parameters in the structure
-
-        Returns:
-
+            param_dict: Mapping with keys ``name`` (property name), ``set`` and
+                ``get`` (APT command codes), ``structure`` (struct format of the
+                data packet) and ``param_names`` (names of the packed fields).
+            destination_id: APT destination axis the get/set messages target.
         """
 
         def getter(selfie, channel_number=1):
@@ -364,7 +458,17 @@ class APT_VCP_motor(APT_VCP, Stage):
             print(param_dict['name'], ' already exists')
 
     def make_all_parameters(self):
-        # TODO: add all the documentation for each of these parameters
+        """Create the standard APT parameter properties for every axis.
+
+        Note:
+            ``make_parameter`` builds the read/write property with
+            ``property('get_<name>', 'set_<name>')``, passing strings rather
+            than the bound methods. ``property`` then has a string as ``fget``,
+            so accessing the property attribute (rather than the explicit
+            ``get_<name>``/``set_<name>`` methods) does not actually call the
+            getter/setter. This is a behavioural bug and is left as-is; use the
+            generated ``get_<name>``/``set_<name>`` methods directly.
+        """
         for axis in self.destination:
             self.make_parameter(dict(name=axis + '_encoder_counts',
                                      set=0x0409,
@@ -428,6 +532,13 @@ class APT_VCP_motor(APT_VCP, Stage):
 
 
 class DC_APT(APT_VCP_motor):
+    """APT DC-servo controller with per-stage count/unit conversion.
+
+    Conversion relies on the encoder-count calibration ``EncCnt`` (counts/mm,
+    selected by ``stage_type``) and the controller timer constant ``t_constant``;
+    if either is unset, ``convert`` returns the raw value and logs a warning.
+    """
+
     #The different EncCnt (calibrations) for the different stage types
     DC_stages_EncCnt = {
         'MTS': 34304.0,
@@ -446,8 +557,17 @@ class DC_APT(APT_VCP_motor):
                  unit='m',
                  stay_alive=True,
                  stage_type=None):
-        """
-        Pass all of the correct arguments to APT_VCP_motor for the DC stages and create converters.
+        """Open the controller and set the timer constant and encoder calibration.
+
+        Args:
+            port: Serial port name.
+            source: APT source address (default ``0x01``).
+            destination: APT destination address or axis->address dict.
+            use_si_units: Ignored; always forwarded as True to the base class.
+            unit: Stage unit string (default ``'m'``).
+            stay_alive: Keep the controller watchdog alive (default True).
+            stage_type: Key into ``DC_stages_EncCnt`` selecting the encoder
+                calibration; unknown/None leaves ``EncCnt`` as None.
         """
         APT_VCP_motor.__init__(self,
                                port=port,
@@ -546,6 +666,13 @@ class DC_APT(APT_VCP_motor):
 
 
 class Stepper_APT_std(APT_VCP_motor):
+    """Standard (non-Trinamics) APT stepper controller.
+
+    Uses a single counts/mm calibration (``EncCnt``, microsteps/mm selected by
+    ``stage_type``) for position conversion; velocity/acceleration are not
+    separately converted.
+    """
+
     #The different EncCnt (calibrations) for the different stage types is microstep/mm
     stepper_stages_EncCnt = {
         'DRV001': 51200,
@@ -564,9 +691,16 @@ class Stepper_APT_std(APT_VCP_motor):
                  use_si_units=True,
                  stay_alive=True,
                  stage_type=None):
-        """
-        Pass all of the correct arguments to APT_VCP_motor for the standard stepper controllers
-        stages and create converters.
+        """Open the controller and set the encoder calibration for a stepper stage.
+
+        Args:
+            port: Serial port name.
+            source: APT source address (default ``0x01``).
+            destination: APT destination address or axis->address dict.
+            use_si_units: Ignored; always forwarded as True to the base class.
+            stay_alive: Keep the controller watchdog alive (default True).
+            stage_type: Key into ``stepper_stages_EncCnt`` selecting the
+                microstep/mm calibration; unknown/None leaves ``EncCnt`` None.
         """
         APT_VCP_motor.__init__(self,
                                port=port,
@@ -609,6 +743,16 @@ class Stepper_APT_std(APT_VCP_motor):
 
 
 class Stepper_APT_trinamics(APT_VCP_motor):
+    """APT stepper controller using the Trinamics-based count calibrations.
+
+    Note:
+        ``convert`` tests ``self.t_constant``, but this class never assigns
+        ``t_constant`` (unlike ``DC_APT``), so the first call raises
+        ``AttributeError``. The velocity/acceleration converters instead bake in
+        the fixed factors 53.68 and 90.9. This is a runtime bug and is left
+        as-is; set ``t_constant`` on the instance before converting.
+    """
+
     #The different EncCnt (calibrations) for the different stage types is microstep/mm
     stepper_stages_EncCnt = {
         'DRV001': 819200,
@@ -628,9 +772,16 @@ class Stepper_APT_trinamics(APT_VCP_motor):
                  use_si_units=True,
                  stay_alive=True,
                  stage_type=None):
-        """
-        Pass all of the correct arguments to APT_VCP_motor for the Trinamics stepper controllers
-        stages and create converters.
+        """Open the controller and set the encoder calibration for a Trinamics stage.
+
+        Args:
+            port: Serial port name.
+            source: APT source address (default ``0x01``).
+            destination: APT destination address or axis->address dict.
+            use_si_units: Ignored; always forwarded as True to the base class.
+            stay_alive: Keep the controller watchdog alive (default True).
+            stage_type: Key into ``stepper_stages_EncCnt`` selecting the
+                microstep/mm calibration; unknown/None leaves ``EncCnt`` None.
         """
         APT_VCP_motor.__init__(self,
                                port=port,
@@ -665,22 +816,22 @@ class Stepper_APT_trinamics(APT_VCP_motor):
             return value
 
     def counts_to_pos(self, counts):
-        return old_div(counts, self.EncCnt) * 1E3
+        return (counts / self.EncCnt) * 1E3
 
     def pos_to_counts(self, pos):
-        return old_div(pos * self.EncCnt, 1E3)
+        return (pos * self.EncCnt / 1E3)
 
     def counts_to_vel(self, counts):
-        return old_div(counts, (self.EncCnt * 53.68)) * 1E3
+        return (counts / (self.EncCnt * 53.68)) * 1E3
 
     def vel_to_counts(self, vel):
-        return old_div(vel * 53.68 * self.EncCnt, 1E3)
+        return (vel * 53.68 * self.EncCnt / 1E3)
 
     def counts_to_acc(self, counts):
-        return old_div(counts, (self.EncCnt / 90.9)) * 1E3
+        return (counts / (self.EncCnt / 90.9)) * 1E3
 
     def acc_to_counts(self, acc):
-        return old_div(self.EncCnt / 90.9 * acc, 1E3)
+        return (self.EncCnt / 90.9 * acc / 1E3)
 
     counts_to = {
         'position': counts_to_pos,
@@ -690,6 +841,11 @@ class Stepper_APT_trinamics(APT_VCP_motor):
 
 
 class MFF102(APT_VCP_motor):
+    """Thorlabs MFF10x motorised filter flipper (two discrete positions).
+
+    Position is a boolean (0/1) flipper state read from the status bits and set
+    by jogging; ``move``/``convert`` from the base class are not used here.
+    """
 
     def jog_forward(self):  # 1 -> 0 (blame thorlabs)
         self._write(0x046A, param2=0x01)
@@ -729,6 +885,7 @@ class MFF102(APT_VCP_motor):
 
 
 class FlipperUI(QuickControlBox):
+    """Minimal control box exposing the flipper position as a checkbox."""
 
     def __init__(self, instr):
         super().__init__()
