@@ -1,4 +1,10 @@
-﻿from past.utils import old_div
+﻿"""Interface for National Instruments DAQ devices via the PyDAQmx wrapper.
+
+Note:
+    ``setup_multi_ai_cont`` and ``read_multi_ai_cont`` reference ``self.device``,
+    which is never assigned (only ``self.device_id`` exists). Calling either method
+    therefore raises ``AttributeError``; the continuous-acquisition path is broken.
+"""
 
 __author__ = 'alansanders'
 
@@ -13,9 +19,10 @@ class NIDAQ(Instrument):
     """An interface for NIDAQ devices."""
 
     def __init__(self, device_id):
-        """
+        """Initialize the DAQ interface.
 
-        :param device_id: a string identifier, e.g. 'Dev1'
+        Args:
+            device_id: A string identifier for the device, e.g. ``'Dev1'``.
         """
         super(NIDAQ, self).__init__()
         self.device_id = device_id
@@ -26,14 +33,15 @@ class NIDAQ(Instrument):
         self.num_points = None
 
     def setup_multi_ai(self, channels, sample_rate, time_interval):
-        """
-        Setup the DAQ device for multiple channel analog input. In this implementation the
-        task is not started, only setup with the task committed to improve start speed.
+        """Set up the DAQ device for multiple-channel analog input.
 
-        :rtype : object
-        :param channels: an iterable containing a sequence of channel identifiers, e.g. 0,1,2..
-        :param sample_rate: the sampling frequency
-        :param time_interval: the time interval over which data is sampled
+        In this implementation the task is not started, only set up with the task
+        committed to improve start speed.
+
+        Args:
+            channels: An iterable of channel identifiers, e.g. ``0, 1, 2, ...``.
+            sample_rate: The sampling frequency in Hz.
+            time_interval: The time interval over which data is sampled, in seconds.
         """
         num_samples = int(sample_rate *
                           time_interval)  # this is the number of points expected per channel
@@ -56,12 +64,14 @@ class NIDAQ(Instrument):
         self.channels = channels
 
     def read_multi_ai(self):
-        """
-        Read from a DAQ device previously setup using setup_multi_ai. The task is started and
-        then stopped once complete. The data is then parsed and returned.
+        """Read from a DAQ device previously set up using ``setup_multi_ai``.
 
-        :rtype : np.ndarray, np.ndarray
-        :return: time, data
+        The task is started and then stopped once complete. The data is then parsed
+        and returned.
+
+        Returns:
+            tuple: A ``(time, data)`` pair, where ``time`` is the sample-time axis
+            (``np.ndarray``) and ``data`` is a list of per-channel arrays.
         """
         analog_input = self.current_task
         read = int32()
@@ -82,8 +92,22 @@ class NIDAQ(Instrument):
         return time, data
 
     def setup_multi_ai_cont(self, channels, sample_rate, time_interval):
-        '''
-        '''
+        """Set up continuous multiple-channel analog input clocked by a counter output.
+
+        Configures an analog-input task together with a retriggerable counter-output
+        task that drives the input sample clock, then starts both for continuous
+        sampling.
+
+        Args:
+            channels: An iterable of channel identifiers, e.g. ``0, 1, 2, ...``.
+            sample_rate: The sampling frequency in Hz.
+            time_interval: The time interval over which data is sampled, in seconds.
+
+        Raises:
+            AttributeError: ``self.device`` is referenced but never assigned (only
+                ``self.device_id`` exists), so this method fails before configuring
+                the task.
+        """
         analog_input = Task()
         analog_counter = Task()
         num_samples = int(sample_rate *
@@ -121,6 +145,19 @@ class NIDAQ(Instrument):
         self.channels = channels
 
     def read_multi_ai_cont(self):
+        """Read from a continuous task previously set up using ``setup_multi_ai_cont``.
+
+        Reads the next block of samples without starting or stopping the task, then
+        parses and returns it.
+
+        Returns:
+            tuple: A ``(time, data)`` pair, where ``time`` is the sample-time axis
+            (``np.ndarray``) and ``data`` is a list of per-channel arrays.
+
+        Raises:
+            AttributeError: ``setup_multi_ai_cont`` cannot complete (it references the
+                unassigned ``self.device``), so a continuous task is never available.
+        """
         analog_input = self.current_task
         read = int32()
         total_samples = self.num_samples * len(self.channels)
@@ -139,47 +176,46 @@ class NIDAQ(Instrument):
         return time, data
 
     def _parse_data(self, channels, data):
-        """
-        The readout data is organised into an array n*m long, where n is the number of channels
-        and m is the number of samples per channel. This method splits the readout data into n
-        segments corresponding to each channel data.
+        """Split interleaved readout data into per-channel arrays.
 
-        :param channels:
-        :param data:
-        :return: data
+        The readout data is organised into an array ``n * m`` long, where ``n`` is the
+        number of channels and ``m`` is the number of samples per channel. This method
+        splits the readout data into ``n`` segments, one per channel.
+
+        Args:
+            channels: The iterable of channel identifiers used for the acquisition.
+            data: The flat readout array to split.
+
+        Returns:
+            list: A list of ``n`` arrays, one per channel.
         """
         data = np.split(data, len(channels))
         return data
 
     def clear_multi_ai(self):
-        """
-        Clear the previously committed task as set in setup_multi_ai.
-
-        :return:
-        """
+        """Clear the previously committed task as set up in ``setup_multi_ai``."""
         self.current_task.TaskControl(DAQmx_Val_Task_Unreserve)
 
     def stop_current_task(self):
-        """
-        Force the current task to stop.
-
-        :return:
-        """
+        """Force the current task to stop."""
         self.current_task.StopTask()
 
 
 class Itask(Task):
-    """Essentially a wrapper for the NIDAQ Task object that allows multiple
-    Tasks to be run without initialisation each time the Task needs to be run:
+    """Wrap a NIDAQ Task object so multiple tasks can run without re-initialising.
+
+    Allows a task to be configured once and re-run without re-initialising each time
+    the task needs to be run.
     """
 
     def __init__(self):
+        """Initialize the task wrapper with no configured mode."""
         Task.__init__(self)
         self.mode = None
 
     def setupmulti_ao(self, device_id, channels, minoutput, maxoutput):
-        """ The command required to setup a task/channel in the analog output 
-            configuration
+        """Set up a task/channel in the analog output configuration.
+
         Args:
             device_id (string): the name of the device setup in NI Max
                                 This should alawys be pulled straight from the 
@@ -199,14 +235,16 @@ class Itask(Task):
         self.mode = "AO"
 
     def set_ao(self, value):
-        """ the command for setting analog output voltages, input values are in 
-            Volts. self.setupmulti_ao must be called before this method can be used
-        
+        """Set the analog output voltage, in Volts.
+
+        ``setupmulti_ao`` must be called before this method can be used.
+
         Args:
-            value(float): the new output voltage in Volts
-            
+            value (float): The new output voltage in Volts.
+
         Raises:
-            BaseException: The task is not currently in analog output mode i.e. run self.setupmulti_ao()"""
+            BaseException: The task is not currently in analog output mode (i.e.
+                ``setupmulti_ao`` has not been run)."""
 
         if self.mode != "AO":
             raise BaseException(
@@ -231,8 +269,8 @@ if __name__ == '__main__':
         while j < 2:
             time, data = d.read_multi_ai()
             ref = data[0]
-            x = old_div(data[1], data[2])
-            y = old_div(data[3], data[4])
+            x = data[1] / data[2]
+            y = data[3] / data[4]
             new_data = [ref, x, y]
             for i in range(len(new_data)):
                 plot(time, new_data[i])
