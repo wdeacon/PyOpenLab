@@ -1,15 +1,16 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Tue Oct 21 15:58:04 2014
+"""Legacy serial driver and Qt control widget for the Coherent CUBE laser.
 
-@author: Hera
+Note:
+    Superseded by ``cube_laser.py``. ``CubeLaserUI`` and ``__main__`` reference ``QtGui``,
+    which is never imported (only ``QtWidgets`` is), so instantiating the UI raises
+    ``NameError``. Left unfixed as this is a behavioural defect in a legacy module.
 """
-from __future__ import print_function
 
 from builtins import str
 import sys
 
-from PyQt5 import QtWidgets  # QtGui
+from PyQt5 import QtWidgets
 import serial
 
 from pyopenlab.instrument.light_sources import LightSource
@@ -17,6 +18,7 @@ from pyopenlab.instrument.serial_instrument import SerialInstrument
 
 
 class CubeLaser(SerialInstrument, LightSource):
+    """Serial interface to a Coherent CUBE laser (legacy copy)."""
 
     def __init__(self, port=None):
         self.port_settings = {
@@ -30,19 +32,32 @@ class CubeLaser(SerialInstrument, LightSource):
         SerialInstrument.__init__(self, port=port)
 
     def get_power(self):
-        """read the current power output in mW"""
+        """Read the current power output in mW.
+
+        Returns:
+            The output power in mW.
+        """
         power = self.float_query("?P")
         print("%.1f mW" % power)
         return power
 
     def set_power(self, power):
-        """set the power output in mW"""
+        """Set the power output in mW.
+
+        Args:
+            power: Requested output power in mW; ignored unless in the range 0-40.
+        """
         if 0 <= power <= 40:
             self.query("P=%.1f" % power)
         else:
-            print('Input power must be between 0 an 40 mW')
+            print('Input power must be between 0 and 40 mW')
 
-    def mode_switch(self, pulsed=0):  #if pulsed=0, then CW; if 1 then pulsed
+    def mode_switch(self, pulsed=0):
+        """Switch the laser between continuous-wave and pulsed operation.
+
+        Args:
+            pulsed: ``0`` selects CW mode, ``1`` selects pulsed mode.
+        """
         self.query("CW=%.f" % (1 - pulsed))
         if pulsed == 0:
             mode = 'CW mode'
@@ -53,10 +68,11 @@ class CubeLaser(SerialInstrument, LightSource):
         print(mode)
 
 
-class CubeLaserUI(QtWidgets.QWidget):  #QtGui.QWidget):
+class CubeLaserUI(QtWidgets.QWidget):
+    """Standalone Qt widget for switching a CUBE laser on the fixed COM7 port."""
 
     def __init__(self):
-        QtWidgets.QWidget.__init__(self)  #QtGui.QWidget.__init__(self)
+        QtWidgets.QWidget.__init__(self)
         self.setWindowTitle("Cube Laser")
         self.resize(300, 100)
         self.move(100, 1500)

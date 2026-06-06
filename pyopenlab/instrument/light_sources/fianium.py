@@ -1,14 +1,14 @@
-﻿from __future__ import print_function
-
-__author__ = 'alansanders'
+﻿"""Serial driver for Fianium supercontinuum lasers."""
 
 from pyopenlab.instrument.light_sources import LightSource
 import pyopenlab.instrument.serial_instrument as serial
 
 
 class Fianium(LightSource, serial.SerialInstrument):
-    """
-    Interface for the Fianium supercontinuum lasers
+    """Interface for the Fianium supercontinuum lasers.
+
+    Power is controlled indirectly through the amplifier current-control DAC, so
+    :meth:`get_power`/:meth:`set_power` are thin aliases for :meth:`get_dac`/:meth:`set_dac`.
     """
 
     COMMAND_LIST = {
@@ -49,7 +49,7 @@ class Fianium(LightSource, serial.SerialInstrument):
             "description": "Set status display interval",
             "type": "setter"},
         "M=": {
-            "description": "Set status display interval",
+            "description": "Set laser control mode",
             "type": "setter"},
         "Q=": {
             "description": "Set amplifier current control DAC value in USB mode",
@@ -78,37 +78,57 @@ class Fianium(LightSource, serial.SerialInstrument):
         self.max_power = 2000
 
     def get_dac(self):
+        """Return the amplifier current-control DAC value."""
         return self.float_query('Q?')
 
     def set_dac(self, dac):
+        """Set the amplifier current-control DAC value.
+
+        Args:
+            dac: Integer DAC value to write.
+        """
         self.write('Q=%d' % dac)
 
     dac = property(get_dac, set_dac)
 
     def get_power(self):
+        """Return the current power, expressed as the DAC value (see :meth:`get_dac`)."""
         return self.get_dac()
 
     def set_power(self, value):
+        """Set the power by writing the DAC value (see :meth:`set_dac`).
+
+        Args:
+            value: DAC value to write.
+        """
         self.set_dac(value)
 
     power = property(get_power, set_power)
 
     def get_queries(self):
+        """Print every supported query command and its description."""
         for k, v in list(self.COMMAND_LIST.items()):
             if v["type"] == "query":
                 print("Query:[{0}], Description:[{1}]".format(k, v["description"]))
 
     def get_setters(self):
+        """Print every supported setter command and its description."""
         for k, v in list(self.COMMAND_LIST.items()):
             if v["type"] == "setter":
                 print("Query:[{0}], Description:[{1}]".format(k, v["description"]))
 
     def get_alarms(self):
+        """Query and print the laser's active alarms.
+
+        Returns:
+            The raw alarm response string.
+        """
         response = self.query('A?')
         print("Fianium.get_alarms:", response)
         return response
 
     def get_back_reflection_value(self):
+        """Return the back-reflection photodiode reading as a float."""
         response = self.float_query('B?')
         return response
 

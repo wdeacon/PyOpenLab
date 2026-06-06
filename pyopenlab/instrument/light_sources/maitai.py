@@ -1,9 +1,6 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Thu Jul 06 13:57:22 2017
+"""Serial driver and Qt control widget for the Spectra-Physics MaiTai Ti:sapphire laser."""
 
-@author: Hera
-"""
 from builtins import str
 
 import numpy as np
@@ -15,6 +12,14 @@ from pyopenlab.utils.notified_property import NotifiedProperty
 
 
 class Maitai(SerialInstrument):
+    """Serial interface to a MaiTai Ti:sapphire laser.
+
+    Note:
+        :meth:`set_wavelength` builds its out-of-range log message with
+        ``'... (' + wavelength + ')'`` where ``wavelength`` is a number, which raises
+        ``TypeError`` instead of logging. Left unfixed as a behavioural defect.
+    """
+
     port_settings = dict(
         baudrate=38400,
         bytesize=serial.EIGHTBITS,
@@ -29,70 +34,76 @@ class Maitai(SerialInstrument):
     termination_character = "\n"
 
     def __init__(self, port):
-        '''Maitai Ti:saphire laser: just requires port number to inialise '''
+        """Open the laser on the given serial port and disable the watchdog timer.
+
+        Args:
+            port: Serial port name (e.g. ``'COM1'``).
+        """
         super(Maitai, self).__init__(port)
         self.set_watchdog(0)
 
     def on(self):
-        '''Turn the Maitai on'''
+        """Turn the MaiTai on."""
         self.write('ON')
 
     def off(self):
-        '''Turn the Maitai off'''
+        """Turn the MaiTai off."""
         self.write('OFF')
 
     def open_shutter(self):
-        '''Opens the shutter using the shutter state property'''
+        """Open the shutter via the :attr:`shutter_state` property."""
         self.shutter_state = True
 
     def close_shutter(self):
-        '''Close the shutter using the shutter state property '''
+        """Close the shutter via the :attr:`shutter_state` property."""
         self.shutter_state = False
 
     def get_shutter_state(self):
-        '''Get shutter state and convert it to a bool
-        returns:
-            bool: True == open and False == close'''
+        """Get the shutter state as a bool.
+
+        Returns:
+            bool: ``True`` if the shutter is open, ``False`` if closed.
+        """
         return bool(int(self.query('SHUTTER?')))
 
     def set_shutter_state(self, state):
-        ''' Sets the shutter from a bool
+        """Set the shutter from a bool.
+
         Args:
-            bool True == Open, false == closed
-        '''
+            state: ``True`` to open the shutter, ``False`` to close it.
+        """
         self.write('SHUTTER ' + str(int(state)))
 
     shutter_state = NotifiedProperty(get_shutter_state, set_shutter_state)
 
     def get_humidity(self):
-        '''Returns the humidity '''
+        """Return the laser's internal relative humidity reading."""
         return self.query('READ:HUM?')
 
     def get_power(self):
-        '''Returns the IR power
-        '''
+        """Return the IR output power."""
         return self.query('READ:POWER?')
 
     def get_green_power(self):
-        '''Returns the IR power
-        '''
+        """Return the green pump-laser power."""
         return self.query('READ:PLASER:POWER?')
 
     def get_current_wavelength(self):
-        ''' The current real time wavelength - allowing you to check if the maitai ahs moved to the set wavelength yet
-        '''
+        """Return the live wavelength, used to check whether tuning to the set value is done."""
         return self.query('READ:WAVELENGTH?')
 
     current_wavelength = property(get_current_wavelength)
 
     def save(self):
-        '''Save tje current maitai settings for restart '''
+        """Save the current MaiTai settings so they persist across a restart."""
         self.write('SAVE')
 
     def get_set_wavelength(self):
-        ''' wavelength(float):  The current set wavelength of the Maitai (in nm)
-                                must between 690 and 1020
-        '''
+        """Return the configured target wavelength in nm.
+
+        Returns:
+            The set wavelength (between 690 and 1020 nm) as a float.
+        """
         return float(self.query('WAVELENGTH?')[:-2])
 
 
@@ -103,6 +114,11 @@ class Maitai(SerialInstrument):
 #            self.log('Wavelength out of range ('+wavelength+')')
 
     def set_wavelength(self, wavelength):
+        """Set the target wavelength in nm; values outside 690-1020 nm are rejected.
+
+        Args:
+            wavelength: Target wavelength in nm.
+        """
         if wavelength > 690 and wavelength < 1020:
             return self.write('WAVelength ' + str(wavelength))
         else:
@@ -111,18 +127,23 @@ class Maitai(SerialInstrument):
     wavelength = NotifiedProperty(get_set_wavelength, set_wavelength)
 
     def set_watchdog(self, n):
-        '''Sets the watchdog timer i.e. the ammount of time the laser will 
-        keep itself on without stay alive command. If set to zero this is disabled
-        '''
+        """Set the watchdog timeout in seconds.
+
+        The watchdog is the time the laser stays on without a keep-alive command; ``0``
+        disables it.
+
+        Args:
+            n: Watchdog timeout in seconds (``0`` to disable).
+        """
         self.write('TIMER:WATCHDOG ' + str(n))
 
     def get_qt_ui(self):
+        """Return a :class:`MaitaiControlUI` control widget for this laser."""
         return MaitaiControlUI(self)
 
 
 class MaitaiControlUI(QuickControlBox):
-    '''Control Widget for the MaiTai laser
-    '''
+    """Control widget for the MaiTai laser."""
 
     def __init__(self, maitai):
         super(MaitaiControlUI, self).__init__(title='MaiTai')

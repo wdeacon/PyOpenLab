@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Fri Mar 11 13:19:10 2022
-
-@author: Hera
-"""
+"""Example of connecting to a SolsTiS via pylablib's ``M2.Solstis`` driver."""
 
 import socket
 

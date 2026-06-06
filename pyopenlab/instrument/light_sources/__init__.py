@@ -1,8 +1,6 @@
-﻿from __future__ import print_function
+﻿"""Generic light-source base class and a simple power-control Qt widget."""
 
 from builtins import str
-
-__author__ = 'alansanders'
 
 from pyopenlab.instrument import Instrument
 from pyopenlab.instrument.shutter import Shutter
@@ -12,9 +10,14 @@ from pyopenlab.utils.gui import uic
 
 
 class LightSource(Instrument):
-    """A generic class representing light sources (including lasers)
-    
-    By default they can just have their power set and read.
+    """A generic light source (including lasers).
+
+    By default instances expose a single ``power`` property that can be read and set.
+
+    Attributes:
+        min_power: Lower bound used by the UI power slider.
+        max_power: Upper bound used by the UI power slider.
+        shutter: Optional :class:`~pyopenlab.instrument.shutter.Shutter` instance.
     """
     min_power = 0
     max_power = 1
@@ -26,19 +29,19 @@ class LightSource(Instrument):
         self.shutter = shutter
 
     def get_power(self):
-        """Get the current power of the light source"""
+        """Get the current power of the light source."""
         pass
 
     def set_power(self, value):
-        """Set the current power of the light source"""
+        """Set the current power of the light source."""
         print(value)
 
     def _get_power(self):
-        """Wrapper for get_power so we don't need to redefine properties"""
+        """Wrap :meth:`get_power` so subclasses need not redefine the ``power`` property."""
         return self.get_power()
 
     def _set_power(self, value):
-        """Wrapper for get_power so we don't need to redefine properties"""
+        """Wrap :meth:`set_power` so subclasses need not redefine the ``power`` property."""
         return self.set_power(value)
 
     power = property(_get_power, _set_power)

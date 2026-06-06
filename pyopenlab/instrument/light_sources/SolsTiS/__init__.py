@@ -1,16 +1,15 @@
-﻿"""
-MSquared SolsTiS laser wrapper
-==============================
-
-This module wraps the SolsTiS 3 TCP/IP Protocol from MSquared
-
+﻿"""MSquared SolsTiS laser wrapper over the SolsTiS 3 TCP/IP protocol.
 
 Not implemented:
-    - Wavemeter commands
-    - Report replies for commands that take a while to finish:
-        Need to change how the read_message works, since it currently only reads the last full message
+    - Wavemeter commands.
+    - Report replies for commands that take a while to finish: this needs a change to
+      ``read_message``, which currently only reads the last full message.
 
-__author__: Yago
+Note:
+    This module targets the original Python 2 / bytes-vs-str behaviour. On Python 3
+    ``socket.send`` is passed a ``str`` (must be ``bytes``) and ``read_message`` calls
+    ``.split('{')`` on the ``bytes`` returned by ``recv``, so the TCP path raises
+    ``TypeError``. These are pre-existing defects left unfixed.
 """
 from __future__ import print_function
 
@@ -24,8 +23,6 @@ import os
 import socket
 import time
 
-from past.builtins import basestring
-
 from pyopenlab.instrument import Instrument
 from pyopenlab.utils.gui import QtCore
 from pyopenlab.utils.gui import QtWidgets
@@ -37,6 +34,8 @@ MAX_MESSAGE_HISTORY = 10
 
 
 class SolsTiSParseFail(Exception):
+    """Raised when the laser returns a ``parse_fail`` reply, decoding its error code."""
+
     # updateGUI = QtCore.SIGNAL()
 
     def __init__(self, dicc):
@@ -50,9 +49,11 @@ class SolsTiS(Instrument):
     metadata_property_names = ('laser_status',)
 
     def __init__(self, address, **kwargs):
-        """
+        """Connect to the laser and read its initial status.
 
-        :param address: tuple of the SolsTiS (TCP_IP,TCP_PORT)
+        Args:
+            address: ``(TCP_IP, TCP_PORT)`` tuple identifying the SolsTiS.
+            **kwargs: Accepted for compatibility; unused.
         """
         Instrument.__init__(self)
 
@@ -74,13 +75,14 @@ class SolsTiS(Instrument):
         self.socket.close()
 
     def send_command(self, operation, parameters=None):
-        """
-        Implementation of the TCP JSON message structure as provided in the SolsTiS manual.
-        Also reads back the message from the SolsTiS, and, if verbose, prints out the
-        status of the laser after the command.
+        """Send a command using the SolsTiS TCP JSON message structure and read the reply.
 
-        :param operation: string containing name of operation
-        :param parameters: dictionary of parameters for operation
+        Logs the laser status reported in the reply (resolving numeric status codes via
+        ``id_dictionary`` when present).
+
+        Args:
+            operation: Name of the operation to send.
+            parameters: Optional dict of parameters for the operation.
         """
         if parameters is None:
             self.current_message = {
@@ -111,9 +113,10 @@ class SolsTiS(Instrument):
                                    id_dictionary.get(operation, {})['status'][status[0]])
 
     def read_message(self):
-        """
-        Reads BUFFER_SIZE bytes from the laser, and appends the last full message to message_in_history
+        """Read ``BUFFER_SIZE`` bytes and append the last full message to ``message_in_history``.
 
+        Raises:
+            SolsTiSParseFail: If the laser reports a ``parse_fail`` operation.
         """
         self.current_reply = self.socket.recv(BUFFER_SIZE)
         if len(self.current_reply.split('{')) != len(self.current_reply.split('}')):
@@ -126,14 +129,28 @@ class SolsTiS(Instrument):
             raise SolsTiSParseFail(self.message_in_history[-1])
 
     def start_link(self):
+        """Establish the control link, sending this computer's IP to the laser."""
         self.send_command("start_link", {"ip_address": self.computerIP})
 
     def ping(self, text):
+        """Ping the laser with ``text``.
+
+        Args:
+            text: Arbitrary string to echo.
+
+        Returns:
+            The ``text_out`` value echoed back by the laser.
+        """
         self.send_command("ping", {"text_in": text})
 
         return self.message_in_history[-1]['message']['parameters']['text_out']
 
     def change_wavelength(self, l):
+        """Tune to a wavelength via the wavemeter and refresh status on success.
+
+        Args:
+            l: Target wavelength in nm.
+        """
         self.send_command("set_wave_m", {"wavelength": [l]})
 
         time.sleep(1)
@@ -141,6 +158,7 @@ class SolsTiS(Instrument):
             self.system_status()
 
     def check_wavelength(self):
+        """Poll the wavemeter and cache the current wavelength in ``laser_status``."""
         self.send_command("poll_wave_m")
 
         if self.message_in_history[-1]['message']['parameters']['status'][0] == 0:
@@ -148,24 +166,58 @@ class SolsTiS(Instrument):
                 self.message_in_history[-1]['message']['parameters']['current_wavelength'][0]
 
     def stop_tuning(self):
+        """Abort an in-progress wavelength move."""
         self.send_command("stop_move_wave_t")
 
     def tune_etalon(self, val):
+        """Set the etalon tuning.
+
+        Args:
+            val: Etalon setting (percentage of full range).
+        """
         self.send_command("tune_etalon", {"setting": [val]})
 
     def tune_cavity(self, val):
+        """Set the reference-cavity tuning.
+
+        Args:
+            val: Cavity setting (percentage of full range).
+        """
         self.send_command("tune_cavity", {"setting": [val]})
 
     def fine_tune_cavity(self, val):
+        """Set the fine reference-cavity tuning.
+
+        Args:
+            val: Fine cavity setting.
+        """
         self.send_command("fine_tune_cavity", {"setting": [val]})
 
     def tune_resonator(self, val):
+        """Set the resonator tuning.
+
+        Args:
+            val: Resonator setting (percentage of full range).
+        """
         self.send_command("tune_resonator", {"setting": [val]})
 
     def fine_tune_resonator(self, val):
+        """Set the fine resonator tuning.
+
+        Args:
+            val: Fine resonator setting.
+        """
         self.send_command("fine_tune_resonator", {"setting": [val]})
 
     def etalon_lock(self, val):
+        """Turn the etalon lock on or off and cache the state on success.
+
+        Args:
+            val: ``'on'`` or ``'off'``.
+
+        Raises:
+            ValueError: If ``val`` is not ``'on'`` or ``'off'``.
+        """
         if val not in ['off', 'on']:
             raise ValueError('Lock can only be set to "off" or "on"')
         else:
@@ -175,6 +227,7 @@ class SolsTiS(Instrument):
                 self.laser_status['etalon_lock'] = val
 
     def etalon_lock_status(self):
+        """Query the etalon-lock condition and cache it in ``laser_status``."""
         self.send_command("etalon_lock_status")
 
         if self.message_in_history[-1]['message']['parameters']['status'][0] == 0:
@@ -182,6 +235,11 @@ class SolsTiS(Instrument):
                 'condition']
 
     def cavity_lock(self, val):
+        """Turn the reference-cavity lock on or off and cache the state on success.
+
+        Args:
+            val: ``'on'`` or ``'off'``; any other value is logged as a warning and ignored.
+        """
         if val not in ['off', 'on']:
             self._logger.warn('Lock can only be set to "off" or "on"')
         else:
@@ -191,6 +249,7 @@ class SolsTiS(Instrument):
                 self.laser_status['ref_cavity_lock'] = val
 
     def cavity_lock_status(self):
+        """Query the reference-cavity lock condition and cache it in ``laser_status``."""
         self.send_command("cavity_lock_status")
 
         if self.message_in_history[-1]['message']['parameters']['status'][0] == 0:
@@ -198,6 +257,7 @@ class SolsTiS(Instrument):
                 'parameters']['condition']
 
     def system_status(self):
+        """Query the full laser status and store every reported field in ``laser_status``."""
         self.send_command("get_status")
 
         if self.message_in_history[-1]['message']['parameters']['status'][0] == 0:
@@ -211,6 +271,7 @@ class SolsTiS(Instrument):
         # self.updateGUI.emit()
 
     def get_qt_ui(self):
+        """Return a :class:`SolsTiSUI` control widget for this laser."""
         return SolsTiSUI(self)
 
         # def settings(self, save=False):
@@ -226,6 +287,7 @@ class SolsTiS(Instrument):
 
 
 class SolsTiSUI(QtWidgets.QWidget):
+    """Qt control panel for a :class:`SolsTiS`: wavelength entry, locks, and status monitor."""
 
     def __init__(self, solstis):
         assert isinstance(solstis, SolsTiS), "instrument must be a SolsTiS"
@@ -299,10 +361,7 @@ class SolsTiSUI(QtWidgets.QWidget):
             self.SolsTiS.laser_status['etalon_lock'] in ['on'])
 
     def SolsTiSMonitor(self):
-        '''
-        Starts a monitoring thread that returns the system_status of the laser every 10s
-        :return:
-        '''
+        """Start (or restart) a background thread that polls the laser status periodically."""
         if self.SolsTiSMonitorThread is None:
             self.SolsTiSMonitorThread = SolsTiSStatusThread(self.SolsTiS)
             self.SolsTiSMonitorThread.connect(self.SolsTiSMonitorThread,
@@ -313,21 +372,16 @@ class SolsTiSUI(QtWidgets.QWidget):
             self.SolsTiSMonitorThread.start()
 
     def SolsTiSMonitorStop(self):
-        '''
-        Terminates the monitor thread if it exists
-        :return:
-        '''
+        """Terminate the status-monitor thread if it is running."""
         if self.SolsTiSMonitorThread is not None and self.SolsTiSMonitorThread.isRunning():
             self.SolsTiSMonitorThread.terminate()
 
     def SolsTiSupdatestatus(self):
-        '''
-        relevant_properties is a dictionary of labels to display (keys) and names of the properties to display as returned
-        by the laser
-        We then create a dictionary with the labels and the values of the properties (display_dicc)
-        And display that dictionary as a table
-        :return:
-        '''
+        """Refresh the status table from ``laser_status``.
+
+        ``relevant_properties`` maps display labels to the laser-status field names; the
+        corresponding values are looked up and rendered as a two-column table.
+        """
         relevant_properties = {
             'C. lock': 'cavity_lock',
             'E. lock': 'etalon_lock',
@@ -351,6 +405,7 @@ class SolsTiSUI(QtWidgets.QWidget):
 
 
 class SolsTiSLockThread(QtCore.QThread):
+    """Background thread that watches the etalon lock and signals when it drops out."""
 
     def __init__(self, solstis):
         QtCore.QThread.__init__(self)
@@ -373,6 +428,7 @@ class SolsTiSLockThread(QtCore.QThread):
 
 
 class SolsTiSStatusThread(QtCore.QThread):
+    """Background thread that polls ``system_status`` once per second and emits the result."""
 
     def __init__(self, solstis):
         QtCore.QThread.__init__(self)
@@ -393,6 +449,15 @@ class SolsTiSStatusThread(QtCore.QThread):
 
 
 def download_logs():
+    """Download the laser's automatic-logging files for a hard-coded date range.
+
+    Note:
+        Not general: the laser IP, date ranges, and output pickle path are hard-coded to a
+        specific historical setup. Kept as a one-off helper rather than a reusable API.
+
+    Returns:
+        A list of the raw log file contents that were successfully downloaded.
+    """
 
     def perdelta(start, end, delta):
         return_list = []
@@ -404,10 +469,6 @@ def download_logs():
         return [(int(x.strftime('%d')), int(x.strftime('%m')), int(x.strftime('%y')))
                 for x in return_list]
 
-    '''NOT GENERAL
-
-    Script that can be used to download the logs created by automatic logging in the laser
-    '''
     # import numpy as np
     from datetime import date
     from datetime import timedelta
