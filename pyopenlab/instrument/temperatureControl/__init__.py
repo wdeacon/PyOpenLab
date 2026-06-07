@@ -1,4 +1,10 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
+"""Base mixin for temperature-control instruments.
+
+Provides background-threaded temperature monitoring and range-checking that any
+temperature-control instrument can inherit by subclassing
+:class:`TemperatureControlMixin` and overriding :meth:`get_temperature`.
+"""
 
 import threading
 import time
@@ -7,16 +13,18 @@ from pyopenlab.utils import monitor_property
 
 
 class TemperatureControlMixin():
-    """A class representing temperature-control stages.
+    """Mixin providing temperature monitoring and control for instruments.
 
-    This class provides two threads: a temperature control thread that monitors the temperature every second and sends a
-    warning when the temperature is out of range, and a temperature monitoring thread that saves the temperature every
-    second and stores the latest temperatures
+    The mixin offers two background threads: a temperature-control thread that
+    checks every second whether the temperature is within range and warns when
+    it leaves that range, and a temperature-monitoring thread (via
+    :func:`pyopenlab.utils.monitor_property`) that periodically records the
+    temperature and keeps a rolling history.
 
-    Subclassing Notes
-    -----------------
-    The minimum you need to do in order to subclass this is to override the
-    `get_temperature` method
+    Note:
+        The minimum required to subclass this is to override
+        :meth:`get_temperature`. Instruments that can set a target should also
+        override :meth:`set_target_temperature` and :meth:`get_target_temperature`.
     """
 
     def __init__(self):
@@ -26,36 +34,59 @@ class TemperatureControlMixin():
         self._controlling = False
 
     def get_temperature(self):
+        """Return the current temperature.
+
+        Raises:
+            NotImplementedError: Always, unless overridden by a subclass.
+        """
         raise NotImplementedError
 
     temperature = property(fget=get_temperature)
 
     def set_target_temperature(self, value):
+        """Set the target (set-point) temperature.
+
+        Args:
+            value: The desired target temperature.
+
+        Raises:
+            NotImplementedError: Always, unless overridden by a subclass.
+        """
         raise NotImplementedError
 
     def get_target_temperature(self):
+        """Return the target (set-point) temperature.
+
+        Returns:
+            None: The base implementation returns nothing; subclasses should
+            override this to report the instrument's set-point.
+        """
         return
 
     target_temperature = property(fset=set_target_temperature, fget=get_target_temperature)
 
     def monitor_temperature(self, how_long=5, how_often=10, warn_limits=None):
-        """Sets a thread to monitor the temperature
+        """Start a background thread that records the temperature over time.
 
-        :param int how_long: how long a history to keep, in minutes
-        :param int how_often: how often to add a value to the history, in seconds
-        :param 2-tuple warn_limits: min/max temperature below/above which a warning is raised
-        :return:
+        Args:
+            how_long (int): How long a history to keep, in minutes.
+            how_often (int): How often to add a value to the history, in seconds.
+            warn_limits (tuple): A ``(min, max)`` pair; a warning is raised when the
+                temperature falls below ``min`` or rises above ``max``. ``None`` disables
+                the warning.
         """
         monitor_property(self, 'temperature', how_long * 60, how_often, warn_limits)
 
     def control_temperature(self, upper_target=None, lower_target=None):
-        """
-        Starts a background thread that checks the temperature is within the stated range. If both range limits are
-        None, and the target_temperature property has not been set, we assume an upper limit of 1000
+        """Start a background thread that checks the temperature stays in range.
 
-        :param upper_target: float
-        :param lower_target: float
-        :return:
+        If both limits are ``None`` and the ``target_temperature`` property has not been
+        set, an upper limit of 1000 is assumed. Starting a new control thread stops any
+        previously running one.
+
+        Args:
+            upper_target (float): Upper temperature limit; a warning is logged if exceeded.
+            lower_target (float): Lower temperature limit; a warning is logged if breached.
         """
         if upper_target is None and lower_target is None:
             if self.target_temperature is not None:
@@ -72,6 +103,18 @@ class TemperatureControlMixin():
         self._control_thread.start()
 
     def _control_temperature(self, upper_temp=None, lower_temp=None):
+        """Loop until the temperature leaves the range, then log a warning.
+
+        Args:
+            upper_temp (float): Upper temperature limit.
+            lower_temp (float): Lower temperature limit.
+
+        Note:
+            The loop guard ``upper_temp > self.temperature > lower_temp`` raises a
+            ``TypeError`` when either limit is ``None`` (e.g. when only one of
+            ``upper_target``/``lower_target`` is supplied to
+            :meth:`control_temperature`).
+        """
         while upper_temp > self.temperature > lower_temp:
             time.sleep(1)
             if not self._controlling:
