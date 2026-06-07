@@ -1,8 +1,9 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Fri Nov  3 17:02:07 2023
+"""Driver for Ivium potentiostats via the ``pyvium`` library.
 
-@author: smrs3, il322
+Wraps :class:`pyvium.Pyvium` as a PyOpenLab :class:`Instrument`, adding
+HDF5-backed saving and convenience methods for running cyclic voltammetry
+(:meth:`Ivium.run_cv`) and chronoamperometry (:meth:`Ivium.run_ca`).
 """
 
 import ctypes
@@ -22,33 +23,27 @@ from pyopenlab.utils.array_with_attrs import ArrayWithAttrs
 
 
 class Ivium(Instrument, Pyvium):
-    '''
-    Class handling Ivium Potentiostat
-    Uses pyvium library (pip install pyvium -> from pyvium import Pyvium as iv)
-    
-                
-    Notes/Improvements:
-        
-        Create GUI & GUI class
-        
-        run_method functions:
-            
-            Parameters must be set in function arguments:
-                Parameters set in IviumSoft will not be saved to .h5 metadata
-                No way to read updated parameters set in IviumSoft
-    
-            Does not check that parameter inputs are valid:
-                If invalid, will run method on default parameters from method_file_path without warning!
-    
-            Current system requires hard-coding of individual method parameters:
-                - Have to hard code any methods you want to set
-                - Have to hard code valid options for dropdown parameters
-    
-            Further advanced method parameters can be added (AutoCR, PreRanging, etc.)
-    '''
+    """Instrument wrapper for an Ivium potentiostat.
+
+    Built on the ``pyvium`` library (``pip install pyvium``). On construction it
+    opens the Ivium driver, connects the device, verifies its status and
+    attaches the current HDF5 datafile for saving results.
+
+    Note:
+        Method parameters must be passed as arguments to :meth:`run_cv` /
+        :meth:`run_ca`; parameters edited in IviumSoft are neither saved to the
+        ``.h5`` metadata nor read back. Parameter values are not validated
+        against the instrument, so invalid inputs fall back to the defaults in
+        the method file without warning.
+    """
 
     def __init__(self):
+        """Open the Ivium driver, connect the device and attach a datafile.
 
+        Raises:
+            AssertionError: If the connected device does not report a ready
+                status.
+        """
         Instrument.__init__(self)
 
         # Open Ivium dll & connect device
@@ -67,10 +62,15 @@ class Ivium(Instrument, Pyvium):
         self.data_file = df.current()
 
     def save(self, name, data):
-        '''
-        Function to save Ivium data to h5 file 
-        '''
+        """Save a dataset to the ``Potentiostat`` group of the HDF5 file.
 
+        Uses the current datafile group if one is active, otherwise an existing
+        or newly created ``Potentiostat`` group.
+
+        Args:
+            name: Name of the dataset to create.
+            data: Array-like data to store (e.g. an ``ArrayWithAttrs``).
+        """
         if self.data_file is None:
             self.data_file = df.current()
 
@@ -99,26 +99,29 @@ class Ivium(Instrument, Pyvium):
             method_file_path:
         str = r"C:\Users\HERA\Documents\GitHub\pyopenlab\pyopenlab\instrument\potentiostat\CV_Standard.imf",
             save: bool = True):
-        '''
-        Function for setting CV parameters, running CV, and returning data w/ attributes
-        
-        
-        Parameters:
-            
-            self (Ivium class)
-            title (str = 'CV_%d')
-            mode (str = 'Standard') CV mode. Dropdown option: must be 'Standard' or 'HiSpeed'
-            e_start (float = 0): Starting potential in V
-            vertex_1 (float = 1.0): Vertex 1 potential in V
-            vertex_2 (float = -1.0): Vertex 2 potential in V
-            e_step (float = 0.1): Potential step size in V
-            n_scans (int = 1): Number of CV scans
-            scanrate (float = 0.01): CV scan rate in V/s
-            current_range (str = '1nA'): Current dynamic range. Dropdown option: must be in valid_current_range (see below)
-            method_file_path (str): Method file path. Must be CV .imf file
-            save (bool = True): If true, saves data automatically to h5 file    
-        '''
+        """Configure and run a cyclic voltammetry (CV) method, returning data.
 
+        Args:
+            title: Dataset/method title. Defaults to ``'CV_%d'``.
+            mode: CV mode; must be ``'Standard'`` or ``'HiSpeed'``.
+            e_start: Starting potential in V.
+            vertex_1: Vertex 1 potential in V.
+            vertex_2: Vertex 2 potential in V.
+            e_step: Potential step size in V.
+            n_scans: Number of CV scans.
+            scanrate: CV scan rate in V/s.
+            current_range: Current dynamic range; must be in the valid set
+                (``'1A'`` through ``'100pA'``).
+            method_file_path: Path to the CV ``.imf`` method file.
+            save: If ``True``, save the result to the HDF5 file.
+
+        Returns:
+            ArrayWithAttrs: A ``[potential, current]`` array with measurement
+            metadata attached.
+
+        Raises:
+            ValueError: If ``mode`` or ``current_range`` is invalid.
+        """
         # Load CV method
 
         self.load_method(method_file_path)
@@ -188,7 +191,7 @@ class Ivium(Instrument, Pyvium):
             'Mode': str(mode),
             'E start (V)': e_start,
             'Vertex 1 (V)': vertex_1,
-            'Verttex 2 (V)': vertex_2,
+            'Vertex 2 (V)': vertex_2,
             'E step (V)': e_step,
             'N scans': n_scans,
             'Scanrate (V/s)': scanrate,
@@ -213,24 +216,29 @@ class Ivium(Instrument, Pyvium):
             method_file_path:
         str = r"C:\Users\HERA\Documents\GitHub\pyopenlab\pyopenlab\instrument\potentiostat\CA_Standard.imf",
             save: bool = True):
-        '''
-        Function for setting ChronoAmperometry parameters, running CA, and returning/saving data w/ metadata
-        
-        
-        Parameters:
-            
-            self (Ivium class)
-            title (str = 'CA_%d')
-            mode (str = 'Standard') CA mode. Dropdown option: must be 'Standard' or 'HiSpeed'
-            levels_v (list = [0, 0.5, 1.0]): CA level potentials in V
-            levels_t (list = [1, 1, 1]): CA level times in s
-            cycles (int = 5): Number of CA cycles
-            interval_time (float = 0.1): CA data point step size in s
-            current_range (str = '1nA'): Current dynamic range. Dropdown option: must be in valid_current_range (see below)
-            method_file_path (str): Method file path. Must be CA .imf file     
-            save (bool = True):             
-        '''
+        """Configure and run a chronoamperometry (CA) method, returning data.
 
+        Args:
+            title: Dataset/method title. Defaults to ``'CA_%d'``.
+            mode: CA mode; must be ``'Standard'`` or ``'HiSpeed'``.
+            levels_v: CA level potentials in V.
+            levels_t: CA level times in s. Must match the length of ``levels_v``.
+            cycles: Number of CA cycles.
+            interval_time: CA data-point step size in s.
+            current_range: Current dynamic range; must be in the valid set
+                (``'1A'`` through ``'100pA'``).
+            method_file_path: Path to the CA ``.imf`` method file.
+            save: If ``True``, save the result to the HDF5 file.
+
+        Returns:
+            ArrayWithAttrs: A ``[time, current]`` array with measurement
+            metadata attached.
+
+        Raises:
+            ValueError: If ``mode`` or ``current_range`` is invalid, if
+                ``levels_v`` and ``levels_t`` differ in length, or if the number
+                of levels is not between 1 and 25.
+        """
         # Load CA method
 
         self.load_method(method_file_path)

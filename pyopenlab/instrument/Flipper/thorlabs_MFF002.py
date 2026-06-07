@@ -1,4 +1,6 @@
-﻿import struct
+﻿"""Driver for the Thorlabs MFF series motorised filter flipper."""
+
+import struct
 import time
 
 import numpy as np
@@ -10,6 +12,8 @@ from pyopenlab.utils.thread_utils import locked_action
 
 
 class ThorlabsMFF(Flipper):
+    """Thorlabs MFF motorised flip mount, controlled over the APT protocol."""
+
     port_settings = dict(baudrate=115200,
                          bytesize=8,
                          parity=serial.PARITY_NONE,
@@ -20,10 +24,24 @@ class ThorlabsMFF(Flipper):
                          writeTimeout=1)
 
     def __init__(self, port, **kwargs):
+        """Connect to an MFF flipper.
+
+        Args:
+            port: Serial port the flipper is on (e.g. ``'COM19'``).
+            **kwargs: Accepted for interface compatibility; currently unused.
+        """
         Flipper.__init__(self, port)
 
     @locked_action
     def set_state(self, value):
+        """Move the flipper to the requested position and wait for completion.
+
+        Args:
+            value: Truthy to move to position 1, falsy to move to position 2/0.
+
+        Raises:
+            RuntimeError: If the move does not complete within the port timeout.
+        """
         if value:
             self.write(0x046A, param1=0x01, param2=0x01)
             time.sleep(0.1)
@@ -42,6 +60,17 @@ class ThorlabsMFF(Flipper):
                     raise RuntimeError('Timed out while waiting for position change')
 
     def get_state(self):
+        """Query and decode the flipper's current position.
+
+        Returns:
+            ``1`` or ``0`` for the two valid positions. A sentinel string is
+            returned if the status bits are inconsistent (see Note).
+
+        Note:
+            On an unexpected status mask this returns the placeholder strings
+            ``'Fuck'``/``'Fuck2'`` rather than raising. Callers comparing the
+            result to ``0``/``1`` should treat any non-int return as an error.
+        """
         self.write(0x0429, param1=0x01)
         read = self.read()
         msg = read['data']
