@@ -1,14 +1,10 @@
 ﻿# -*- coding: utf-8 -*-
+"""Driver for the Spectral Products DK240/DK480 (Digikrom) monochromator.
+
+The Digikrom uses fixed-length serial commands with no termination character and
+exchanges values as hex bytes. This driver overrides the generic serial query
+machinery accordingly and exposes wavelength, grating and slit control.
 """
-Created on Tue Apr 24 11:35:36 2018
-
-@author: WMD
-"""
-from __future__ import division
-from __future__ import print_function
-
-from builtins import chr
-
 import numpy as np
 from past.utils import old_div
 import serial
@@ -18,6 +14,20 @@ from pyopenlab.utils.notified_property import NotifiedProperty
 
 
 class Digikrom(SerialInstrument):
+    """Spectral Products DK240/DK480 monochromator over a serial connection.
+
+    Commands are issued as decimal values (as listed in the manual) which are
+    converted to hex bytes for transmission; responses are decoded back to lists
+    of decimal byte values. A status byte returned with most responses is parsed
+    into :attr:`_status_byte`.
+
+    Attributes:
+        port_settings (dict): Pyserial port configuration for the instrument.
+        termination_character (str): Empty, as the protocol uses fixed-length frames.
+        serial_number (list[int]): Expected serial-number digits used by
+            :meth:`test_communications`.
+    """
+
     port_settings = dict(
         baudrate=9600,
         bytesize=serial.EIGHTBITS,
@@ -31,6 +41,14 @@ class Digikrom(SerialInstrument):
     )
 
     def __init__(self, port=None, serial_number=[50, 52, 51, 49, 55]):
+        """Open the connection and configure the expected serial number.
+
+        Args:
+            port (str, optional): Serial port name (e.g. ``"COM9"``). If ``None``
+                the base class attempts auto-detection.
+            serial_number (list[int]): Expected serial-number digits, used by
+                :meth:`test_communications` to confirm the right device is attached.
+        """
         self.termination_character = ''
         self.serial_number = serial_number
         super(Digikrom, self).__init__(port=port)
@@ -41,12 +59,26 @@ class Digikrom(SerialInstrument):
               return_as_dec=True,
               max_len_returned=10,
               block=True):
-        """The digikrom uses fixed length commands and has no termination character
-        therefore the query function from serialinstrument needs to be overwritten.
-        As the digikrom requires input in hex commands must be changed from decimal
-        (as listed in the manual) to hex. The returned messages also need the same treatment
-        The maximum length of the returned str can also be specified to maximise speed
-        as currently it just waits for timeout"""
+        """Send a command and read the response, handling the fixed-length protocol.
+
+        Overrides :meth:`SerialInstrument.query` because the Digikrom uses
+        fixed-length commands with no termination character. Decimal commands are
+        converted to hex for transmission and responses are decoded back to decimal.
+
+        Args:
+            message (int | list[int]): Command (or command bytes) as decimal value(s).
+            convert_to_hex (bool): If ``True`` encode ``message`` to hex before sending.
+            return_as_dec (bool): If ``True`` decode the response to a list of decimal
+                byte values.
+            max_len_returned (int): Maximum number of bytes to read; bounding this
+                avoids waiting for the full serial timeout.
+            block (bool): If ``True`` keep reading until the command-complete byte
+                (24) is received.
+
+        Returns:
+            list[int] | bytes: Decoded decimal byte list if ``return_as_dec`` is
+            ``True``, otherwise the raw bytes.
+        """
         if convert_to_hex == True:
             message_hex = self.encode_bytes(message)
         else:
@@ -70,9 +102,15 @@ class Digikrom(SerialInstrument):
 
     @staticmethod
     def decode_bytes(byte_str):
-        """The digikrom uses decimal charcters therefore it is helpful to translate
-        hex (returned from the digikrom) into a list of decimal values to prevent
-        asci mishaps
+        """Convert a raw byte response into a list of decimal values.
+
+        Working in decimal mirrors the manual and avoids ASCII conversion mishaps.
+
+        Args:
+            byte_str: Iterable of single-character bytes returned by the device.
+
+        Returns:
+            list[int]: The ordinal (decimal) value of each byte.
         """
         decimal_list = []
         for byte in byte_str:
@@ -81,8 +119,14 @@ class Digikrom(SerialInstrument):
 
     @staticmethod
     def encode_bytes(decimal_list):
-        """The digikrom uses decimal charcters but recieves hex therefore it is
-        helpful to translate decimal values into hex to send to the digikrom
+        """Convert decimal command value(s) into a byte string for transmission.
+
+        Args:
+            decimal_list (int | list[int]): A single decimal value or list of them.
+                A scalar is wrapped in a list automatically.
+
+        Returns:
+            str: The corresponding characters, one per decimal value.
         """
         if type(decimal_list) != list:
             decimal_list = [decimal_list]
@@ -93,7 +137,22 @@ class Digikrom(SerialInstrument):
         return byte_str
 
     def set_status_byte(self, status_byte):
-        """Extract the status from the status byte """
+        """Decode the device status byte and store it on the instrument.
+
+        Parses the individual bits into a status dictionary (value accepted, error
+        type, motor movement order, scan direction, CSR mode), logs it, and stores
+        it on :attr:`_status_byte`.
+
+        Args:
+            status_byte (int): The raw status byte returned by the device.
+
+        Note:
+            The bits at index 0 and 4 are compared against the integer ``1`` rather
+            than the string ``'1'`` (the byte is a string of characters here), so
+            those two comparisons are always ``False``. As a result
+            ``motor_movement_order`` and ``scan_direction`` never take their first
+            branch. This is a latent bug; left unchanged to avoid altering behaviour.
+        """
         binary_byte = bin(status_byte)[2:]
         if len(binary_byte) != 8:
             binary_byte = (8 - len(binary_byte)) * '0' + binary_byte
@@ -132,9 +191,14 @@ class Digikrom(SerialInstrument):
         self._status_byte = status_dict
 
     def get_wavelength(self):
-        """The get wavlength command number is 29 and data is returned as 3 bytes,
-        the high byte, the mid byte and the low bye. These byte correspond to
-        multiples of 65536, 256 and 1. as shown below"""
+        """Read the current centre wavelength.
+
+        Command 29 returns the value as three bytes (high, mid, low) representing
+        multiples of 65536, 256 and 1, in hundredths of a nm.
+
+        Returns:
+            float: Current wavelength in nm.
+        """
         returned_message = self.query(29)
         wl = returned_message[1] * 65536
         wl += 256 * returned_message[2]
@@ -143,9 +207,14 @@ class Digikrom(SerialInstrument):
         return wl / 100.0
 
     def set_wavelength(self, wl):
-        """The set wavlength command number is 16 and data is sent as 3 bytes,
-        the high byte, the mid byte and the low bye. These byte correspond to
-        multiples of 65536, 256 and 1. as shown below"""
+        """Set the centre wavelength.
+
+        Command 16 expects the value as three bytes (high, mid, low) representing
+        multiples of 65536, 256 and 1, in hundredths of a nm.
+
+        Args:
+            wl (float): Target wavelength in nm.
+        """
         self.query(16, block=False)
         wl = wl * 100
         high_byte = int(old_div(wl, 65536))
@@ -158,6 +227,12 @@ class Digikrom(SerialInstrument):
     centre_wavlength = NotifiedProperty(get_wavelength, set_wavelength)
 
     def get_grating_id(self):
+        """Read grating information from the monochromator.
+
+        Returns:
+            dict: With keys ``number_of_gratings``, ``current_grating``,
+            ``grating_ruling`` (grooves/mm) and ``grating_blaze`` (nm).
+        """
         info = self.query(19)
         info_dict = {
             'number_of_gratings': info[1],
@@ -167,24 +242,35 @@ class Digikrom(SerialInstrument):
         return info_dict
 
     def set_grating(self, grating_number):
-        """This command changes gratings , if additional gratings installed.."""
+        """Select a grating, if additional gratings are installed.
+
+        Args:
+            grating_number (int): Index of the grating to select.
+        """
         self.query(26)
         self.query(grating_number)
 
     def reset(self):
-        """This command returns the grating to home position """
+        """Return the grating to its home position."""
         self.query([255, 255, 255])
 
     def clear(self):
-        """This command restores factory calibration values for the grating and slits.
-        This command also executes a reset, which returns the grating to home position."""
+        """Restore factory calibration values for the grating and slits.
+
+        Also performs a reset, returning the grating to its home position.
+        """
         self.query(25)
 
     def CSR(self, bandpass_value):
-        """ This command sets monochromator to Constant Spectral Resolution mode.
-        The slit width will vary throughout a scan. This is useful, for example,
-        where measurement of a constant interval of frequency is desired
-        (spectral power distribution measurements)."""
+        """Set the monochromator to Constant Spectral Resolution mode.
+
+        In this mode the slit width varies throughout a scan, which is useful when
+        a constant interval of frequency is desired (e.g. spectral power
+        distribution measurements).
+
+        Args:
+            bandpass_value (int): Target bandpass, sent as a two-byte value.
+        """
         self.query(28)
         high_byte = int(old_div(bandpass_value, 256))
         bandpass_value = bandpass_value - high_byte * 256
@@ -192,15 +278,17 @@ class Digikrom(SerialInstrument):
         self.query([high_byte, low_byte])
 
     def echo(self):
-        """The ECHO command is used to verify communications with the DK240/480.
-        """
+        """Verify communications with the DK240/480 via the ECHO command."""
         self.log(self.query(27), level='info')
 
     def gval(self, repositioning_wl):
-        """This command allows recalibration of the monochromator positioning
-        scale factor and should be used immediately after using the ZERO command
-        (see page 15). The monochromator should be set to the peak of a known spectral line,
-        then the position of that line is input using the CALIBRATE command.
+        """Recalibrate the monochromator positioning scale factor.
+
+        Should be used immediately after the ZERO command: set the monochromator to
+        the peak of a known spectral line, then supply that line's position here.
+
+        Args:
+            repositioning_wl (float): Known spectral-line wavelength in nm.
         """
         self.query(18)
         repositioning_wl = repositioning_wl * 100
@@ -212,14 +300,23 @@ class Digikrom(SerialInstrument):
         self.query([high_byte, mid_byte, low_byte])
 
     def get_serial(self):
-        """ Returns the 5 digit serial number of the monochromator."""
+        """Return the monochromator's serial number digits.
+
+        Returns:
+            list[int]: The serial-number digits (the payload of the response).
+        """
         return self.query(33)[1:-2]
 
     def get_slit_widths(self):
-        """Returns the current four byte (six byte for DK242) slit width.
-        First two bytes are high and low byte of the entrance slit width in microns.
-        Second two bytes are the high and low byte of the exit slit width.
-        For DK242, the last two bytes are for middle slit width."""
+        """Return the current slit widths in microns.
+
+        The response is four bytes (six for the DK242): high/low byte of the
+        entrance slit width, then high/low of the exit slit width, and for the
+        DK242 a final high/low pair for the middle slit.
+
+        Returns:
+            numpy.ndarray: Slit widths in microns, one entry per slit.
+        """
         slit_info = self.query(30)[1:-2]
         slit_info = np.array(slit_info)
         low_byte = slit_info[1::2]
@@ -228,7 +325,10 @@ class Digikrom(SerialInstrument):
         return slit_info
 
     def set_all_slits(self, slit_width):
-        """ Adjusts all slits to a given width.
+        """Adjust all slits to a given width.
+
+        Args:
+            slit_width (int): Target slit width in microns.
         """
         high_byte = int(old_div(slit_width, 256))
         slit_width = slit_width - high_byte * 256
@@ -237,7 +337,11 @@ class Digikrom(SerialInstrument):
         self.query([high_byte, low_byte])
 
     def set_slit_1_width(self, slit_width):
-        """Adjusts entrance slit to a given width."""
+        """Adjust the entrance slit to a given width.
+
+        Args:
+            slit_width (int): Target slit width in microns.
+        """
         high_byte = int(old_div(slit_width, 256))
         slit_width = slit_width - high_byte * 256
         low_byte = int(slit_width)
@@ -245,8 +349,14 @@ class Digikrom(SerialInstrument):
         self.query([high_byte, low_byte])
 
     def set_slit_2_width(self, slit_width):
-        """Adjusts exit slit to a given width."""
-        """Slit 2 (exit) not installed 05042019"""
+        """Adjust the exit slit to a given width.
+
+        Args:
+            slit_width (int): Target slit width in microns.
+
+        Note:
+            A site comment recorded the exit slit as not installed (05042019).
+        """
         high_byte = int(old_div(slit_width, 256))
         slit_width = slit_width - high_byte * 256
         low_byte = int(slit_width)
@@ -254,7 +364,11 @@ class Digikrom(SerialInstrument):
         self.query([high_byte, low_byte])
 
     def set_slit_3_width(self, slit_width):
-        """Adjusts middle slit to a given width."""
+        """Adjust the middle slit to a given width.
+
+        Args:
+            slit_width (int): Target slit width in microns.
+        """
         high_byte = int(old_div(slit_width, 256))
         slit_width = slit_width - high_byte * 256
         low_byte = int(slit_width)
@@ -262,7 +376,12 @@ class Digikrom(SerialInstrument):
         self.query([high_byte, low_byte])
 
     def test_communications(self):
-        """Check there is the correct digikrom at other end of the COM port."""
+        """Check that the expected Digikrom is on the other end of the COM port.
+
+        Returns:
+            bool: ``True`` if the device's serial number matches
+            :attr:`serial_number`, ``False`` on mismatch or communication failure.
+        """
         try:
             serial_num = self.get_serial()
         except:
@@ -274,6 +393,11 @@ class Digikrom(SerialInstrument):
 
 
 def init():
+    """Convenience constructor for a Digikrom on the default lab port (COM9).
+
+    Returns:
+        Digikrom: An initialised instrument instance.
+    """
     spec = Digikrom(port="COM9", serial_number=[50, 52, 51, 49, 55])
     return spec
 
