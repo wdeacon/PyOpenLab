@@ -1,8 +1,8 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Tue Apr 11 11:26:55 2017
+"""Qt-based mapper coupling a camera and a stage for coordinate conversion.
 
-@author: Will
+Provides :class:`CameraStageMapper` (a non-traits variant of the mapper) and the
+:class:`CameraStageMapperControlWidget` Qt control panel.
 """
 import threading
 import time
@@ -11,7 +11,6 @@ import cv2
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-from past.utils import old_div
 import pyqtgraph as pg
 from scipy import ndimage
 
@@ -25,14 +24,11 @@ from pyopenlab.utils.gui import QtWidgets
 
 
 class CameraStageMapper(Instrument):
-    """
-    This class sits between a camera and a stage, allowing coordinate conversion.
+    """Mediates between a camera and a stage, allowing coordinate conversion.
 
-    Coordinate Systems
-    ------------------
-    We consider the centre of the image to be our current position, and give
-    the position of each pixel on the camera such that it would be brought to
-    the centre of the camera image by moving the stage to (-position).
+    The centre of the image is taken to be the current position. Each camera
+    pixel has a position such that it would be brought to the centre of the image
+    by moving the stage to ``-position``.
     """
 
     #    do_calibration = Button()
@@ -57,6 +53,12 @@ class CameraStageMapper(Instrument):
     #                    title="Camera-Stage Mapper",
     #                )
     def __init__(self, camera, stage):
+        """Bind a camera and a stage and register the click-to-move callback.
+
+        Args:
+            camera: A camera instrument instance.
+            stage: A stage instrument instance.
+        """
         super(CameraStageMapper, self).__init__()
         self.camera = camera
         self.stage = stage
@@ -76,18 +78,20 @@ class CameraStageMapper(Instrument):
 
     ############ Coordinate Conversion ##################
     def camera_pixel_to_point(self, p):
-        """convert pixel coordinates to point coordinates (normalised 0-1)"""
+        """Convert pixel coordinates to normalised (0-1) point coordinates."""
         return (np.array(p, dtype=float) /
                 np.array(self.camera.latest_frame.shape[0:2], dtype=float))
 
     def camera_point_to_pixel(self, p):
-        """convert point coordinates (normalised 0-1) to pixel"""
+        """Convert normalised (0-1) point coordinates to pixel coordinates."""
         return np.array(p) * np.array(self.camera.latest_frame.shape[0:2])
 
     def camera_pixel_to_sample(self, p):
+        """Convert pixel coordinates to absolute sample coordinates (microns)."""
         return self.camera_point_to_sample(self.camera_pixel_to_point(p))
 
     def camera_point_to_sample(self, p):
+        """Convert normalised point coordinates to absolute sample coordinates."""
         displacement = np.dot(np.array(p) - np.array(self.camera_centre), self.camera_to_sample)
         return self.camera_centre_position()[0:2] + displacement
 
@@ -101,13 +105,17 @@ class CameraStageMapper(Instrument):
 
     ############## Stage Control #####################
     def move_to_camera_pixel(self, p):
-        """bring the object at pixel p=(x,y) on the camera to the centre"""
+        """Bring the object at pixel ``p=(x, y)`` on the camera to the centre."""
         return self.move_to_camera_point(*tuple(self.camera_pixel_to_point(p)))
 
     def move_to_camera_point(self, x, y=None):
-        """Move the stage to centre point (x,y) on the camera
-        
-        (x,y) is the position on the camera, where x,y range from 0 to 1"""
+        """Move the stage to bring camera point (x, y) to the centre.
+
+        Args:
+            x: Normalised x position (0-1), or an ``(x, y)`` pair when ``y`` is
+                None.
+            y: Normalised y position (0-1), or None if ``x`` is a pair.
+        """
         if y is None:
             p = x
         else:
@@ -117,11 +125,11 @@ class CameraStageMapper(Instrument):
         self.move_to_sample_position(current_position)
 
     def move_to_sample_position(self, p):
-        """Move the stage to centre sample position p on the camera"""
+        """Move the stage so sample position ``p`` is at the camera centre."""
         self.stage.move(-np.array(p))
 
     def camera_centre_position(self):
-        """return the position of the centre of the camera view, on the sample"""
+        """Return the sample position currently at the centre of the camera view."""
         return -self.stage.position
 
     ################## Closed loop stage control #################
@@ -132,19 +140,19 @@ class CameraStageMapper(Instrument):
                           max_iterations=10,
                           **kwargs):
         """Adjust the stage slightly to centre on the given feature.
-        
-        This should be called immediately after moving the stage to centre on a
-        feature in the image: first move the stage to bring that feature to the
-        centre, then call this function to fine-tune.
-        
-        Arguments
-        =========
-        * feature_image: an RGB image of a feature.  Must be
-        significantly smaller than the camera image.
-        * search_size: size of the area around the image centre to search, in
-        pixels.  Should be a tuple of length 2.
-        * tolerance: how accurately we're going to centre (in um)
-        * max_iterations: maximum number of shifts
+
+        Call this immediately after moving the stage to centre on a feature: first
+        move the stage to bring the feature to the centre, then call this to
+        fine-tune.
+
+        Args:
+            feature_image: An RGB image of a feature, significantly smaller than
+                the camera image.
+            search_size: Size (in pixels) of the area around the image centre to
+                search; a tuple of length 2.
+            tolerance: How accurately to centre, in microns.
+            max_iterations: Maximum number of shift iterations.
+            **kwargs: Forwarded to :meth:`centre_on_feature_iterate`.
         """
         shift = [999., 999.]
         n = 0
@@ -174,16 +182,21 @@ class CameraStageMapper(Instrument):
                                   search_size=(50, 50),
                                   image_filter=lambda x: x):
         """Measure the displacement of the sample and move to correct it.
-        
-        Arguments:
-        feature_image : numpy.ndarray
-            This is the feature that should be at the centre of the camera.  It
-            must be smaller than the camera image + search size.
-        search_size : (int, int)
-            The distance in pixels to search over.  Defaults to (50,50).
-        image_filter : function (optional)
-            If supplied, run this function on the image before cross-correlating
-            (you can use this to cross-correlate in grayscale, for example).
+
+        Args:
+            feature_image: The feature (numpy.ndarray) that should be at the
+                camera centre. Must be smaller than the camera image plus the
+                search size.
+            search_size: ``(int, int)`` distance in pixels to search over.
+                Defaults to ``(50, 50)``.
+            image_filter: Optional function run on the image before
+                cross-correlating (e.g. to correlate in grayscale).
+
+        Returns:
+            The sample-space displacement (microns) that the stage was moved by.
+
+        Raises:
+            Exception: Re-raised after logging diagnostics if correlation fails.
         """
         try:
             self.flush_camera_and_wait()
@@ -222,10 +235,16 @@ class CameraStageMapper(Instrument):
 ########## Calibration ###############
 
     def calibrate_in_background(self):
+        """Run :meth:`calibrate` in a background thread."""
         threading.Thread(target=self.calibrate).start()
 
     def calibrate(self, dx=None):
-        """Move the stage in a square and set the transformation matrix."""
+        """Move the stage in a square and fit the camera-to-sample transform.
+
+        Args:
+            dx: Distance to move in each direction, in microns. Defaults to
+                ``self.calibration_distance``.
+        """
         try:
             with self._action_lock:
                 if dx is None or dx is False:
@@ -298,19 +317,23 @@ class CameraStageMapper(Instrument):
                             autofocus_args={},
                             live_plot=False,
                             downsample=8):
-        """Raster-scan the stage and take images, which we can later tile.
+        """Raster-scan the stage and take images, which can later be tiled.
 
-        Arguments:
-        @param: n_images: A tuple of length 2 specifying the number of images
-        to take in X and Y
-        @param: dest: An HDF5 Group object to store the images in.  Each image
-        will be tagged with metadata to mark where it was taken.  If no dest
-        is specified, a new group will be created in the current datafile.
-        @param: overlap: the fraction of each image to overlap with the 
-        adjacent one (it's important this is high enough to match them up)
-        @param: autofocus_args: A dictionary of keyword arguments for the
-        autofocus that occurs before each image is taken.  Set to None to
-        disable autofocusing.
+        Args:
+            n_images: A tuple of length 2 giving the number of images to take in
+                X and Y.
+            dest: An HDF5 Group to store the images in; each image is tagged with
+                position metadata. If None, a new group is created in the current
+                datafile.
+            overlap: Fraction of each image to overlap with the adjacent one (must
+                be high enough to match them up).
+            autofocus_args: Keyword arguments for the autofocus run before each
+                image. Set to None to disable autofocusing.
+            live_plot: If True, plot each tile as it is acquired.
+            downsample: Factor by which tiles are downsampled when live plotting.
+
+        Returns:
+            The HDF5 Group containing the acquired tiles.
         """
         reset_interactive_mode = live_plot and not matplotlib.is_interactive()
         if live_plot:
@@ -358,11 +381,15 @@ class CameraStageMapper(Instrument):
 
     ######## Autofocus Stuff #########
     def autofocus_merit_function(self):  # we maximise this...
-        """Take an image and calculate the focus metric, this is what we optimise.
-        
-        Currently, this calculates the sum of the square of the Laplacian of the image
-        which should pick out sharp features quite effectively.  It can, however, be
-        thrown off by very bright objects if the camera is saturated."""
+        """Take an image and return the focus metric to be maximised.
+
+        Computes the sum of the square of the Laplacian of the image, which picks
+        out sharp features effectively but can be thrown off by very bright objects
+        when the camera is saturated.
+
+        Returns:
+            The scalar focus metric for the current image.
+        """
         self.flush_camera_and_wait()
         #        self.camera.update_latest_frame() #take an extra frame to make sure this one is fresh
         if self.filter_images == True and self.camera.filter_function != None:
@@ -377,17 +404,30 @@ class CameraStageMapper(Instrument):
         return np.sum(cv2.Laplacian(img, ddepth=cv2.CV_32F)**2)
 
     def autofocus_in_background(self):
+        """Run an autofocus sweep over ``autofocus_range`` in a background thread."""
 
         def work():
             self.autofocus_iterate(
-                np.arange(old_div(-self.autofocus_range, 2), old_div(self.autofocus_range, 2),
-                          self.autofocus_step))
+                np.arange(-self.autofocus_range / 2, self.autofocus_range / 2, self.autofocus_step))
 
         threading.Thread(target=work).start()
 
     def autofocus_iterate(self, dz, method="centre_of_mass", noise_floor=0.3):
+        """Move in z, sample the merit function and move to the sharpest position.
+
+        Args:
+            dz: Iterable of z offsets (relative to the current position) to sample.
+            method: ``"centre_of_mass"`` or ``"parabola"`` to locate the focus;
+                any other value picks the position with the maximum merit.
+            noise_floor: Fraction of the merit range used as a threshold for the
+                centre-of-mass method.
+
+        Returns:
+            A tuple ``(displacement, positions, powers)`` where ``displacement``
+            is the move applied, ``positions`` the sampled positions and
+            ``powers`` the merit values.
+        """
         self._action_lock.acquire()
-        """Move in z and take images.  Move to the sharpest position."""
         here = self.stage.position
         positions = [here]  #positions keeps track of where we sample
         powers = [self.autofocus_merit_function()
@@ -413,11 +453,11 @@ class CameraStageMapper(Instrument):
             if (np.sum(weights) == 0):
                 new_position = positions[powers.argmax(), :]
             else:
-                new_position = old_div(np.dot(weights, positions), np.sum(weights))
+                new_position = np.dot(weights, positions) / np.sum(weights)
         elif method == "parabola":
             coefficients = np.polyfit(z, powers, deg=2)  #fit a parabola
-            root = old_div(
-                -coefficients[1], (2 * coefficients[0])
+            root = -coefficients[1] / (
+                2 * coefficients[0]
             )  #p = c[0]z**" + c[1]z + c[2] which has max (or min) at 2c[0]z + c[1]=0 i.e. z=-c[1]/2c[0]
             if z.min() < root and root < z.max():
                 new_position = [here[0], here[1], root]
@@ -431,11 +471,16 @@ class CameraStageMapper(Instrument):
         return new_position - here, positions, powers
 
     def autofocus(self, ranges=None, max_steps=10):
-        """move the stage to bring the sample into focus
-        
-        Presently, it just does one iteration for each range passed in: usually
-        this would mean a coarse focus then a fine focus.
-        """ #NEEDS WORK!
+        """Move the stage to bring the sample into focus.
+
+        Performs one :meth:`autofocus_iterate` per range passed in: typically a
+        coarse focus followed by a fine focus.
+
+        Args:
+            ranges: Iterable of z-offset arrays to sweep. Defaults to
+                ``self.autofocus_default_ranges`` when None or False.
+            max_steps: Currently unused; retained for interface compatibility.
+        """  #NEEDS WORK!
         if ranges is None or ranges is False:
             ranges = self.autofocus_default_ranges
         n = 0
@@ -446,13 +491,19 @@ class CameraStageMapper(Instrument):
         print("Autofocus: performed %d iterations" % n)
 
     def get_qt_ui(self):
+        """Return the Qt control widget bound to this mapper."""
         return CameraStageMapperControlWidget(self)
 
 
 class CameraStageMapperControlWidget(QtWidgets.QWidget, UiTools):
-    """Controls for the Camera stage mapper"""
+    """Qt control panel for a :class:`CameraStageMapper`."""
 
     def __init__(self, camerastagemapper):
+        """Build the widget and load the .ui layout for the given mapper.
+
+        Args:
+            camerastagemapper: The :class:`CameraStageMapper` to control.
+        """
         super(CameraStageMapperControlWidget, self).__init__()
         self.camerastagemapper = camerastagemapper
         self.load_ui_from_file(__file__, "camerastagemapper.ui")
