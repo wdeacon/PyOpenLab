@@ -1,10 +1,8 @@
-﻿# -*- coding: utf-8 -*-
-"""
-Created on Wed Aug 08 14:48:05 2018
+﻿"""Manual setup script for a Lab 5 Trandor experiment.
 
-@author: jpg66
-
-
+Run directly to bring up the camera-with-location GUI, an Ocean Optics spectrometer, the
+spectrometer aligner, a white-light shutter and a :class:`Trandor`, then configure the Triax
+grating and slit. Intended for interactive use, not import.
 """
 
 from pyopenlab.instrument.camera.camera_with_location import CameraWithLocation

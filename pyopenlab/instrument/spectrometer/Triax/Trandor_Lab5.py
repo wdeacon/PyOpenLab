@@ -1,16 +1,12 @@
-﻿"""
-jpg66
-"""
-from __future__ import division
-from __future__ import print_function
+﻿"""Lab 5 Triax + Andor wrapper.
 
-from builtins import input
-from builtins import str
+Defines the :class:`Trandor` wrapper (subclassing the Andor camera) for Lab 5, together with its
+per-grating calibration arrays and a capture hook that closes the white-light shutter.
+"""
+
 import types
 
-import future
 import numpy as np
-from past.utils import old_div
 
 from pyopenlab.instrument.camera.Andor import Andor
 from pyopenlab.instrument.camera.Andor import AndorUI
@@ -54,14 +50,22 @@ CCD_Size = 1600  #Size of ccd in pixels
 
 
 class Trandor(Andor):  #Andor
-    ''' Wrapper class for the Triax and the andor
-    '''
+    """Convenience wrapper pairing a :class:`Triax` with an Andor camera for Lab 5."""
 
     def __init__(self,
                  white_shutter=None,
                  triax_address='GPIB0::1::INSTR',
                  use_shifts=False,
                  laser='_633'):
+        """Initialise the Triax and store the camera/shutter configuration.
+
+        Args:
+            white_shutter: Optional white-light shutter object to close during captures.
+            triax_address: VISA address of the Triax.
+            use_shifts: If True, the wavelength axis is returned as Raman shifts (cm^-1).
+            laser: Excitation laser tag, either ``'_633'`` or ``'_785'``, selecting the centre
+                wavelength used for Raman-shift conversion.
+        """
         print('Triax Information:')
         super(Trandor, self).__init__()
         self.triax = Triax(triax_address, Calibration_Arrays, CCD_Size)  #Initialise triax
@@ -75,10 +79,28 @@ class Trandor(Andor):  #Andor
         self.metadata_property_names += ('slit_width', 'wavelengths')
 
     def Grating(self, Set_To=None):
+        """Proxy to the underlying Triax :meth:`Triax.Grating`.
+
+        Args:
+            Set_To: ``None`` to query, or ``0``, ``1`` or ``2`` to select a grating.
+
+        Returns:
+            int or None: The current grating number when querying; ``None`` when setting.
+        """
         return self.triax.Grating(Set_To)
 
     def Generate_Wavelength_Axis(self, use_shifts=None):
+        """Return the (reversed) spectral x-axis as wavelengths (nm) or Raman shifts (cm^-1).
 
+        The wavelength array is reversed to match the detector orientation in this lab.
+
+        Args:
+            use_shifts: If ``None``, falls back to ``self.use_shifts``. If truthy, Raman shifts
+                relative to the laser centre wavelength (selected by ``self.laser``) are returned.
+
+        Returns:
+            numpy.ndarray: The x-axis values for the current grating position.
+        """
         if use_shifts is None:
             use_shifts = self.use_shifts
         if use_shifts:
@@ -95,13 +117,25 @@ class Trandor(Andor):  #Andor
 
     @property
     def wavelengths(self):
+        """numpy.ndarray: The current wavelength axis in nm (never Raman shifts)."""
         return self.Generate_Wavelength_Axis(use_shifts=False)
 
     @property
     def slit_width(self):
+        """int: The current entrance slit width in micrometres."""
         return self.triax.Slit()
 
     def Test_Notch_Alignment(self):
+        """Interactively confirm the notch filters are aligned before allowing captures.
+
+        Prompts the operator at the console until a valid yes/no answer is given, setting
+        ``Notch_Filters_Tested`` accordingly.
+
+        Note:
+            The final ``if Input.upper() == 'Y'`` block sits outside the ``while`` loop, so it runs
+            only once after the loop ends (using the last entered value) rather than per valid
+            answer. Behaviour differs from the Lab 2 variant; logged rather than changed.
+        """
         Accepted = False
         while Accepted is False:
             Input = input(
@@ -126,6 +160,13 @@ class Trandor(Andor):  #Andor
 
 
 def Capture(_AndorUI):
+    """Capture a frame, closing the white-light shutter first if one is configured and open.
+
+    Monkey-patched onto :class:`AndorUI` as its ``Capture`` method.
+
+    Args:
+        _AndorUI: The :class:`AndorUI` instance driving the capture.
+    """
     if _AndorUI.Andor.white_shutter is not None:
         isopen = _AndorUI.Andor.white_shutter.is_open()
         if isopen:
