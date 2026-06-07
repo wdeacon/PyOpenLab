@@ -1,9 +1,5 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Fri May 28 15:50:10 2021
-
-@author: Eoin
-"""
+"""Camera driver for the Thorlabs Kiralux, built on the Thorlabs TSI SDK bindings."""
 
 from functools import wraps
 import os
@@ -39,11 +35,20 @@ os.add_dll_directory(dll_path.absolute())
 
 
 def disarmer(f, wait=0.3):
-    '''some properties like roi and binning and frames_per_capture.. need the camera to be "disarmed" to
-    be set. This decorator disarms and re-arms the camera before and after the
-    function is called. Particularly for binning, it seems like the camera 
-    needs a few secs before it can be changed, hence the time.sleep.
-    '''
+    """Decorate a setter so the camera is disarmed around the call and re-armed afterwards.
+
+    Some properties (ROI, binning, frames-per-trigger, ...) can only be set while the
+    camera is disarmed. This wrapper disarms before the call, refreshes the cached image
+    dimensions, then re-arms and re-triggers if live view was active. A short ``wait`` is
+    needed because the camera takes a moment to accept changes (notably binning).
+
+    Args:
+        f: The function (typically a property setter) to wrap.
+        wait (float): Seconds to sleep after disarming and after re-triggering.
+
+    Returns:
+        The wrapped function.
+    """
 
     @wraps(f)
     def inner_func(self, *args, **kwargs):
@@ -67,11 +72,28 @@ def disarmer(f, wait=0.3):
 
 
 class Kiralux(Camera):
+    """Thorlabs Kiralux camera.
+
+    Wraps a Thorlabs TSI SDK camera handle, mirroring its properties onto this class (see
+    :meth:`_populate_properties`). Colour (Bayer) sensors are demosaiced via a
+    mono-to-colour processor; monochrome sensors return frames unchanged.
+
+    Attributes:
+        disarmed_properties: Property names whose setters require the camera to be
+            disarmed first.
+        notified_properties: Property names surfaced in the GUI.
+    """
+
     disarmed_properties = ('roi', 'binx', 'biny', 'frames_per_trigger_zero_for_unlimited')
     # properties that need the camera to be disarmed to set - there may be more.
     notified_properties = ('gain',)  # properties that are in the gui
 
     def __init__(self, square_image=False):
+        """Open the first available Kiralux camera and arm it for snapshots.
+
+        Args:
+            square_image (bool): If ``True``, processed frames are cropped to a square.
+        """
         super().__init__()
         self._sdk = TLCameraSDK()
         self._camera = self._sdk.open_camera(self._sdk.discover_available_cameras()[0])
@@ -101,9 +123,12 @@ class Kiralux(Camera):
         self._camera.arm(2)
 
     def _populate_properties(self):
-        ''' adds all the properties from TLCamera to Kiralux, for easy access.
+        """Copy the underlying TLCamera's properties onto this class for direct access.
 
-        '''
+        Each property of the wrapped camera that does not already exist on this class is
+        added as a delegating property. Setters of properties in
+        :attr:`disarmed_properties` are wrapped with :func:`disarmer`.
+        """
 
         # to get around late binding
         def prop_factory(thor_prop, disarmed=False, notified=False):
@@ -141,21 +166,36 @@ class Kiralux(Camera):
                     # notified property appropriately.
 
     @property
-    def exposure(self):  # in ms by pyopenlab convention
+    def exposure(self):
+        """Exposure time in milliseconds (pyopenlab convention; SDK reports microseconds)."""
         return self.exposure_time_us / 1000.0
 
     @exposure.setter
     def exposure(self, val):
         self.exposure_time_us = int(val * 1000)
 
-    def get_frame(self):  # always gets a frame or dies trying
+    def get_frame(self):
+        """Block until a frame is available and return it.
 
+        Returns:
+            The pending frame from the camera; polls every 0.1 s until one arrives.
+        """
         while (f := self._camera.get_pending_frame_or_null()) is None:
             # pass
             time.sleep(0.1)
         return f
 
     def process_color_frame(self, frame, square_image=False):
+        """Demosaic a raw Bayer frame into an RGB image.
+
+        Args:
+            frame: A frame object exposing an ``image_buffer``.
+            square_image (bool): Unused; cropping to square is handled separately via
+                :meth:`make_square`.
+
+        Returns:
+            numpy.ndarray: An ``(H, W, 3)`` RGB image, flipped vertically and horizontally.
+        """
         color_image_data = self._mono_to_color_processor.transform_to_24(
             frame.image_buffer, self._image_width, self._image_height)
         color_image_data = color_image_data.reshape(self._image_height, self._image_width, 3)
@@ -163,11 +203,25 @@ class Kiralux(Camera):
         return color_image_data[::-1, ::-1, :]
 
     def make_square(self, color_image_data):
+        """Crop a wide image symmetrically to a square based on the sensor dimensions.
+
+        Args:
+            color_image_data (numpy.ndarray): The image to crop.
+
+        Returns:
+            numpy.ndarray: The horizontally cropped, square image.
+        """
         dif = (self._image_width - self._image_height) // 2
         return color_image_data[:, dif:self._image_width - dif, :]
 
     def raw_snapshot(self):
+        """Capture and process a single frame.
 
+        Issues a software trigger first unless live view is already running.
+
+        Returns:
+            tuple: ``(True, image)`` on success, or ``(False, None)`` if no frame.
+        """
         if not self.live_view:
             self._camera.issue_software_trigger()
         # if it's in live_view, camera should already be triggered
@@ -181,6 +235,14 @@ class Kiralux(Camera):
 
     @Camera.live_view.setter
     def live_view(self, live_view):
+        """Start or stop continuous acquisition.
+
+        Toggles the camera between unlimited frames-per-trigger (live) and single-frame
+        snapshot mode. Setting frames-per-trigger disarms and re-arms via :func:`disarmer`.
+
+        Args:
+            live_view (bool): ``True`` to begin live acquisition, ``False`` to stop it.
+        """
         if live_view == self._live_view:
             return  # small redundancy with Camera.live_view
         Camera.live_view.fset(self, live_view)
