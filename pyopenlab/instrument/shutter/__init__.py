@@ -1,4 +1,10 @@
-﻿__author__ = 'alansanders'
+﻿"""Generic optical shutter instrument classes and a Qt UI.
+
+This module defines the :class:`Shutter` base class shared by all shutter
+drivers in PyOpenLab, the :class:`ShutterWithEmulatedRead` variant for devices
+that cannot report their own state, a :class:`ShutterUI` Qt widget, and a
+:class:`DummyShutter` used for testing.
+"""
 
 import contextlib
 import os
@@ -18,21 +24,21 @@ from pyopenlab.utils.notified_property import register_for_property_changes
 
 class Shutter(Instrument):
     """A generic instrument class for optical shutters.
-    
+
     An optical shutter can be "Open" (allowing light to pass) or "Closed" (not
-    allowing light through).  This generic class provides a GUI and some
-    convenience methods.  You can set and (usually) check the state of the
-    shutter using the property `Shutter.state` which is a string that's either
-    "Open" or "Closed".  If you need a boolean answer, use `Shutter.is_open()`
-    or `Shutter.is_closed`.  There's also `expose()` that opens for a number
-    of seconds, and `toggle()` that changes state.
-    
-    # Subclassing Notes
-    The minimum required subclassing effort is overriding `set_state` to open
-    and close the shutter.  Overriding get_state allows you to read back the
-    state of the shutter.  If you want to emulate that (i.e. keep track of
-    the state of the shutter in software) subclass `ShutterWithEmulatedRead`
-    and make sure you call its `__init__` method in your initialisation code.
+    allowing light through). This generic class provides a GUI and some
+    convenience methods. The state of the shutter is exposed through the
+    :attr:`state` property, a string that is either "Open" or "Closed". For a
+    boolean answer use :meth:`is_open` or :meth:`is_closed`. :meth:`expose`
+    opens the shutter for a number of seconds, and :meth:`toggle` changes state.
+
+    Subclassing Notes:
+        The minimum required subclassing effort is overriding :meth:`set_state`
+        to open and close the shutter. Overriding :meth:`get_state` allows you
+        to read back the state of the shutter. If you want to emulate that (i.e.
+        keep track of the state of the shutter in software) subclass
+        :class:`ShutterWithEmulatedRead` and make sure you call its
+        ``__init__`` method in your initialisation code.
     """
 
     def __init__(self):
@@ -40,8 +46,13 @@ class Shutter(Instrument):
 
     def toggle(self):
         """Toggle the state of the shutter.
-        
-        The default behaviour will emulate a toggle command if none exists.
+
+        The default behaviour emulates a toggle command by reading the current
+        state and setting the opposite one.
+
+        Raises:
+            NotImplementedError: If the shutter cannot report its state and so
+                has no way to determine which state to toggle to.
         """
         try:
             if self.is_closed():
@@ -54,20 +65,28 @@ class Shutter(Instrument):
 
     @contextlib.contextmanager
     def hold(self, state="Open", default_state="Closed"):
-        """Hold the shutter in a given state (for use in a `with` block).
-        
-        This returns a context manager, so it can be used in a `with` block,
-        so that the shutter is held in the given position (default Open) while
-        something else happens, then returns to its previous state (usually
-        Closed) afterwards, even if exceptions occur.
-        
-        If the shutter can't report it's current state it should raise a
-        `NotImplementedError` (this is the default) in which case we will 
-        default to closing the shutter afterwards unless `default_state` has
-        been set in which case we use that.
-        
-        In the future, this might block other threads from touching the 
-        shutter - currently it does not.
+        """Hold the shutter in a given state for the duration of a ``with`` block.
+
+        The shutter is held in ``state`` (default "Open") while the body of the
+        ``with`` block runs, then returns to its previous state afterwards, even
+        if exceptions occur.
+
+        If the shutter can't report its current state it raises a
+        :class:`NotImplementedError` (the default behaviour), in which case the
+        shutter is restored to ``default_state`` afterwards instead.
+
+        Args:
+            state: The state to hold the shutter in during the block. Either
+                "Open" or "Closed".
+            default_state: The state to restore the shutter to afterwards if the
+                previous state could not be read.
+
+        Yields:
+            None: Control is yielded to the body of the ``with`` block.
+
+        Note:
+            In the future this might block other threads from touching the
+            shutter; currently it does not.
         """
         try:
             oldstate = self.state
@@ -80,24 +99,44 @@ class Shutter(Instrument):
             self.state = oldstate
 
     def expose(self, time_in_seconds):
-        """Open the shutter for a specified time, then close again.
-        
-        This function will block until the exposure is over.  NB if you 
-        override this function in a subclass, take care with what happens to
-        reads/writes of the self.state property.  If you are in a subclass
-        of `ShutterWithEmulatedRead` you might need to update
-        `_last_set_state`.
+        """Open the shutter for a specified time, then close it again.
+
+        This function blocks until the exposure is over.
+
+        Args:
+            time_in_seconds: How long to hold the shutter open, in seconds.
+
+        Note:
+            If you override this in a subclass, take care with reads/writes of
+            the :attr:`state` property. In a subclass of
+            :class:`ShutterWithEmulatedRead` you might need to update
+            ``_last_set_state``.
         """
         with self.hold("Open"):
             time.sleep(time_in_seconds)
 
     def get_state(self):
-        """Whether the shutter is 'Open' or 'Closed'."""
+        """Return whether the shutter is "Open" or "Closed".
+
+        Returns:
+            str: The current shutter state.
+
+        Raises:
+            NotImplementedError: Always, unless overridden by a subclass that
+                can read the hardware state.
+        """
         raise NotImplementedError("This shutter has no way to get its state!"
                                   "")
 
     def set_state(self, value):
-        """Set the shutter to be either 'Open' or 'Closed'."""
+        """Set the shutter to be either "Open" or "Closed".
+
+        Args:
+            value: The desired state, either "Open" or "Closed".
+
+        Raises:
+            NotImplementedError: Always, unless overridden by a subclass.
+        """
         raise NotImplementedError("This shutter has no way to set its state!"
                                   "")
 
@@ -109,43 +148,65 @@ class Shutter(Instrument):
         """Close the shutter."""
         self._set_state_proxy("Closed")
 
-    # This slightly ugly hack means it's not necessary to redefine the
-    # state property every time it's subclassed.
+    # The proxy methods let subclasses override get_state/set_state without
+    # having to redefine the `state` property each time.
     def _get_state_proxy(self):
-        """The state of the shutter - should either be "Open" or "Closed"."""
+        """Return the shutter state by delegating to :meth:`get_state`.
+
+        Returns:
+            str: Either "Open" or "Closed".
+        """
         return self.get_state()
 
     def _set_state_proxy(self, state):
+        """Set the shutter state and cache it in ``_last_set_state``.
+
+        Args:
+            state: The desired state, either "Open" or "Closed".
+        """
         self.set_state(state)
         self._last_set_state = state.title()  # Remember what state we're in
 
     state = property(_get_state_proxy, _set_state_proxy)
 
     def is_open(self):
-        """Return `True` if the shutter is open."""
+        """Return ``True`` if the shutter is open.
+
+        Returns:
+            bool: Whether the shutter state is "Open".
+        """
         return self.state.title() == "Open"
 
     def is_closed(self):
-        """Return `True` if the shutter is closed."""
+        """Return ``True`` if the shutter is closed.
+
+        Returns:
+            bool: Whether the shutter state is "Closed".
+        """
         return self.state.title() == "Closed"
 
     def get_qt_ui(self):
-        """Return a graphical interface for the shutter."""
+        """Return a Qt graphical interface for the shutter.
+
+        Returns:
+            ShutterUI: A widget for controlling this shutter.
+        """
         return ShutterUI(self)
 
 
 class ShutterWithEmulatedRead(Shutter):
-    """A shutter class that keeps track in software of whether it's open.
-    
-    Use this instead of `Shutter` if you don't want to communicate with the
-    shutter to check whether it's open or closed.
-    
-    # Subclassing Notes
-    See the subclassing notes from `Shutter`.  All you need to override is
-    `set_state`, the rest is dealt with.  NB if you have to initialise the
-    hardware, make sure you do that *before* calling 
-    `ShutterWithEmulatedRead.__init__()` as it closes the shutter to start
-    with.
+    """A shutter that keeps track in software of whether it's open.
+
+    Use this instead of :class:`Shutter` if you don't want to (or can't)
+    communicate with the shutter to check whether it's open or closed. The last
+    state set via :attr:`state` is remembered and returned by :meth:`get_state`.
+
+    Subclassing Notes:
+        See the subclassing notes from :class:`Shutter`. All you need to
+        override is :meth:`set_state`; the rest is dealt with. If you have to
+        initialise the hardware, do that *before* calling
+        ``ShutterWithEmulatedRead.__init__()`` as it closes the shutter to
+        start with.
     """
 
     def __init__(self):
@@ -154,13 +215,27 @@ class ShutterWithEmulatedRead(Shutter):
         self.state = "Closed"
 
     def get_state(self):
-        """Whether the shutter is Open or Closed."""
+        """Return the last state the shutter was set to.
+
+        Returns:
+            str: Either "Open" or "Closed".
+        """
         return self._last_set_state
 
 
 class ShutterUI(QtWidgets.QWidget, UiTools):
+    """A Qt widget for displaying and controlling a :class:`Shutter`."""
 
     def __init__(self, shutter, parent=None):
+        """Build the shutter control widget.
+
+        Args:
+            shutter: The :class:`Shutter` instance this UI controls.
+            parent: The parent Qt widget, if any.
+
+        Raises:
+            AssertionError: If ``shutter`` is not a :class:`Shutter` instance.
+        """
         assert isinstance(shutter, Shutter), 'instrument must be a Shutter'
         self.shutter = shutter
         super(ShutterUI, self).__init__(parent)
@@ -170,28 +245,38 @@ class ShutterUI(QtWidgets.QWidget, UiTools):
     #    self.state.stateChanged.connect(self.on_change)
 
     def on_change(self):
+        """Toggle the shutter in response to a UI state change."""
         self.shutter.toggle()
 
 
 class DummyShutter(Shutter):
-    """A stub class to simulate a shutter"""
+    """A stub shutter that holds its state in memory, for testing without hardware."""
     _open = DumbNotifiedProperty(False)
 
     def __init__(self):
-        """Create a dummy shutter object"""
+        """Create a dummy shutter object, initially closed."""
         self._open = False
         super(DummyShutter, self).__init__()
 
     def toggle(self):
-        """toggle the state of the shutter"""
+        """Toggle the state of the shutter."""
         self._open = not self._open
 
     def get_state(self):
-        """Return the state of the shutter, a string reading 'open' or 'closed'"""
+        """Return the state of the shutter.
+
+        Returns:
+            str: "Open" or "Closed".
+        """
         return "Open" if self._open else "Closed"
 
     def set_state(self, value):
-        """Set the state of the shutter (to open or closed)"""
+        """Set the state of the shutter.
+
+        Args:
+            value: The desired state. A string ("Open"/"Closed", case
+                insensitive) or a bool (``True`` for open).
+        """
         if isinstance(value, str):
             self._open = (value.lower() == "open")
         elif isinstance(value, bool):

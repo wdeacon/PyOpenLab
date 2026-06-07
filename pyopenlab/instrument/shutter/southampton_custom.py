@@ -1,10 +1,5 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Tue Jun 14 11:51:46 2016
-
-@author: rwb27
-"""
-from __future__ import print_function
+"""Serial driver for the Southampton custom (IL) shutter."""
 
 import time
 
@@ -15,8 +10,18 @@ from pyopenlab.instrument.shutter import ShutterWithEmulatedRead
 
 
 class ILShutter(SerialInstrument, ShutterWithEmulatedRead):
+    """Southampton custom shutter controlled over serial.
+
+    On connection it enables computer control with the ``ct`` command, then
+    raises ("S4U") or lowers ("S4D") the shutter via :meth:`set_state`.
+    """
 
     def __init__(self, port):
+        """Open the serial connection and enable computer control.
+
+        Args:
+            port: The serial port the shutter is connected to (e.g. "COM3").
+        """
         self.port_settings = {
             'baudrate': 19200,
             'bytesize': serial.SEVENBITS,
@@ -31,7 +36,19 @@ class ILShutter(SerialInstrument, ShutterWithEmulatedRead):
         self.query("ct")  #enable computer control
 
     def set_state(self, value):
-        """Set the shutter to be either "Open" or "Closed" """
+        """Set the shutter to be either "Open" or "Closed".
+
+        Args:
+            value: The desired state, "Open" or "Closed" (case insensitive).
+
+        Note:
+            This writes the result to ``self.__state`` (name-mangled to
+            ``_ILShutter__state``), which is never read back. Emulated read-back
+            relies on ``_last_set_state`` from
+            :class:`~pyopenlab.instrument.shutter.ShutterWithEmulatedRead`, which
+            this override does not update. Left unchanged to avoid behaviour
+            change.
+        """
         if value.title() == "Open":
             self.query("S4U")
             self.__state = "Open"
