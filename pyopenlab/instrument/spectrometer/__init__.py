@@ -1,4 +1,16 @@
-﻿__author__ = 'alansanders'
+﻿"""Spectrometer instrument base classes and Qt control/display widgets.
+
+This module defines :class:`Spectrometer`, the abstract base class that concrete
+spectrometer drivers (e.g. Ocean Optics SeaBreeze) inherit from. It implements
+the shared logic for backgrounds, references, processing, averaging, time series
+acquisition and HDF5 storage, leaving only the hardware-specific reads
+(``read_spectrum``, ``get_wavelengths``, ``get_integration_time`` etc.) to be
+overridden by subclasses.
+
+It also provides :class:`Spectrometers` (a wrapper that drives several
+spectrometers in parallel via a thread pool), the associated Qt UI widgets, and
+:class:`DummySpectrometer` for development without hardware.
+"""
 
 from collections import deque
 import datetime
@@ -30,6 +42,27 @@ from pyopenlab.utils.notified_property import register_for_property_changes
 
 
 class Spectrometer(Instrument):
+    """Abstract base class for a single spectrometer.
+
+    Subclasses must override the hardware-specific accessors to be useful:
+    ``get_model_name``, ``get_serial_number``, ``get_integration_time``,
+    ``set_integration_time``, ``get_wavelengths`` and ``read_spectrum``. The
+    default implementations emit ``DeprecationWarning`` and return placeholder
+    values so that an un-subclassed instance is obviously non-functional.
+
+    This class supplies the shared, hardware-independent logic: acquiring and
+    storing background/reference spectra, processing (background subtraction,
+    referencing and optional absorption), averaging, masking, saving to the
+    current HDF5 datafile, time-series acquisition and the Qt UI.
+
+    Attributes:
+        metadata_property_names: Names of properties bundled into saved metadata.
+        variable_int_enabled: If True, background is modelled as a linear
+            function of integration time (gradient + constant) so that
+            references/backgrounds taken at one integration time can be scaled.
+        filename: Default dataset name used when saving spectra.
+        dark: Whether the display UI should use a dark plot background.
+    """
 
     metadata_property_names = ('model_name', 'serial_number', 'integration_time', 'reference',
                                'background', 'wavelengths', 'background_int', 'reference_int',
@@ -76,7 +109,14 @@ class Spectrometer(Instrument):
             pass  #if it's not present, we get an exception - which doesn't matter.
 
     def open_config_file(self):
-        """Open the config file for the current spectrometer and return it, creating if it's not there"""
+        """Open (creating if needed) and return this spectrometer's config file.
+
+        The config file lives alongside the spectrometer's module and stores
+        persistent calibration data such as the reference and background.
+
+        Returns:
+            DataFile: The opened HDF5 config file.
+        """
         if self._config_file is None:
             f = inspect.getfile(self.__class__)
             d = os.path.dirname(f)
@@ -87,11 +127,14 @@ class Spectrometer(Instrument):
     config_file = property(open_config_file)
 
     def update_config(self, name, data, attrs=None):
-        """Update the configuration file for this spectrometer.
-        
-        A file is created in the pyopenlab directory that holds configuration
-        data for the spectrometer, including reference/background.  This
-        function allows values to be stored in that file."""
+        """Store or overwrite a value in this spectrometer's config file.
+
+        Args:
+            name: Dataset name within the config file.
+            data: Array-like data to store under ``name``.
+            attrs: Optional mapping of HDF5 attributes (only used when the
+                dataset is created for the first time).
+        """
         f = self.config_file
         if name not in f:
             f.create_dataset(name, data=data, attrs=attrs)
@@ -101,7 +144,11 @@ class Spectrometer(Instrument):
             f.flush()
 
     def get_model_name(self):
-        """The model name of the spectrometer."""
+        """Return the model name of the spectrometer.
+
+        Returns:
+            str: The model name (a placeholder in this base implementation).
+        """
         if self._model_name is None:
             self._model_name = 'model_name'
         return self._model_name
@@ -109,7 +156,15 @@ class Spectrometer(Instrument):
     model_name = property(get_model_name)
 
     def get_serial_number(self):
-        """The spectrometer's serial number (as a string)."""
+        """Return the spectrometer's serial number as a string.
+
+        Warning:
+            This default implementation should be overridden by subclasses; it
+            emits a ``DeprecationWarning`` and returns a placeholder.
+
+        Returns:
+            str: The serial number.
+        """
         warnings.warn(
             "Using the default implementation for get_serial_number: this should be overridden!",
             DeprecationWarning)
@@ -120,14 +175,28 @@ class Spectrometer(Instrument):
     serial_number = property(get_serial_number)
 
     def get_integration_time(self):
-        """The integration time of the spectrometer (this function is a stub)!"""
+        """Return the integration time of the spectrometer.
+
+        Warning:
+            Stub implementation; subclasses must override it.
+
+        Returns:
+            int: Always 0 in this base implementation.
+        """
         warnings.warn(
             "Using the default implementation for integration time: this should be overridden!",
             DeprecationWarning)
         return 0
 
     def set_integration_time(self, value):
-        """Set the integration time of the spectrometer (this is a stub)!"""
+        """Set the integration time of the spectrometer.
+
+        Warning:
+            Stub implementation; subclasses must override it.
+
+        Args:
+            value: Desired integration time (ignored by this stub).
+        """
         warnings.warn(
             "Using the default implementation for integration time: this should be overridden!",
             DeprecationWarning)
@@ -136,7 +205,14 @@ class Spectrometer(Instrument):
     integration_time = property(get_integration_time, set_integration_time)
 
     def get_wavelengths(self):
-        """An array of wavelengths corresponding to the spectrometer's pixels."""
+        """Return the wavelengths (nm) corresponding to each spectrometer pixel.
+
+        Warning:
+            Stub implementation; subclasses must override it.
+
+        Returns:
+            numpy.ndarray: An array of wavelengths.
+        """
         warnings.warn(
             "Using the default implementation for wavelengths: this should be overridden!",
             DeprecationWarning)
@@ -148,7 +224,18 @@ class Spectrometer(Instrument):
     wavelengths = property(get_wavelengths)
 
     def read_spectrum(self, bundle_metadata=False):
-        """Take a reading on the spectrometer and return it"""
+        """Acquire a single raw spectrum from the spectrometer.
+
+        Warning:
+            Stub implementation; subclasses must override it.
+
+        Args:
+            bundle_metadata: If True, return the spectrum as an
+                ``ArrayWithAttrs`` carrying the current metadata.
+
+        Returns:
+            The latest raw spectrum (an empty array in this base implementation).
+        """
         warnings.warn(
             "Using the default implementation for read_spectrum: this should be overridden!",
             DeprecationWarning)
@@ -156,8 +243,15 @@ class Spectrometer(Instrument):
         return self.bundle_metadata(self.latest_raw_spectrum, enable=bundle_metadata)
 
     def read_background(self):
-        """Acquire a new spectrum and use it as a background measurement.
-        This background should be less than 50% of the spectrometer saturation"""
+        """Acquire spectra and store them as the current background measurement.
+
+        Two spectra are taken (at the current integration time and at double it)
+        to fit a linear background model (``background_gradient`` and
+        ``background_constant``) for variable-integration-time referencing. The
+        results are also persisted to the config file and the per-slot
+        ``stored_backgrounds`` cache. The background should be less than 50% of
+        the spectrometer's saturation level.
+        """
         if self.averaging_enabled == True:
             background_1 = np.average(self.read_averaged_spectrum(True, True), axis=0)
         else:

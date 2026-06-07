@@ -19,15 +19,10 @@ After doing this, you must repeat the process if you want to switch back to
 OmniDriver.
 
 Contents:
-@class: OceanOpticsSpectrometer: this class controls a spectrometer
-
-@class: OceanOpticsError: an exception that is thrown by this module
-
-@fn:    list_spectrometers(): list the available spectrometers
-
-@fn:    shutdown_seabreeze(): close all spectrometers and reset the driver
-
-@author: Richard Bowman (rwb27)
+    OceanOpticsSpectrometer: controls a single spectrometer.
+    OceanOpticsError: exception raised by this module.
+    list_spectrometers(): list the available spectrometers.
+    shutdown_seabreeze(): close all spectrometers and reset the driver.
 """
 import ctypes
 from ctypes import byref
@@ -76,7 +71,14 @@ information"""
 
 
 def error_string(error_code):
-    """convert an error code into a human-readable string"""
+    """Convert a SeaBreeze error code into a human-readable string.
+
+    Args:
+        error_code: The integer error code returned by a SeaBreeze function.
+
+    Returns:
+        The decoded error message string.
+    """
     N = 1024  # we need to create a buffer into which we place the returned string
     s = ctypes.create_string_buffer(N)
     seabreeze.seabreeze_get_error_string(error_code, byref(s), N)
@@ -84,14 +86,24 @@ def error_string(error_code):
 
 
 def check_error(error_c_int):
-    """check the error code returned by a function (as a raw c_int)
-    and raise an exception if it's nonzero."""
+    """Raise an exception if a SeaBreeze error code is nonzero.
+
+    Args:
+        error_c_int: A ``ctypes.c_int`` holding the error code from a function.
+
+    Raises:
+        OceanOpticsError: If the wrapped error code is nonzero.
+    """
     if error_c_int.value != 0:
         raise OceanOpticsError(error_c_int.value)
 
 
 def list_spectrometers():
-    """List the serial numbers of all spectrometers connected to the computer"""
+    """List the serial numbers of all spectrometers connected to the computer.
+
+    Returns:
+        A list of serial number strings, one per connected spectrometer.
+    """
     spectrometers = []
     n = 0
     try:
@@ -107,13 +119,19 @@ def list_spectrometers():
 
 
 def shutdown_seabreeze():
-    """shut down seabreeze, useful if anything has gone wrong"""
+    """Shut down SeaBreeze, useful if anything has gone wrong."""
     seabreeze.seabreeze_shutdown()
 
 
 class OceanOpticsError(Exception):
+    """Exception wrapping a nonzero SeaBreeze error code."""
 
     def __init__(self, code):
+        """Store the SeaBreeze error code.
+
+        Args:
+            code: The integer error code returned by a SeaBreeze function.
+        """
         self.code = code
 
     def __str__(self):
@@ -121,27 +139,36 @@ class OceanOpticsError(Exception):
 
 
 class OceanOpticsSpectrometer(Spectrometer, Instrument):
-    """Class representing the Ocean Optics spectrometers, via the SeaBreeze library
+    """An Ocean Optics spectrometer accessed via the SeaBreeze library.
 
-    The constructor takes a single numeric argument, which is the index of the
-    spectrometer you want, starting at 0.  It has traits, so you can call up a
-    GUI to control the spectrometer with s.configure_traits."""
+    The constructor takes a single numeric argument, the index of the
+    spectrometer you want, starting at 0. It has traits, so you can call up a
+    GUI to control the spectrometer with ``s.configure_traits``.
+    """
 
     metadata_property_names = Spectrometer.metadata_property_names + ("tec_temperature",)
 
     @staticmethod
     def shutdown_seabreeze():
-        """shut down seabreeze, useful if anything has gone wrong"""
+        """Shut down SeaBreeze, useful if anything has gone wrong."""
         shutdown_seabreeze()
 
     @classmethod
     def list_spectrometers(cls):
-        """List the serial numbers of all spectrometers connected to the computer"""
+        """List the serial numbers of all spectrometers connected to the computer.
+
+        Returns:
+            A list of serial number strings, one per connected spectrometer.
+        """
         return list_spectrometers()
 
     @classmethod
     def get_spectrometer_instances(cls):
-        """return a list of spectrometer instances for all available spectrometers"""
+        """Build an instance for each available spectrometer.
+
+        Returns:
+            A list of :class:`OceanOpticsSpectrometer` instances.
+        """
         spectrometers = []
         try:
             n = 0
@@ -155,7 +182,11 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
 
     @classmethod
     def get_spectrometers(cls):
-        """get a Spectrometers instance containing all available spectrometers"""
+        """Wrap all available spectrometers in a :class:`Spectrometers` instance.
+
+        Returns:
+            A :class:`Spectrometers` containing every available spectrometer.
+        """
         return Spectrometers(cls.get_spectrometer_instances())
 
     @classmethod
@@ -163,8 +194,12 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
         """Return the currently-open spectrometers, or all spectrometers.
 
         If one or more spectrometers are currently open, create a Spectrometers
-        wrapper and include them in it.  If not, attempt to open and wrap all
-        spectrometers connected to the computer."""
+        wrapper and include them in it. If not, attempt to open and wrap all
+        spectrometers connected to the computer.
+
+        Returns:
+            A :class:`Spectrometers` wrapper around the relevant instances.
+        """
         instances = cls.get_instances()
         print(instances)
         if instances == []:
@@ -173,7 +208,11 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
             return Spectrometers(instances)
 
     def __init__(self, index):
-        """Initialise the spectrometer"""
+        """Open and initialise the spectrometer at the given index.
+
+        Args:
+            index: Zero-based index of the spectrometer to open.
+        """
         self.index = index  # the spectrometer's ID, used by all seabreeze functions
         self._comms_lock = threading.RLock()
         self._isOpen = False
@@ -196,7 +235,11 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
         return self
 
     def _open(self, force=False):
-        """Open communications with the spectrometer (called on initialisation)."""
+        """Open communications with the spectrometer (called on initialisation).
+
+        Args:
+            force: If True, reopen even if the spectrometer is already marked open.
+        """
         if (self._isOpen and not force):  # don't cause errors if it's already open
             return
         else:
@@ -206,7 +249,11 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
             self._isOpen = True
 
     def _close(self, force=False):
-        """Close communication with the spectrometer and release it."""
+        """Close communication with the spectrometer and release it.
+
+        Args:
+            force: If True, close even if the spectrometer is already marked closed.
+        """
         if (not self._isOpen and not force):
             return
         else:
@@ -216,6 +263,12 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
             self._isOpen = False
 
     def open_config_file(self):
+        """Open (creating if needed) the per-device HDF5 configuration file.
+
+        Returns:
+            The :class:`DataFile` for this spectrometer's config, named from its
+            model name and serial number and stored beside this module's file.
+        """
         if self._config_file is None:
 
             d = os.path.dirname(self._file)
@@ -229,6 +282,10 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
     config_file = property(open_config_file)
 
     def get_API_version(self):
+        """Detect the SeaBreeze API version and record it on ``self.API_ver``.
+
+        Sets ``self.API_ver`` to 2 if the v2 model query succeeds, otherwise 1.
+        """
         N = 32  # make a buffer for the DLL to return a string into
         s = ctypes.create_string_buffer(N)
         e = ctypes.c_int()
@@ -240,6 +297,11 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
         check_error(e)
 
     def get_model_name(self):
+        """Return the spectrometer model name, caching it after the first read.
+
+        Returns:
+            The model name string reported by the device.
+        """
         if self._model_name is None:
             N = 32  # make a buffer for the DLL to return a string into
             s = ctypes.create_string_buffer(N)
@@ -257,7 +319,11 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
     model_name = property(get_model_name)
 
     def get_serial_number(self):
-        """The spectrometer's serial number."""
+        """Return the spectrometer's serial number, caching it after the first read.
+
+        Returns:
+            The serial number string reported by the device.
+        """
         if self._serial_number is None:
             N = 32  # make a buffer for the DLL to return a string into
             s = ctypes.create_string_buffer(N)
@@ -270,7 +336,14 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
     serial_number = property(get_serial_number)
 
     def get_usb_descriptor(self, id):
-        """The spectrometer's USB descriptor"""
+        """Read a USB descriptor string from the spectrometer.
+
+        Args:
+            id: The USB descriptor index to read.
+
+        Returns:
+            The decoded descriptor string.
+        """
         N = 32  # make a buffer for the DLL to return a string into
         s = ctypes.create_string_buffer(N)
         e = ctypes.c_int()
@@ -279,18 +352,29 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
         return s.value.decode('utf-8')
 
     def get_integration_time(self):
-        """The current integration time.
+        """Return the most recently set integration time.
 
-        The SeaBreeze API doesn't seem to allow us to get the current integration time, so
-        we work around it by cacheing the last used integration time.  Note that this will
-        return None if you've not set the integration time."""
+        The SeaBreeze API does not expose the current integration time, so this
+        returns the last value passed to :meth:`set_integration_time`.
+
+        Returns:
+            The integration time in milliseconds, or None if never set.
+        """
         if hasattr(self, "_latest_integration_time"):
             return self._latest_integration_time
         else:
             return None
 
     def set_integration_time(self, milliseconds):
-        """Set the integration time"""
+        """Set the integration time.
+
+        Args:
+            milliseconds: Integration time in milliseconds; must be at least
+                :attr:`minimum_integration_time`.
+
+        Raises:
+            ValueError: If the requested time is below the minimum allowed.
+        """
         e = ctypes.c_int()
         if milliseconds < self.minimum_integration_time:
             raise ValueError("Cannot set integration time below %d microseconds" %
@@ -308,7 +392,11 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
     integration_time = property(get_integration_time, set_integration_time)
 
     def get_minimum_integration_time(self):
-        """Minimum allowable value for integration time"""
+        """Return the minimum allowable integration time, caching it after first read.
+
+        Returns:
+            The minimum integration time in milliseconds.
+        """
         if self._minimum_integration_time is None:
             e = ctypes.c_int()
             if self.API_ver == 1:
@@ -324,7 +412,12 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
     minimum_integration_time = property(get_minimum_integration_time)
 
     def get_tec_enable(self):
-        """Whether or not the thermo-electric cooler is enabled."""
+        """Return whether the thermo-electric cooler is enabled.
+
+        Returns:
+            True if the TEC is enabled, False otherwise. Returns None if an
+            OceanOpticsError occurs (typically when the device has no TEC).
+        """
         try:
             return self._tec_enabled
         except OceanOpticsError as error:
@@ -332,7 +425,11 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
             print('Most likely raised due to the lack of a tec on this device')
 
     def set_tec_enable(self, state=True):
-        """Turn the cooling system on or off."""
+        """Turn the cooling system on or off.
+
+        Args:
+            state: True to enable the TEC, False to disable it.
+        """
         try:
             e = ctypes.c_int()
             seabreeze.seabreeze_set_tec_enable(self.index, byref(e), c_int(state))
@@ -345,7 +442,15 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
     enable_tec = property(get_tec_enable, set_tec_enable)
 
     def get_tec_temperature(self):
-        """Current temperature."""
+        """Read the current TEC temperature.
+
+        Polls the device until two consecutive reads agree (up to 100 attempts),
+        to work around occasional inconsistent readings.
+
+        Returns:
+            The TEC temperature. Returns None if an OceanOpticsError occurs
+            (typically when the device has no TEC).
+        """
         try:
             e = ctypes.c_int()
             read_tec_temperature = seabreeze.seabreeze_read_tec_temperature
@@ -359,7 +464,7 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
                 else:
                     temperature_0 = temperature
                 if i == 99:
-                    self.log('Temperature reading inconsitent after 100 attmpets', 'WARN')
+                    self.log('Temperature reading inconsistent after 100 attempts', 'WARN')
 
             return temperature
         except OceanOpticsError as error:
@@ -367,7 +472,11 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
             print('Most likely raised due to the lack of a tec on this device')
 
     def set_tec_temperature(self, temperature):
-        """Enable the cooling system and set the temperature"""
+        """Enable the cooling system and set its target temperature.
+
+        Args:
+            temperature: Target TEC temperature.
+        """
         try:
             if not self.enable_tec:
                 self.enable_tec = True
@@ -382,7 +491,11 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
     tec_temperature = property(get_tec_temperature, set_tec_temperature)
 
     def read_wavelengths(self):
-        """get an array of the wavelengths in nm"""
+        """Read the per-pixel wavelength array from the spectrometer.
+
+        Returns:
+            A numpy array of wavelengths in nm.
+        """
         self._comms_lock.acquire()
         e = ctypes.c_int()
         N = seabreeze.seabreeze_get_formatted_spectrum_length(self.index, byref(e))
@@ -393,9 +506,11 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
         return np.array(list(wavelengths_carray))
 
     def get_wavelengths(self):
-        """Wavelength values for each pixel.
+        """Return the per-pixel wavelength values, caching after the first read.
 
-        NB this caches the value so it's only retrieved from the spectrometer once."""
+        Returns:
+            A numpy array of wavelengths in nm.
+        """
         if self._wavelengths is None:
             self._wavelengths = self.read_wavelengths()
         return self._wavelengths
@@ -403,10 +518,16 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
     wavelengths = property(get_wavelengths)
 
     def read_spectrum(self, bundle_metadata=False):
-        """Get the current reading from the spectrometer's sensor.
+        """Acquire and return the current spectrum from the sensor.
 
-        Acquire a new spectrum and return it.  If bundle_metadata is true, this will be
-        returned as an ArrayWithAttrs, including the current metadata."""
+        Args:
+            bundle_metadata: If True, return an :class:`ArrayWithAttrs` carrying
+                the current metadata; otherwise return a plain numpy array.
+
+        Returns:
+            The acquired spectrum as a numpy array, or an ArrayWithAttrs when
+            ``bundle_metadata`` is True.
+        """
         e = ctypes.c_int()
         N = seabreeze.seabreeze_get_formatted_spectrum_length(self.index, byref(e))
         with self._comms_lock:
@@ -422,9 +543,15 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
             return new_spectrum
 
     def get_qt_ui(self, control_only=False, display_only=False):
-        """Return a Qt Widget for controlling the spectrometer.
+        """Return a Qt widget for controlling and/or displaying the spectrometer.
 
-        If control_only is true, this will not contain a graph of the spectrum.
+        Args:
+            control_only: If True, return only the controls (no spectrum graph).
+            display_only: If True, return only the spectrum display.
+
+        Returns:
+            The appropriate Qt widget: an :class:`OceanOpticsControlUI`,
+            :class:`SpectrometerDisplayUI`, or full :class:`SpectrometerUI`.
         """
         if control_only:
             return OceanOpticsControlUI(self)
@@ -434,17 +561,23 @@ class OceanOpticsSpectrometer(Spectrometer, Instrument):
             return SpectrometerUI(self)
 
     def get_control_widget(self):
-        """Convenience function """
+        """Return the controls-only Qt widget for this spectrometer."""
         return self.get_qt_ui(control_only=True)
 
     def get_preview_widget(self):
-        """Convenience function """
+        """Return the display-only Qt widget for this spectrometer."""
         return self.get_qt_ui(display_only=True)
 
 
 class OceanOpticsControlUI(SpectrometerControlUI):
+    """Qt control widget for an :class:`OceanOpticsSpectrometer`."""
 
     def __init__(self, spectrometer):
+        """Build the control UI and wire up TEC controls if the device has a TEC.
+
+        Args:
+            spectrometer: The :class:`OceanOpticsSpectrometer` to control.
+        """
         assert isinstance(
             spectrometer,
             OceanOpticsSpectrometer), 'spectrometer must be an OceanOpticsSpectrometer'
@@ -480,6 +613,11 @@ class OceanOpticsControlUI(SpectrometerControlUI):
             self.set_tec_temperature_LineEdit.setVisible(False)
 
     def update_param(self, value):
+        """Apply an edited integration-time or TEC-temperature field to the device.
+
+        Args:
+            value: The new field text; ignored if the sender's validator rejects it.
+        """
         sender = self.sender()
         if sender.validator() is not None:
             state = sender.validator().validate(value, 0)[0]
@@ -497,12 +635,20 @@ class OceanOpticsControlUI(SpectrometerControlUI):
                 pass
 
     def gui_set_tec_temperature(self):
+        """Set the TEC temperature from the line-edit field."""
         self.spectrometer.tec_temperature = float(self.set_tec_temperature_LineEdit.text().strip())
 
     def gui_read_tec_tempeature(self):
+        """Read the TEC temperature and show it on the LCD display."""
         self.tec_temperature_lcdNumber.display(float(self.spectrometer.tec_temperature))
 
     def update_enable_tec(self, state):
+        """Enable or disable the TEC based on the checkbox state.
+
+        Args:
+            state: Qt check state; ``QtCore.Qt.Checked`` enables the TEC,
+                ``QtCore.Qt.Unchecked`` disables it.
+        """
         if state == QtCore.Qt.Checked:
             self.spectrometer.enable_tec = True
         elif state == QtCore.Qt.Unchecked:
@@ -510,6 +656,7 @@ class OceanOpticsControlUI(SpectrometerControlUI):
 
 
 def main():
+    """Demo entry point: open all spectrometers, read once, and show the GUI."""
     import sys
 
     from pyopenlab.instrument.spectrometer import Spectrometers
