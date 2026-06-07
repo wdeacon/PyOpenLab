@@ -1,26 +1,20 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Fri Aug  3 16:53:34 2018
-
-@author: ep558,wmd22
-"""
-from __future__ import division
-from __future__ import print_function
-
-from builtins import str
-
-from past.utils import old_div
-
+"""Serial driver for a Parker stepper motor used as a time-delay stage."""
 import pyopenlab.instrument.serial_instrument as si
 
 
 class ParkerStepper(si.SerialInstrument):
-    '''Stepper object for controlling timedelay
-    
-    '''
+    """Stepper object for controlling a time-delay stage."""
 
     def __init__(self, port=None, max_steps=12000000, calibration=7500.0):
-        '''Setup baud rate, return charcter and timeout '''
+        """Set up the serial port, store calibration, and initialise the stepper.
+
+        Args:
+            port (int or str): The port the device is connected to, in any of
+                the accepted serial formats.
+            max_steps (int): Maximum allowed step position.
+            calibration (float): Steps-per-picosecond conversion factor.
+        """
         self.termination_character = '\r'
         self.port_settings = {'baudrate': 9600, 'timeout': 1}
         si.SerialInstrument.__init__(self, port=port)
@@ -29,7 +23,7 @@ class ParkerStepper(si.SerialInstrument):
         self.initialise()
 
     def initialise(self):
-        '''Set Calibration and make stepper ready to run '''
+        """Configure the controller and make the stepper ready to run."""
         self.write("SSA1")
         self.query("CMDDIR1")  #Should be a query?
         self.write("MPI")
@@ -45,10 +39,14 @@ class ParkerStepper(si.SerialInstrument):
         self.query("8FS")
 
     def moveto(self, newlocation, blocking=True):
-        '''Moves to the requested stepper position
+        """Move to the requested absolute stepper position.
+
+        Out-of-range targets are rejected with a printed message.
+
         Args:
-            newlocation(int):   The new postion you want the stepper to move to                
-        '''
+            newlocation (int): The new position to move the stepper to.
+            blocking (bool): If True, poll the position until the move completes.
+        """
         if newlocation >= self.max_steps or newlocation < 0:
             print('Move failed as new postion was out of range')
             return None
@@ -60,9 +58,12 @@ class ParkerStepper(si.SerialInstrument):
             self.location()
 
     def step(self, stepsize, blocking=True):
-        '''Perform a signal step of size x
+        """Perform a single relative step.
+
         Args:
-            stepsize(int): '''
+            stepsize (int): Number of steps to move (signed for direction).
+            blocking (bool): If True, poll the position until the move completes.
+        """
         self.write("MN")
         self.write("MPI")
         self.write("8D" + str(stepsize))
@@ -71,14 +72,15 @@ class ParkerStepper(si.SerialInstrument):
             self.location()
 
     def loop(self, repeats, start, finish, velocity=4, acceleration=5):
-        '''Perform a number of loops using the inbuilt loop function
+        """Perform a number of loops using the controller's built-in loop function.
+
         Args:
-            repeats(int):  Number of loops
-            start(int) :    Start location
-            finish(int):    End location
-            velocity(int):  Stepper veolocity
-            acceleration(int):  Stepper acceleration
-            '''
+            repeats (int): Number of loops.
+            start (int): Start location.
+            finish (int): End location.
+            velocity (int): Stepper velocity.
+            acceleration (int): Stepper acceleration.
+        """
         self.write("A" + str(acceleration))
         self.write("V" + str(velocity))
         self.write("L" + str(repeats))
@@ -87,18 +89,19 @@ class ParkerStepper(si.SerialInstrument):
         self.write("N")
 
     def location(self):
-        '''Determine the current stepper position in picoseconds and steps
+        """Determine the current stepper position in picoseconds and steps.
+
+        Retries until two consecutive reads agree, guarding against a position
+        that changes mid-query.
+
         Returns:
-            stepper position picoseconds
-            stepper position steps
-            '''
+            list: ``[position_in_picoseconds, position_in_steps]``.
+        """
         Success = False
         while Success == False:
             try:
-                loc = [old_div(self.int_query("8PR"), (self.calibration)), self.int_query("8PR")]
-                if loc != [
-                        old_div(self.int_query("8PR"), (self.calibration)),
-                        self.int_query("8PR")]:
+                loc = [self.int_query("8PR") / (self.calibration), self.int_query("8PR")]
+                if loc != [self.int_query("8PR") / (self.calibration), self.int_query("8PR")]:
                     raise ValueError
                 Success = True
             except ValueError:
@@ -106,38 +109,47 @@ class ParkerStepper(si.SerialInstrument):
         return loc
 
     def movepositive(self):
-        '''Move continuesly positive until a stop command is recieved '''
+        """Move continuously in the positive direction until stopped."""
         self.write("MC")
         self.write("H+")
         self.write("G")
 
     def movenegative(self):
-        '''Move continuesly negative until a stop command is recieved '''
+        """Move continuously in the negative direction until stopped."""
         self.write("MC")
         self.write("H-")
         self.write("G")
 
     def stop(self):
-        '''Force the stepper to stop in its current position '''
+        """Force the stepper to stop at its current position."""
         self.write("S")
 
     def home(self, velocity=-3):
-        '''Move the stepper to its home position
+        """Move the stepper to its home position.
+
         Args:
-            velocity(int):  Stepper velocity
-        Notes:
-            The correct sign (+/-) for the velocity for home movement must be 
-            given otherwise the stepper will go to the wrong end of the stage'''
+            velocity (int): Stepper velocity.
+
+        Note:
+            The correct sign (+/-) of the velocity must be given, otherwise the
+            stepper will travel to the wrong end of the stage.
+        """
         self.write("GH" + str(velocity))
 
     def zero(self):
-        '''Set the current stepper position as zero '''
+        """Set the current stepper position as zero."""
         self.write("PZ")
 
     def get_qt_ui(self):
+        """Return the Qt control UI for this stepper, creating it on first call.
+
+        Returns:
+            Stepper_Ui: A Qt widget for interactive control.
+        """
         if not hasattr(self, 'ui'):
             self.ui = Stepper_Ui(self)
         return self.ui
+
 
 import os
 
@@ -170,12 +182,11 @@ class Stepper_Ui(QtWidgets.QWidget, UiTools):
     def update_positions(self):
         current_pos = float(self.stepper.location()[1])
         self.current_number.setText(str(current_pos))
-        self.current_percent.setText(
-            str(old_div(100.0 * current_pos, self.stepper.max_steps))[:4] + '%')
+        self.current_percent.setText(str(100.0 * current_pos / self.stepper.max_steps)[:4] + '%')
 
     def move_to_percent(self):
         percent = self.move_percent_doubleSpinBox.value()
-        steps = int(old_div((percent * self.stepper.max_steps), 100))
+        steps = int((percent * self.stepper.max_steps) / 100)
         self.stepper.moveto(steps, blocking=False)
 
     def move_to(self):

@@ -1,22 +1,20 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Thu Oct 01 11:52:44 2015
-
-@author: hera
-"""
-from __future__ import print_function
-
-from builtins import str
-
+"""Serial driver for the Piezoconcept FOC100 single-axis nanopositioner."""
 import serial
 
 import pyopenlab.instrument.serial_instrument as si
 
 
 class Piezoconcept(si.SerialInstrument):
-    '''A simple class for the Piezo concept FOC100 nanopositioning system'''
+    """A simple class for the Piezoconcept FOC100 nanopositioning system."""
 
     def __init__(self, port=None):
+        """Open the serial port and recenter the stage to mid-range (50 um).
+
+        Args:
+            port (int or str): The port the device is connected to, in any of the
+                accepted serial formats.
+        """
         self.termination_character = '\n'
         self.port_settings = {
             'baudrate': 115200,
@@ -31,7 +29,13 @@ class Piezoconcept(si.SerialInstrument):
         self.recenter()
 
     def move_rel(self, value, unit="n"):
-        '''A command for relative movement, where the default units is nm'''
+        """Move the stage by a relative displacement.
+
+        Args:
+            value (float): Displacement to move by. Out-of-range moves are
+                rejected and an error message is printed.
+            unit (str): ``"n"`` for nanometres (default) or ``"u"`` for microns.
+        """
         if unit == "n":
             multiplier = 1
         if unit == "u":
@@ -45,8 +49,15 @@ class Piezoconcept(si.SerialInstrument):
             self.position = (value * multiplier + self.position)
 
     def move(self, value, unit="n"):
-        '''An absolute movement command, will print an error to the console 
-        if you moveoutside of the range(100um) default unit is nm'''
+        """Move the stage to an absolute position.
+
+        Prints an error to the console if the requested position is outside the
+        0-100 um travel range.
+
+        Args:
+            value (float): Absolute position to move to.
+            unit (str): ``"n"`` for nanometres (default) or ``"u"`` for microns.
+        """
         if unit == "n":
             multiplier = 1
         if unit == "u":
@@ -60,14 +71,29 @@ class Piezoconcept(si.SerialInstrument):
             self.position = value * multiplier
 
     def move_step(self, direction):
+        """Move by one predefined step in the given direction.
+
+        Args:
+            direction (int): Sign/multiple of the step to take.
+
+        Note:
+            Relies on ``self.stepsize``, which is not initialised by this class,
+            so calling this method raises ``AttributeError`` unless ``stepsize``
+            has been set externally.
+        """
         self.move_rel(direction * self.stepsize)
 
     def recenter(self):
-        ''' Moves the stage to the center position'''
+        """Move the stage to its center position (50 um) and reset position."""
         self.move(50, unit="u")
         self.position = 50E3
 
     def INFO(self):
+        """Query the controller's info string.
+
+        Returns:
+            str: The multi-line ``INFOS`` response from the controller.
+        """
         return self.query(
             "INFOS",
             multiline=True,
