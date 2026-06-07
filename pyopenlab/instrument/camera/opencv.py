@@ -1,8 +1,8 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Wed Jun 11 12:28:18 2014
+"""OpenCV-backed :class:`Camera` implementation.
 
-@author: Richard
+Wraps an OpenCV ``VideoCapture`` device so that any camera OpenCV can open (webcams, USB cameras,
+etc.) can be driven through the pyopenlab Camera interface.
 """
 import sys
 
@@ -33,6 +33,12 @@ from pyopenlab.instrument.camera import CameraParameter
 
 
 class OpenCVCamera(Camera):
+    """A :class:`Camera` driven by an OpenCV ``VideoCapture`` device.
+
+    Args:
+        capturedevice: Index or identifier of the capture device to open, passed straight to
+            ``cv2.VideoCapture``.
+    """
 
     def __init__(self, capturedevice=0):
         self.cap = cv2.VideoCapture(capturedevice)
@@ -45,7 +51,22 @@ class OpenCVCamera(Camera):
         self.cap.release()
 
     def raw_snapshot(self, suppress_errors=False):
-        """Take a snapshot and return it.  Bypass filters etc."""
+        """Take a snapshot and return it, bypassing filters.
+
+        Tries up to 10 times to read a frame; colour frames are converted from OpenCV's BGR order to
+        RGB.
+
+        Args:
+            suppress_errors: If True, return ``(False, None)`` instead of raising when no frame can
+                be captured.
+
+        Returns:
+            tuple[bool, numpy.ndarray | None]: ``(True, frame)`` on success, or ``(False, None)`` if
+            capture failed and ``suppress_errors`` is True.
+
+        Raises:
+            IOError: If no frame could be captured and ``suppress_errors`` is False.
+        """
         with self.acquisition_lock:
             for i in range(10):
                 try:
@@ -64,11 +85,26 @@ class OpenCVCamera(Camera):
             return False, None
 
     def get_camera_parameter(self, parameter_name):
-        """Get the value of a camera parameter (though you should really use the property)"""
+        """Get the value of a camera parameter (prefer the corresponding property).
+
+        Args:
+            parameter_name: Name of a ``cv2`` capture property constant, e.g. ``'CAP_PROP_FPS'``.
+
+        Returns:
+            The current value of the parameter, as returned by ``VideoCapture.get``.
+        """
         return self.cap.get(getattr(cv2, parameter_name))
 
     def set_camera_parameter(self, parameter_name, value):
-        """Set the value of a camera parameter (though you should really use the property)"""
+        """Set the value of a camera parameter (prefer the corresponding property).
+
+        Args:
+            parameter_name: Name of a ``cv2`` capture property constant, e.g. ``'CAP_PROP_FPS'``.
+            value: The value to set.
+
+        Returns:
+            bool: Whether ``VideoCapture.set`` accepted the value.
+        """
         return self.cap.set(getattr(cv2, parameter_name), value)
 
 

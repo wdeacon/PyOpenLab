@@ -1,14 +1,9 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Lumenera camera wrapper for pyopenlab
-=================================
+"""Lumenera camera wrapper for pyopenlab.
 
-This module wraps the lucam script from the legendary Christoph Gohlke 
-<http://www.lfd.uci.edu/~gohlke/> and depends on having the lucam DLL installed
-(most easily achieved by installing the Infinity Capture or Infinity Driver 
-software from Lumenera's website).
-
-@author: Richard Bowman (rwb27@cam.ac.uk)
+This module wraps the ``lucam`` script from Christoph Gohlke
+<http://www.lfd.uci.edu/~gohlke/> and depends on having the lucam DLL installed (most easily
+achieved by installing the Infinity Capture or Infinity Driver software from Lumenera's website).
 """
 import ctypes
 import sys
@@ -47,6 +42,14 @@ from pyopenlab.utils.notified_property import NotifiedProperty
 
 
 class LumeneraCamera(Camera):
+    """A :class:`Camera` for Lumenera (Infinity) cameras, backed by the lucam wrapper.
+
+    Camera properties listed in ``lucam.Lucam.PROPERTY`` (e.g. exposure, gain) are added as
+    attributes of this class at import time via :class:`CameraParameter`.
+
+    Args:
+        camera_number: 1-indexed camera number to open (lucam is 1-indexed).
+    """
     last_frame_time = -1
     fps = -1
 
@@ -131,18 +134,31 @@ class LumeneraCamera(Camera):
                      reset_on_error=True,
                      retrieve_metadata=True,
                      crop_fraction=None):
-        """Take a snapshot and return it.  Bypass filters etc.
-        
-        @param: video_priority: If this is set to True, don't interrupt video
-        streaming and just return the latest frame.  If it's set to false,
-        stop the video stream, take a snapshot, and re-start the video stream.
-        @param: suppress_errors: don't raise an exception if we can't get a 
-        valid frame.
-        @param: reset_on _error: attempt to turn the camera off and on again
-        if it's not behaving(!)
-        @param: retrieve_metadata: by default, we retrieve certain camera 
-        parameters (gain, exposure, etc.) when we take a frame, and store them
-        in self.metadata.  Set this to false to disable the behaviour."""
+        """Take a snapshot and return it, bypassing filters.
+
+        Tries up to 10 times to capture a frame, optionally restarting the camera on repeated
+        failure.
+
+        Args:
+            suppress_errors: If True, return ``(False, None)`` instead of raising when no valid
+                frame can be captured.
+            reset_on_error: If True, turn the camera off and on again and retry once when the
+                first batch of attempts fails.
+            retrieve_metadata: Currently unused. Retained for interface compatibility.
+            crop_fraction: Fraction of the frame to keep, centred, e.g. ``0.5`` keeps the central
+                half in each dimension. Overridden by ``self.auto_crop_fraction`` when that is set.
+
+        Returns:
+            tuple[bool, numpy.ndarray | None]: ``(True, image)`` on success, or ``(False, None)`` if
+            capture failed and ``suppress_errors`` is True.
+
+        Raises:
+            IOError: If no frame could be captured and ``suppress_errors`` is False.
+
+        Note:
+            The ``retrieve_metadata`` argument is accepted but has no effect; the corresponding
+            metadata-retrieval logic is not implemented in this method.
+        """
         #I removed logic for video priority here.  That belongs in raw_image.
         if self.auto_crop_fraction is not None:
             crop_fraction = self.auto_crop_fraction
@@ -197,7 +213,18 @@ class LumeneraCamera(Camera):
             print("invalid frame size")
 
     def convert_frame(self, frame_pointer, frame_size):
-        """Convert a frame from the camera to an RGB numpy array."""
+        """Convert a raw camera frame to an RGB numpy array.
+
+        Args:
+            frame_pointer: ctypes pointer to the raw frame buffer returned by the camera.
+            frame_size: Number of pixels in the raw frame; checked against the current image format.
+
+        Returns:
+            numpy.ndarray: The converted frame in RGB order.
+
+        Raises:
+            AssertionError: If ``frame_size`` does not match the current image format.
+        """
         f = self.cam.GetFormat()[0]
         w, h = f.width // (f.binningX * f.subSampleX), f.height // (f.binningY * f.subSampleY)
         assert frame_size == w * h, "The frame size did not match the image format!"
@@ -241,15 +268,33 @@ class LumeneraCamera(Camera):
             self.stop_streaming()
 
     def get_camera_parameter(self, parameter_name):
-        """Get the value of a camera setting.  But you should use the property..."""
+        """Get the value of a camera setting (prefer the corresponding property).
+
+        Args:
+            parameter_name: Name of a lucam camera property.
+
+        Returns:
+            The current value of the property.
+        """
         return self.cam.GetProperty(parameter_name)[0]
 
     def set_camera_parameter(self, parameter_name, value):
-        """Get the value of a camera setting.  But you should use the property..."""
+        """Set the value of a camera setting (prefer the corresponding property).
+
+        Args:
+            parameter_name: Name of a lucam camera property.
+            value: The value to set.
+        """
         self.cam.SetProperty(parameter_name, value)
 
     def get_metadata(self):
-        """Return a dictionary of camera settings and parameters."""
+        """Return a dictionary of camera settings and identifying information.
+
+        Returns:
+            dict: The base-class metadata augmented with camera id/model, serial number, firmware,
+            FPGA, API and driver versions, interface type, image offset/size, binning or
+            subsampling, pixel format, bit depth and frame rate.
+        """
         ret = super(LumeneraCamera, self).get_metadata()
 
         camid = self.cam.GetCameraId()
@@ -287,12 +332,21 @@ class LumeneraCamera(Camera):
         self.cam.DisplayVideoFormatPage(None)
 
     def get_control_widget(self):
-        "Get a Qt widget with the camera's controls (but no image display)"
+        """Return a Qt widget with the camera's controls (but no image display).
+
+        Returns:
+            LumeneraCameraControlWidget: The control widget for this camera.
+        """
         return LumeneraCameraControlWidget(self)
 
 
 class LumeneraCameraControlWidget(CameraControlWidget):
-    """A control widget for the Lumenera camera, with extra buttons."""
+    """A control widget for the Lumenera camera, with extra setup/format buttons.
+
+    Args:
+        camera: The :class:`LumeneraCamera` to control.
+        auto_connect: Whether to auto-connect the widget controls to the camera by name.
+    """
 
     def __init__(self, camera, auto_connect=True):
         super(LumeneraCameraControlWidget, self).__init__(camera, auto_connect=False)
