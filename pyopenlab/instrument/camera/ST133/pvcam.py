@@ -1,20 +1,19 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-@author: YagoDel
+"""Driver for Princeton Instruments cameras via the PVCam SDK (ST133).
 
-Modified from Odemis and patched together with pyopenlab.instrument.Andor code
-Copyright © 2012-2013 Éric Piel, Delmic
+Adapted from Odemis and combined with the pyopenlab Andor driver code.
+Copyright © 2012-2013 Éric Piel, Delmic.
+
+Supports the PVCam SDK from Roper / Princeton Instruments / Photometrics. The
+library differs slightly between vendors. The original Odemis code was tested on
+Linux with a PI PIXIS; this version was tested on Windows with an ST133
+controller.
 
 Useful links:
     ftp://ftp.piacton.com/Public/Manuals/Princeton%20Instruments/PVCAM%202.7%20Software%20User%20Manual.pdf
     https://github.com/delmic/odemis/blob/master/src/odemis/driver/pvcam.py
     http://www.pi-j.jp/pdf/manual/ST-133_ControllerManual.pdf
     https://github.com/nanophotonics/pyopenlab/blob/master/pyopenlab/instrument/ccd/pixis.py
-
-This tries to support the PVCam SDK from Roper/Princeton Instruments/Photometrics.
-However, the library is slightly different between the companies.
-Original Odemis was tested on Linux with a PI PIXIS. This was tested on Windows with an ST133 controller
-
 """
 
 import ctypes as ct
@@ -44,9 +43,14 @@ from . import pvcam_h as pv  # Dictionary linking variables with values
 
 
 def index_closest(val, l):
-    """
-    finds in a list the index of the closest existing value from a given value
-    Works also with dict and tuples.
+    """Find the index (or key) of the entry closest to a target value.
+
+    Args:
+        val: The target value.
+        l: A list, tuple, or dict to search.
+
+    Returns:
+        The index of the closest entry, or the dict key whose value is closest.
     """
     if isinstance(l, dict):
         return min(list(l.items()), key=lambda x: abs(x[1] - val))[0]
@@ -55,8 +59,15 @@ def index_closest(val, l):
 
 
 class PVCamError(Exception):
+    """Exception carrying a PVCam error code and message."""
 
     def __init__(self, errno, strerror, *args, **kwargs):
+        """Store the error code and message.
+
+        Args:
+            errno: PVCam error code.
+            strerror: Human-readable error message.
+        """
         super(PVCamError, self).__init__(errno, strerror, *args, **kwargs)
         self.args = (errno, strerror)
 
@@ -65,20 +76,23 @@ class PVCamError(Exception):
 
 
 class CancelledError(Exception):
-    """
-    raise to indicate the acquisition is cancelled and must stop
-    """
+    """Raised to indicate the acquisition was cancelled and must stop."""
     pass
 
 
 class PVCamDLL(ct.WinDLL):
-    """
-    Subclass of CDLL specific to PVCam library, which handles error codes for
-    all the functions automatically.
-    It works by setting a default _FuncPtr.errcheck.
+    """``ct.WinDLL`` subclass for the PVCam library with automatic error checks.
+
+    It installs a default ``_FuncPtr.errcheck`` so the return value of every
+    library call is validated and raised as :class:`PVCamError` on failure.
     """
 
     def __init__(self):
+        """Load the PVCam library and initialise it.
+
+        Raises:
+            OSError: If the operating system is not Windows.
+        """
         if os.name == "nt":
             ct.WinDLL.__init__(self, "pvcam32")
             self.pl_pvcam_init()
@@ -101,10 +115,18 @@ class PVCamDLL(ct.WinDLL):
         #         pass # if opened several times, initialisation fails but it's all fine
 
     def pv_errcheck(self, result, func, *args):
-        """
-        Analyse the return value of a call and raise an exception in case of
-        error.
-        Follows the ctypes.errcheck callback convention
+        """Validate a library call's return value (ctypes errcheck callback).
+
+        Args:
+            result: The value returned by the library function.
+            func: The ctypes function pointer that was called.
+            *args: The arguments passed to the call.
+
+        Returns:
+            The original ``result`` if the call succeeded.
+
+        Raises:
+            PVCamError: If the call reported failure.
         """
         if not result:  # functions return (rs_bool = int) False on error
             try:
@@ -128,6 +150,18 @@ class PVCamDLL(ct.WinDLL):
         return result
 
     def __getitem__(self, name):
+        """Look up a library function and attach the error-check callback.
+
+        Args:
+            name: Name of the PVCam library function.
+
+        Returns:
+            The ctypes function pointer, with ``errcheck`` set unless ``name``
+            is one of the error-reporting functions in :attr:`err_funcs`.
+
+        Raises:
+            AttributeError: If the function cannot be found in the library.
+        """
         try:
             func = super(PVCamDLL, self).__getitem__(name)
         except Exception:
@@ -142,9 +176,7 @@ class PVCamDLL(ct.WinDLL):
     err_funcs = ("pl_error_code", "pl_error_message", "pl_exp_check_status")
 
     def reinit(self):
-        """
-        Does a fast uninit/init cycle
-        """
+        """Perform a fast uninitialise/initialise cycle of the library."""
         try:
             self.pl_pvcam_uninit()
         except PVCamError:
@@ -203,11 +235,18 @@ class PvcamSdk(object):
     """
 
     def __init__(self, device, *args, **kwargs):
-        """
-        Initialises the device
-        device (int or string): number of the device to open, as defined in
-         pvcam, cf scan(), or the name of the device (as in /dev/).
-        Raise an exception if the device cannot be opened.
+        """Initialise and open the camera.
+
+        Args:
+            device: Either the device number to open (int, as defined by pvcam;
+                see :meth:`scan`) or the device name (str, as in ``/dev/``).
+            *args: Unused; accepted for subclass compatibility.
+            **kwargs: May contain ``logger`` to supply a custom logger.
+
+        Raises:
+            ValueError: If ``device`` is neither an int nor a str.
+            Exception: If a camera with the given number cannot be found.
+            IOError: If the camera is connected but fails to open.
         """
         self.pvcam = PVCamDLL()
         self.current_image = None
@@ -390,9 +429,11 @@ class PvcamSdk(object):
         self._number_frames = value
 
     def _setStaticSettings(self):
-        """
-        Set up all the values that we don't need to change after.
-        Should only be called at initialisation
+        """Configure the values that never change after initialisation.
+
+        Should only be called at initialisation (or re-initialisation). Sets the
+        readout port to low noise, the shutter and clear modes, the acquisition
+        mode, and the exposure resolution.
         """
         # Set the output amplifier to lowest noise
         try:
@@ -430,9 +471,14 @@ class PvcamSdk(object):
     # low level methods, wrapper to the actual SDK functions
 
     def Reinitialize(self):
-        """
-        Waits for the camera to reappear and reinitialise it. Typically
-        useful in case the user switched off/on the camera.
+        """Wait for the camera to reappear and reinitialise it.
+
+        Typically useful after the user has switched the camera off and on
+        again. Blocks until the camera can be reopened, then restores the
+        static settings.
+
+        Raises:
+            PVCamError: If the diagnostics check fails after reopening.
         """
         # stop trying to read the temperature while we reinitialize
         if self._temp_timer is not None:
@@ -475,10 +521,13 @@ class PvcamSdk(object):
         # self._temp_timer.start()
 
     def cam_get_name(self, num):
-        """
-        return the name, from the device number
-        num (int >= 0): camera number
-        return (string): name
+        """Return the camera name for a given device number.
+
+        Args:
+            num: Camera number (must be >= 0).
+
+        Returns:
+            bytes: The camera name.
         """
         assert (num >= 0)
         cam_name = ct.create_string_buffer(pv.CAM_NAME_LEN)
@@ -486,11 +535,14 @@ class PvcamSdk(object):
         return cam_name.value
 
     def cam_open(self, name, mode):
-        """
-        Reserve and initializes the camera hardware
-        name (string): camera name
-        mode (int): open mode
-        returns (int): handle
+        """Reserve and initialise the camera hardware.
+
+        Args:
+            name: Camera name.
+            mode: Open mode (one of ``pv.OPEN_*``).
+
+        Returns:
+            ctypes.c_int16: The camera handle.
         """
         handle = ct.c_int16()
         self.pvcam.pl_cam_open(name, ct.byref(handle), mode)
@@ -509,13 +561,21 @@ class PvcamSdk(object):
         pv.TYPE_ENUM: ct.c_uint32,}
 
     def get_param(self, param, value=pv.ATTR_CURRENT):
-        """
-        Read the current (or other) value of a parameter.
-        Note: for the enumerated parameters, this it the actual value, not the
-        index.
-        param (int): parameter ID (cf pv.PARAM_*)
-        value (int from pv.ATTR_*): which value to read (current, default, min, max, increment)
-        return (value): the value of the parameter, whose type depend on the parameter
+        """Read the current (or another) value of a parameter.
+
+        For enumerated parameters this is the actual value, not the index.
+
+        Args:
+            param: Parameter ID (one of ``pv.PARAM_*``).
+            value: Which attribute to read (one of ``pv.ATTR_*``): current,
+                default, min, max, or increment.
+
+        Returns:
+            The parameter value, whose type depends on the parameter.
+
+        Raises:
+            ValueError: If the parameter is a pointer type.
+            NotImplementedError: If the parameter has an unknown type.
         """
         assert (value
                 in (pv.ATTR_DEFAULT, pv.ATTR_CURRENT, pv.ATTR_MIN, pv.ATTR_MAX, pv.ATTR_INCREMENT))
@@ -541,24 +601,35 @@ class PvcamSdk(object):
         return content.value
 
     def get_param_access(self, param):
-        """
-        gives the access rights for a given parameter.
-        param (int): parameter ID (cf pv.PARAM_*)
-        returns (int): value as in pv.ACC_*
+        """Return the access rights for a parameter.
+
+        Args:
+            param: Parameter ID (one of ``pv.PARAM_*``).
+
+        Returns:
+            int: Access rights value (one of ``pv.ACC_*``).
         """
         rights = ct.c_uint16()
         self.pvcam.pl_get_param(self._handle, param, pv.ATTR_ACCESS, ct.byref(rights))
         return rights.value
 
     def set_param(self, param, value):
-        """
-        Write the current value of a parameter.
-        Note: for the enumerated parameter, this is the actual value to set, not
-        the index.
-        param (int): parameter ID (cf pv.PARAM_*)
-        value (should be of the right type): value to write
-        Warning: it seems to not always complain if the value written is incorrect,
-        just using default instead.
+        """Write the current value of a parameter.
+
+        For enumerated parameters this is the actual value to set, not the
+        index.
+
+        Args:
+            param: Parameter ID (one of ``pv.PARAM_*``).
+            value: Value to write; must be of the right type for the parameter.
+
+        Raises:
+            ValueError: If the parameter is a pointer type.
+            NotImplementedError: If the parameter has an unknown type.
+
+        Warning:
+            The library does not always complain if the written value is
+            invalid; it may silently use the default instead.
         """
         # find out the type of the parameter
         tp = ct.c_uint16()
@@ -576,10 +647,13 @@ class PvcamSdk(object):
         self.pvcam.pl_set_param(self._handle, param, ct.byref(content))
 
     def get_enum_available(self, param):
-        """
-        Get all the available values for a given enumerated parameter.
-        param (int): parameter ID (cf pv.PARAM_*), it must be an enumerated one
-        return (dict (int -> string)): value to description
+        """Get all available values for an enumerated parameter.
+
+        Args:
+            param: Parameter ID (one of ``pv.PARAM_*``); must be enumerated.
+
+        Returns:
+            dict: Mapping of each enum value (int) to its description (bytes).
         """
         count = ct.c_uint32()
         self.pvcam.pl_get_param(self._handle, param, pv.ATTR_COUNT, ct.byref(count))
@@ -595,9 +669,10 @@ class PvcamSdk(object):
         return ret
 
     def exp_check_status(self):
-        """
-        Checks the status of the current exposure (acquisition)
-        returns (int): status as in pv.* (cf documentation)
+        """Check the status of the current exposure (acquisition).
+
+        Returns:
+            int: Status code (one of the ``pv.*`` status values).
         """
         status = ct.c_int16()
         byte_cnt = ct.c_uint32()  # number of bytes already acquired: unused
@@ -606,10 +681,13 @@ class PvcamSdk(object):
 
     @staticmethod
     def _int2version(raw):
-        """
-        Convert a raw value into version, according to the pvcam convention
-        raw (int)
-        returns (string)
+        """Convert a raw integer into a version string (pvcam convention).
+
+        Args:
+            raw: Packed version integer.
+
+        Returns:
+            str: Version string of the form ``major.minor.trivial``.
         """
         ver = []
         ver.insert(0, raw & 0x0f)  # lowest 4 bits = trivial version
@@ -620,9 +698,11 @@ class PvcamSdk(object):
         return '.'.join(str(x) for x in ver)
 
     def get_sw_version(self):
-        """
-        returns a simplified software version information
-        or None if unknown
+        """Return a simplified software version summary.
+
+        Returns:
+            str: Driver, interface and SDK versions; unknown components are
+            reported as ``"unknown"``.
         """
         try:
             ddi_ver = ct.c_uint16()
@@ -646,8 +726,11 @@ class PvcamSdk(object):
         return "driver: %s, interface: %s, SDK: %s" % (driver, interface, sdk)
 
     def get_hw_version(self):
-        """
-        returns a simplified hardware version information
+        """Return a simplified hardware version summary.
+
+        Returns:
+            str: Concatenated firmware and camera-type information, or
+            ``"unknown"`` if nothing could be read.
         """
         versions = {
             pv.PARAM_CAM_FW_VERSION:
@@ -680,8 +763,11 @@ class PvcamSdk(object):
         return ret
 
     def get_model(self):
-        """
-        returns (string): name of the camara
+        """Return a descriptive model name for the camera.
+
+        Returns:
+            str: Model name including the CCD name and serial number when
+            available.
         """
         model_name = "Princeton Instruments camera"
 
@@ -698,24 +784,30 @@ class PvcamSdk(object):
         return model_name
 
     def get_sensor_size(self):
-        """
-        return 2-tuple (int, int): width, height of the detector in pixel
+        """Return the detector size.
+
+        Returns:
+            tuple: ``(width, height)`` in pixels.
         """
         width = self.get_param(pv.PARAM_SER_SIZE, pv.ATTR_DEFAULT)
         height = self.get_param(pv.PARAM_PAR_SIZE, pv.ATTR_DEFAULT)
         return width, height
 
     def get_min_resolution(self):
-        """
-        return 2-tuple (int, int): width, height of the minimum possible resolution
+        """Return the minimum possible resolution.
+
+        Returns:
+            tuple: ``(width, height)`` in pixels.
         """
         width = self.get_param(pv.PARAM_SER_SIZE, pv.ATTR_MIN)
         height = self.get_param(pv.PARAM_PAR_SIZE, pv.ATTR_MIN)
         return width, height
 
     def get_pixel_size(self):
-        """
-        return 2-tuple float, float: width, height of one pixel in m
+        """Return the physical size of one pixel.
+
+        Returns:
+            tuple: ``(width, height)`` of a pixel in metres.
         """
         # values from the driver are in nm
         width = self.get_param(pv.PARAM_PIX_SER_DIST, pv.ATTR_DEFAULT) * 1e-9
@@ -723,8 +815,10 @@ class PvcamSdk(object):
         return width, height
 
     def get_temp(self):
-        """
-        returns (float) the current temperature of the captor in C
+        """Return the current sensor temperature.
+
+        Returns:
+            float: Temperature in degrees Celsius.
         """
         # it's in 1/100 of C
         # with self._online_lock:
@@ -732,15 +826,28 @@ class PvcamSdk(object):
         return temp
 
     def get_temp_range(self):
+        """Return the allowed temperature set-point range.
+
+        Returns:
+            tuple: ``(min, max)`` temperatures in degrees Celsius.
+        """
         mint = self.get_param(pv.PARAM_TEMP_SETPOINT, pv.ATTR_MIN) / 100
         maxt = self.get_param(pv.PARAM_TEMP_SETPOINT, pv.ATTR_MAX) / 100
         return mint, maxt
 
     # High level methods
     def set_temp_target(self, temp):
-        """
-        Change the targeted temperature of the CCD. The cooler the less dark noise.
-        temp (-300 < float < 100): temperature in C, should be within the allowed range
+        """Change the target temperature of the CCD.
+
+        Cooler temperatures reduce dark noise. Also toggles the cooler/fan off
+        above 20 C.
+
+        Args:
+            temp: Target temperature in degrees Celsius (-300 < temp < 100),
+                within the camera's allowed range.
+
+        Returns:
+            float: The temperature set-point read back from the camera.
         """
         assert ((-300 <= temp) and (temp <= 100))
         # TODO: doublebuff_focus.c example code has big warnings to not read/write
@@ -767,9 +874,10 @@ class PvcamSdk(object):
         return float(temp)
 
     def _get_gains(self):
-        """
-        Find the gains supported by the device
-        returns (dict of int -> float): index -> multiplier
+        """Find the gains supported by the device.
+
+        Returns:
+            dict: Mapping of gain index (int) to multiplier (float).
         """
         # Gains are special: they do not use a enum type, just min/max
         ming = self.get_param(pv.PARAM_GAIN_INDEX, pv.ATTR_MIN)
@@ -781,17 +889,24 @@ class PvcamSdk(object):
         return gains
 
     def _set_gain(self, value):
-        """
-        VA setter for gain (just save)
+        """Store the gain value.
+
+        Args:
+            value: Gain multiplier to store.
+
+        Returns:
+            The stored gain value.
         """
         self._gain = value
         return value
 
     def _get_readout_rates(self):
-        """
-        Find the readout rates supported by the device
-        returns (dict int -> float): for each index: frequency in Hz
-        Note: this is for the current output amplifier and bit depth
+        """Find the readout rates supported by the device.
+
+        This is for the current output amplifier and bit depth.
+
+        Returns:
+            dict: Mapping of speed index (int) to frequency in Hz (float).
         """
         # It depends on the port (output amplifier), bit depth, which we
         # consider both fixed.
@@ -823,16 +938,23 @@ class PvcamSdk(object):
         return rates
 
     def _set_readout_rate(self, value):
-        """
-        VA setter for readout rate (just save)
+        """Store the readout rate value.
+
+        Args:
+            value: Readout rate in Hz to store.
+
+        Returns:
+            The stored readout rate value.
         """
         self._readout_rate = value
         return value
 
     def _get_max_bin(self):
-        """
-        return the maximum binning in both directions
-        returns (list of int): maximum binning in height, width
+        """Return the maximum binning in both directions.
+
+        Returns:
+            tuple: Maximum binning ``(width, height)``; ``(1, 1)`` for InGaAs
+            detectors, which do not support binning.
         """
         chip = self.get_param(pv.PARAM_CHIP_NAME)
         # FIXME: detect more generally if the detector supports binning or not?
@@ -845,11 +967,14 @@ class PvcamSdk(object):
         return self.get_sensor_size()
 
     def _set_binning(self, value):
-        """
-        Called when "binning" VA is modified. It also updates the resolution so
-        that the AOI is approximately the same.
-        value (int): how many pixels horizontally and vertically
-         are combined to create "super pixels"
+        """Set the binning and rescale the resolution to keep the same AOI.
+
+        Args:
+            value: Number of pixels combined horizontally and vertically into
+                each "super pixel".
+
+        Returns:
+            The applied binning (transposed to user coordinates).
         """
         value = self._transposeSizeFromUser(value)
         prev_binning = self._binning
@@ -866,12 +991,14 @@ class PvcamSdk(object):
         return self._transposeSizeToUser(value)
 
     def _storeSize(self, size):
-        """
-        Check the size is correct (it should) and store it ready for SetImage
-        size (2-tuple int): Width and height of the image. It will be centred
-         on the captor. It depends on the binning, so the same region has a size
-         twice smaller if the binning is 2 instead of 1. It must be a allowed
-         resolution.
+        """Validate a resolution and store the corresponding image rectangle.
+
+        The image is centred on the sensor. The size is in super-pixels, so the
+        same region is half as large with binning 2 as with binning 1.
+
+        Args:
+            size: ``(width, height)`` of the image; must be an allowed
+                resolution.
         """
         full_res = self._shape[:2]
         resolution = (int(full_res[0] // self._binning[0]), int(full_res[1] // self._binning[1]))
@@ -887,6 +1014,14 @@ class PvcamSdk(object):
                             lt[1] * self._binning[1], (lt[1] + size[1]) * self._binning[1] - 1)
 
     def _setResolution(self, value):
+        """Fit a requested resolution to the camera and store it.
+
+        Args:
+            value: Requested ``(width, height)`` resolution.
+
+        Returns:
+            tuple: The resolution actually applied.
+        """
         # value = self._transposeSizeFromUser(value)
         new_res = self.resolutionFitter(value)
         self._storeSize(new_res)
@@ -894,12 +1029,14 @@ class PvcamSdk(object):
         return new_res
 
     def resolutionFitter(self, size_req):
-        """
-        Finds a resolution allowed by the camera which fits best the requested
-          resolution.
-        size_req (2-tuple of int): resolution requested
-        returns (2-tuple of int): resolution which fits the camera. It is equal
-         or bigger than the requested resolution
+        """Find the camera resolution that best fits a requested resolution.
+
+        Args:
+            size_req: Requested ``(width, height)`` resolution.
+
+        Returns:
+            tuple: A resolution allowed by the camera, clamped between the
+            minimum and maximum supported sizes.
         """
         # find maximum resolution (with binning)
         resolution = self._shape[:2]
@@ -933,8 +1070,10 @@ class PvcamSdk(object):
     #     return period
 
     def _need_update_settings(self):
-        """
-        returns (boolean): True if _update_settings() needs to be called
+        """Report whether the camera settings need committing.
+
+        Returns:
+            bool: True if :meth:`_update_settings` needs to be called.
         """
         new_image_settings = self._binning + self._image_rect
         new_settings = [
@@ -943,14 +1082,16 @@ class PvcamSdk(object):
         return new_settings != self._prev_settings
 
     def _update_settings(self):
-        """
-        Commits the settings to the camera. Only the settings which have been
-        modified are updated.
-        Note: acquisition_lock must be taken, and acquisition must _not_ going on.
-        returns (exposure, region, size):
-                exposure: (float) exposure time in second
-                region (pv.rgn_type): the region structure that can be used to set up the acquisition
-                size (2-tuple of int): the size of the data array that will get acquired
+        """Commit the modified settings to the camera.
+
+        Only settings that have changed are updated. ``acquisition_lock`` must
+        be held and no acquisition may be in progress.
+
+        Returns:
+            tuple: ``(exposure, region, size)`` where ``exposure`` is the
+            exposure time in seconds (float), ``region`` is the ``pv.rgn_type``
+            structure for the acquisition, and ``size`` is the
+            ``(frames, height, width)`` shape of the data array.
         """
         (prev_image_settings, prev_exp_time, prev_readout_rate, prev_gain,
          prev_shut) = self._prev_settings
@@ -1021,19 +1162,27 @@ class PvcamSdk(object):
         return self._exposure_time, region, size
 
     def _allocate_buffer(self, length):
-        """
-        length (int): number of bytes requested by pl_exp_setup
-        returns a cbuffer of the right type for an image
+        """Allocate an image buffer of the appropriate ctypes type.
+
+        Args:
+            length: Number of bytes requested by ``pl_exp_setup``.
+
+        Returns:
+            A ctypes ``c_uint16`` array sized for the image(s).
         """
         cbuffer = (ct.c_uint16 * (self._number_frames * length // 2))()  # empty array
         return cbuffer
 
     @staticmethod
     def _buffer_as_array(cbuffer, size):
-        """
-        Converts the buffer allocated for the image as an ndarray. zero-copy
-        size (2-tuple of int): width, height
-        return an ndarray
+        """Wrap an image buffer as an ndarray without copying.
+
+        Args:
+            cbuffer: The ctypes image buffer.
+            size: The shape to give the array.
+
+        Returns:
+            numpy.ndarray: A zero-copy view onto the buffer.
         """
         p = ct.cast(cbuffer, ct.POINTER(ct.c_uint16))
         # dataarray = np.ctypeslib.as_array(p, (size[2], size[1], size[0]))  # np shape is H, W
@@ -1219,7 +1368,15 @@ class PvcamSdk(object):
     #         self.acquire_must_stop.clear()
 
     def capture(self):
-        """Modified from odemis, but removing the locking"""
+        """Acquire one sequence and return it as an array.
+
+        Sets up the sequence, starts it, waits (with a timeout) for readout to
+        complete, then tidies up. Adapted from Odemis with the locking removed.
+
+        Returns:
+            numpy.ndarray: The acquired data; also stored on
+            ``self.current_image``.
+        """
         exposure, region, size, duration, cbuffer = self._init_seq()
         self.pvcam.pl_exp_start_seq(self._handle, cbuffer)
         start = time.time()
@@ -1270,6 +1427,14 @@ class PvcamSdk(object):
         return data_array
 
     def dark_exposure(self):
+        """Acquire a dark frame with the shutter held closed.
+
+        The captured frame is stored on ``self.background`` and the previous
+        shutter mode is restored afterwards.
+
+        Returns:
+            numpy.ndarray: The dark frame.
+        """
         _current_value = self.get_param(pv.PARAM_SHTR_OPEN_MODE)
         self.set_param(pv.PARAM_SHTR_OPEN_MODE, pv.OPEN_NEVER)
         array = self.capture()
@@ -1364,10 +1529,12 @@ class PvcamSdk(object):
 
     @staticmethod
     def scan():
-        """
-        List all the available cameras.
-        Note: it's not recommended to call this method when cameras are being used
-        return (list of 2-tuple: name (strin), device number (int))
+        """List all available cameras.
+
+        It is not recommended to call this while cameras are in use.
+
+        Returns:
+            list: ``(name, {"device": index})`` tuples, one per camera found.
         """
         pvcam = PVCamDLL()
         num_cam = ct.c_short()
@@ -1389,9 +1556,16 @@ class PvcamSdk(object):
 
 
 class Pvcam(CameraRoiScale, PvcamSdk):
+    """PVCam camera with scaled-ROI support and a Qt GUI."""
     metadata_property_names = ('exposure', 'binning', 'roi')
 
     def __init__(self, device, **kwargs):
+        """Initialise the camera and the scaled-ROI base class.
+
+        Args:
+            device: Device number (int) or name (str) to open.
+            **kwargs: Forwarded by callers; unused here.
+        """
         # super(Pvcam, self).__init__(device, logger=self._logger)
         CameraRoiScale.__init__(self)
         PvcamSdk.__init__(self, device, logger=self._logger)
@@ -1399,10 +1573,11 @@ class Pvcam(CameraRoiScale, PvcamSdk):
         self.backgrounded = False
 
     def raw_snapshot(self):
-        """
-        If only one frame, returns a 2D array. If multiple frames, returns a 3D array, where the first dimension is
-        frame number
-        :return: ndarray
+        """Acquire a frame (CameraRoiScale override).
+
+        Returns:
+            tuple: ``(True, array)``. ``array`` is 2D for a single frame, or 3D
+            (frame index first) for multiple frames.
         """
         array = self.capture()
         if array.shape[0] == 1:
@@ -1410,15 +1585,41 @@ class Pvcam(CameraRoiScale, PvcamSdk):
         return True, array
 
     def filter_function(self, frame):
+        """Subtract the stored background from a frame when enabled.
+
+        Args:
+            frame: The frame to filter.
+
+        Returns:
+            numpy.ndarray: The background-subtracted frame (as floats), or the
+            unchanged frame when ``backgrounded`` is False.
+        """
         if self.backgrounded:
             return np.asarray(frame, float) - np.asarray(self.background, float)
         else:
             return frame
 
     def get_camera_parameter(self, parameter_name):
+        """Read a PVCam parameter by its ``pv`` constant name.
+
+        Args:
+            parameter_name: Attribute name of the parameter in the ``pv`` module.
+
+        Returns:
+            The parameter value.
+        """
         return self.get_param(getattr(pv, parameter_name))
 
     def set_camera_parameter(self, parameter_name, parameter_value):
+        """Set a PVCam parameter by its ``pv`` constant name.
+
+        Both the parameter and value are resolved as attributes of the ``pv``
+        module. Failures are logged rather than raised.
+
+        Args:
+            parameter_name: Attribute name of the parameter in the ``pv`` module.
+            parameter_value: Attribute name of the value in the ``pv`` module.
+        """
         try:
             self.set_param(getattr(pv, parameter_name), getattr(pv, parameter_value))
         except Exception as e:
@@ -1426,9 +1627,11 @@ class Pvcam(CameraRoiScale, PvcamSdk):
                               parameter_value + ' due to error ' + str(e))
 
     def get_control_widget(self):
+        """Return a Qt control widget bound to this camera."""
         return pvcamUI(self)
 
     def get_preview_widget(self):
+        """Return a new preview display widget, tracked weakly."""
         self._logger.debug('Getting preview widget')
         if self._preview_widgets is None:
             self._preview_widgets = WeakSet()
@@ -1455,8 +1658,17 @@ class Pvcam(CameraRoiScale, PvcamSdk):
 
 
 class pvcamUI(QtWidgets.QWidget, UiTools):
+    """Qt control widget for a :class:`Pvcam` camera."""
 
     def __init__(self, camera):
+        """Build the widget, load the UI, and wire up signals.
+
+        Args:
+            camera: The :class:`Pvcam` instance to control.
+
+        Raises:
+            AssertionError: If ``camera`` is not a :class:`Pvcam`.
+        """
         assert isinstance(camera, Pvcam), "instrument must be an camera"
         self._logger = create_logger("pvcam.GUI")
 
@@ -1521,15 +1733,33 @@ class pvcamUI(QtWidgets.QWidget, UiTools):
         # self.referesh_groups_pushButton.clicked.connect(self.update_groups_box)
 
     def update_exposure(self, value):
+        """Write an exposure value into the GUI field.
+
+        Args:
+            value: Exposure time to display.
+        """
         self.lineEditExpT.setText(str(value))
 
     def update_binning(self, value):
+        """Write binning values into the GUI spin boxes.
+
+        Args:
+            value: ``(x_binning, y_binning)`` pair.
+        """
         self._binning_changed = True
         self.spinBox_binx.setValue(value[0])
         self.spinBox_biny.setValue(value[1])
 
     def callback_to_update_prop(self, propname):
-        """Return a callback function that refreshes the named parameter."""
+        """Return a callback that refreshes the named GUI parameter.
+
+        Args:
+            propname: Name of the property; the callback calls
+                ``update_<propname>``.
+
+        Returns:
+            callable: A callback taking an optional new value.
+        """
 
         def callback(value=None):
             # print 'Callback: ', propname
@@ -1538,6 +1768,7 @@ class pvcamUI(QtWidgets.QWidget, UiTools):
         return callback
 
     def changed_binning(self):
+        """Apply the binning entered in the GUI spin boxes to the camera."""
         if not self._binning_changed:
             self._binning_changed = True
             self._prev_bin = self.camera.binning
@@ -1546,6 +1777,15 @@ class pvcamUI(QtWidgets.QWidget, UiTools):
         self.camera.binning = (xbin, ybin)
 
     def changed_exposure(self, variable=None):
+        """Read, scale, and apply the exposure time from the GUI.
+
+        Args:
+            variable: ``None`` to use the entered value, ``'x'`` to multiply it
+                by 5, or ``'/'`` to divide it by 5.
+
+        Raises:
+            ValueError: If ``variable`` is an unrecognised string.
+        """
         if variable is None:
             exp_time = float(self.lineEditExpT.text())
         elif variable == 'x':
@@ -1558,18 +1798,21 @@ class pvcamUI(QtWidgets.QWidget, UiTools):
         self.update_exposure(exp_time)
 
     def take_background(self):
+        """Acquire a dark frame as the background and enable subtraction."""
         # self.camera.background = self.camera.dark_exposure()
         self.camera.dark_exposure()
         self.backgrounded = True
         self.checkBoxRemoveBG.setChecked(True)
 
     def remove_background(self):
+        """Toggle background subtraction from the checkbox state."""
         if self.checkBoxRemoveBG.isChecked():
             self.camera.backgrounded = True
         else:
             self.camera.backgrounded = False
 
     def Save(self):
+        """Save the current image (and optional metadata) to the data file."""
         if self.data_file is None:
             self.data_file = df.current()
         data = self.camera.current_image
@@ -1606,6 +1849,7 @@ class pvcamUI(QtWidgets.QWidget, UiTools):
             self._logger.warn(e)
 
     def ROI(self):
+        """Set the camera ROI from the GUI, or reset it to the full sensor."""
         if self.checkBoxROI.isChecked():
             self.camera.roi = self.camera.gui_roi
         else:
@@ -1613,10 +1857,18 @@ class pvcamUI(QtWidgets.QWidget, UiTools):
             self.camera.roi = (0, shape[0] - 1, 0, shape[1] - 1)
 
     def Capture(self):
+        """Trigger a single capture from the camera.
+
+        Delegates to ``self.camera.raw_image(update_latest_frame=True)`` — the
+        acquisition method inherited from the ``Camera`` base class (via
+        ``CameraRoiScale``), which refreshes the live-view frame.
+        """
         self.camera.raw_image(update_latest_frame=True)
 
     def Live(self):
+        """Enable live view on the camera."""
         self.camera.live_view = True
 
     def Abort(self):
+        """Disable live view on the camera."""
         self.camera.live_view = False

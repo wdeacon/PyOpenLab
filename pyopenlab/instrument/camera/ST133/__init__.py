@@ -1,7 +1,11 @@
 # -*- coding: utf-8 -*-
-'''
-These are the conventional metadata available in a DataArray.
-'''
+"""Conventional metadata key strings used in a DataArray.
+
+Each ``MD_*`` constant is the canonical key under which a given piece of
+acquisition metadata is stored. The string values are part of the on-disk
+format and must not be changed. Inline comments record the unit and value type
+expected for each entry.
+"""
 
 # This list of constants are used as key for the metadata
 MD_EXP_TIME = "Exposure time"  # s

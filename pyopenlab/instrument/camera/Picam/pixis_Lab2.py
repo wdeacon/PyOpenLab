@@ -1,32 +1,22 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-# Ralf Mouthaan, Ilya Manyakin, Ermanno Miele
-# University of Cambridge
-# October 2018
-# 
-# Class to operate Pixis CCD camera. Communicates with Picam library to achieve
-# this. Aim is to use this class in conjunction with Acton spectormeter for
-# Raman measurements. Work done with Ermanno Miele.
-#
-# TODO:
-#   * Script connects to first camera it finds and uses this. This will cause 
-#       problems if no camera is connected, or more than one camera is
-#       connected, or if an unexpected camera is connected. 
-#       Should iterate through cameras, checking IDs to find the right one.
-#       This is complicated due to the way the C++ code uses lots of structures
-#       instead of native data types.
-#   * Will not find a camera if it is in use by another process or has not 
-#       been shut down properly.
+"""Driver and Qt GUI for the Princeton Instruments Pixis CCD camera (Lab 2).
+
+Lab 2 variant of the Pixis driver, subclassing
+:class:`~pyopenlab.instrument.camera.camera_scaled_roi.CameraRoiScale` and
+providing a Qt control widget. Communicates with the Picam DLL, intended for
+use alongside an Acton spectrometer for Raman measurements.
+
+Known limitations:
+    * Connects to the first camera found. This fails if no camera is connected,
+      more than one is connected, or an unexpected camera is connected. Ideally
+      the cameras would be iterated and selected by ID, which is awkward because
+      the C++ API uses many structures rather than native data types.
+    * A camera will not be found if it is in use by another process or has not
+      been shut down properly.
 
 Development notes:
     * API for DLL: Picam 5.x Programmers Manual, 4411-0161, Issue 5, August 2018
-    
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from builtins import range
 import ctypes as ct
 import logging
 import os
@@ -36,7 +26,6 @@ import time
 
 from matplotlib import pyplot as plt
 import numpy as np
-from past.utils import old_div
 
 import pyopenlab.datafile as df
 from pyopenlab.instrument.camera import Camera
@@ -62,10 +51,12 @@ PARENT_DIR = os.path.dirname(os.path.realpath(__file__))
 
 
 class clsPicamReadoutStruct(ct.Structure):
+    """ctypes mirror of the Picam readout struct (data pointer and count)."""
     _fields_ = [("ptr", ct.c_void_p), ("intCount", ct.c_int64)]
 
 
 class Pixis(CameraRoiScale):
+    """Pixis CCD camera driver with scaled-ROI support and a Qt GUI."""
     metadata_property_names = (
         'Exposure',
         'x_axis',
@@ -73,6 +64,13 @@ class Pixis(CameraRoiScale):
     )
 
     def __init__(self, with_start_up=False, debug=0):
+        """Initialise the driver.
+
+        Args:
+            with_start_up: If True, open the camera and set a default 10 ms
+                exposure immediately.
+            debug: Verbosity level; values greater than 0 print debug output.
+        """
         super(Pixis, self).__init__()
         self.debug = debug
         self.bolRunning = False
@@ -99,8 +97,19 @@ class Pixis(CameraRoiScale):
             self.ShutDown()
 
     def Capture(self, suppress_errors=False):
-        """ 
-            Basic camera snapshot function
+        """Acquire a single frame as a numpy array.
+
+        Args:
+            suppress_errors: If True, swallow acquisition errors and return
+                ``None`` instead of raising.
+
+        Returns:
+            numpy.ndarray: The acquired frame, or ``None`` on a suppressed
+            error.
+
+        Raises:
+            Exception: Re-raises any acquisition error when ``suppress_errors``
+                is False.
         """
         try:
             image = np.array(self.GetCurrentFrame())
@@ -112,8 +121,16 @@ class Pixis(CameraRoiScale):
                 raise e
 
     def raw_snapshot(self, suppress_errors=False):
-        """
-            CameraRoiScale class override
+        """Acquire and process a frame (CameraRoiScale class override).
+
+        Applies the background filter and, depending on ``aquisition_mode``,
+        reduces the frame to a spectrum or an ROI.
+
+        Args:
+            suppress_errors: Accepted for interface compatibility (unused here).
+
+        Returns:
+            tuple: ``(True, image)`` where ``image`` is the processed frame.
         """
         image = self.filter_function(self.Capture())
 
@@ -132,8 +149,19 @@ class Pixis(CameraRoiScale):
                 y_max=None,
                 suppress_errors=False,
                 debug=0):
-        """ 
-            Takes input of raw snapshot an outputs ROI image
+        """Crop a raw frame to a region of interest.
+
+        Args:
+            raw_image: The full frame to crop.
+            x_min: Left column; defaults to ``self.x_min``.
+            x_max: Right column; defaults to ``self.x_max``.
+            y_min: Top row; defaults to ``self.y_min``.
+            y_max: Bottom row; defaults to ``self.y_max``.
+            suppress_errors: Accepted for interface compatibility (unused).
+            debug: Verbosity level; values greater than 0 print debug output.
+
+        Returns:
+            numpy.ndarray: The cropped image.
         """
         if x_min is None:
             x_min = self.x_min
@@ -158,8 +186,22 @@ class Pixis(CameraRoiScale):
                      y_max=None,
                      with_boundary_cut=False,
                      suppress_errors=False):
-        """ 
-            Takes input of raw snapshot an outputs ROI defined spectrum
+        """Reduce a raw frame to a 1D spectrum over a region of interest.
+
+        The spectrum is the column-wise sum of the ROI.
+
+        Args:
+            raw_image: The full frame to process.
+            x_min: Left column; defaults to ``self.x_min``.
+            x_max: Right column; defaults to ``self.x_max``.
+            y_min: Top row; defaults to ``self.y_min``.
+            y_max: Bottom row; defaults to ``self.y_max``.
+            with_boundary_cut: If True, trim ``boundary_cut`` pixels from each
+                end of the spectrum.
+            suppress_errors: Accepted for interface compatibility (unused).
+
+        Returns:
+            numpy.ndarray: The 1D spectrum.
         """
         roi_image = self.get_roi(raw_image, x_min, x_max, y_min, y_max, suppress_errors)
         #cut edge values from raw spectrum - remove edge effects
@@ -170,9 +212,20 @@ class Pixis(CameraRoiScale):
             return raw_spectrum
 
     def get_parameter(self, parameter_name, label="unknown"):
-        """
-        Perform GetParameterIntegerValue calls to DLL
-        parameter_name : name of parameter as specified in the picam_constants.py file
+        """Read a camera parameter via the appropriate Picam getter.
+
+        Args:
+            parameter_name: Parameter name as defined in ``picam_constants.py``.
+            label: Human-readable label used only in error messages.
+
+        Returns:
+            The parameter value, or ``numpy.nan`` if the DLL call fails.
+
+        Raises:
+            AssertionError: If the parameter or its types are not recognised.
+            ValueError: If no getter function exists for the parameter.
+            NotImplementedError: For value types not yet supported (Pulse,
+                Modulations).
         """
 
         if self.debug > 0:
@@ -256,10 +309,21 @@ class Pixis(CameraRoiScale):
             raise NotImplementedError()
 
     def set_parameter(self, parameter_name, parameter_value):
-        '''
-        Perform GetParameterIntegerValue calls to DLL
-        parameter_name : name of parameter as specified in the picam_constants.py file
-        '''
+        """Write a camera parameter and commit it via the Picam setter.
+
+        Args:
+            parameter_name: Parameter name as defined in ``picam_constants.py``.
+            parameter_value: Value to write; coerced to the parameter's ctype.
+
+        Returns:
+            None on success, or ``numpy.nan`` if the DLL call fails.
+
+        Raises:
+            AssertionError: If the parameter/types are unrecognised or the
+                commit is not accepted by the camera.
+            NotImplementedError: For value types not yet supported (Pulse,
+                Modulations).
+        """
         assert (parameter_name in list(PicamParameter.keys())
                 )  #Check that the passed parameter name is valid (ie. in constants file)
         param_type, constraint_type, n = PicamParameter[parameter_name]
@@ -304,7 +368,7 @@ class Pixis(CameraRoiScale):
 
             response = setter(self.CameraHandle, param_id, value)
             if response != 0:
-                print(("Could not SET value of parameter {0} [label:{1}]".format(parameter, label)))
+                print(("Could not SET value of parameter {0}".format(parameter_name)))
                 print(("[Code:{0}] {1}".format(response, PicamError[response])))
                 return np.nan
             #check if commit failed
@@ -339,6 +403,11 @@ class Pixis(CameraRoiScale):
             raise NotImplementedError()
 
     def StartUp(self):
+        """Load the Picam DLL, open the first camera and cool it to -80 C.
+
+        Populates frame dimensions and sets ``bolRunning``. Returns early
+        (without raising) if the DLL or camera cannot be found.
+        """
         cint_temp = ct.c_int()
         # Find DLL
         try:
@@ -372,6 +441,7 @@ class Pixis(CameraRoiScale):
         self.SetTemperatureWithLock(-80.0)
 
     def ShutDown(self):
+        """Close the camera and uninitialise the Picam library."""
         if self.bolRunning == False:
             return
         if self.picam.Picam_CloseCamera(self.CameraHandle) != 0:
@@ -383,17 +453,30 @@ class Pixis(CameraRoiScale):
         self.bolRunning = False
 
     def SetExposureTime(self, time):
+        """Set the exposure time.
 
+        Args:
+            time: Exposure time in milliseconds.
+        """
         param_name = "PicamParameter_ExposureTime"
         param_value = time  #in milliseconds
         self.set_parameter(parameter_name=param_name, parameter_value=param_value)
 
     def GetExposureTime(self):
-
+        """Return the current exposure time in milliseconds."""
         param_name = "PicamParameter_ExposureTime"
-        self.get_parameter(parameter_name=param_name)
+        return self.get_parameter(parameter_name=param_name)
 
     def SetTemperatureWithLock(self, temperature):
+        """Set the sensor temperature set-point.
+
+        Args:
+            temperature: Target sensor temperature in degrees Celsius.
+
+        Note:
+            The lock-waiting loop is currently commented out, so this returns
+            immediately without blocking until the temperature stabilises.
+        """
         self.__SetSensorTemperatureSetPoint(temperature)
         status_code = self.GetTemperatureStatus()
         #while PicamSensorTemperatureStatus[status_code] != "PicamSensorTemperatureStatus_Locked":
@@ -406,21 +489,28 @@ class Pixis(CameraRoiScale):
         return
 
     def GetSensorTemperatureReading(self):
+        """Return the current sensor temperature reading in degrees Celsius."""
         param_name = "PicamParameter_SensorTemperatureReading"
         return self.get_parameter(param_name)
 
     def __SetSensorTemperatureSetPoint(self, temperature):
-        '''
-            Do not use this method if you want to wait for temperature to stabilize, use SetTemperatureWithLock
-        '''
+        """Set the sensor temperature set-point without waiting for a lock.
+
+        Use :meth:`SetTemperatureWithLock` instead if you need to wait for the
+        temperature to stabilise.
+
+        Args:
+            temperature: Target sensor temperature in degrees Celsius.
+        """
         param_name = "PicamParameter_SensorTemperatureSetPoint"
         return self.set_parameter(parameter_name=param_name, parameter_value=temperature)
 
     def GetTemperatureStatus(self):
-        '''
-        See picam_constants.PicamSensorTemperatureStatus for
-            int <-> status mappings
-        '''
+        """Return the sensor temperature status code.
+
+        See ``picam_constants.PicamSensorTemperatureStatus`` for the
+        int-to-status mapping.
+        """
         param_name = "PicamParameter_SensorTemperatureStatus"
         return self.get_parameter(param_name)
 
@@ -428,15 +518,23 @@ class Pixis(CameraRoiScale):
                                          __SetSensorTemperatureSetPoint)
 
     def GetSensorType(self):
+        """Return the sensor type code."""
         param_name = "PicamParameter_SensorType"
         return self.get_parameter(parameter_name=param_name)
 
     def GetIntensifierStatus(self):
+        """Return the intensifier status code."""
         param_name = "PicamParameter_IntensifierStatus"
         return self.get_parameter(parameter_name=param_name)
 
     def GetCurrentFrame(self):
+        """Acquire one frame and return it as a numpy array.
 
+        Starts the camera first if it is not already running.
+
+        Returns:
+            numpy.ndarray: The acquired frame, or ``None`` if acquisition fails.
+        """
         if self.bolRunning == False:
             self.StartUp()
 
@@ -461,12 +559,27 @@ class Pixis(CameraRoiScale):
         return nparr
 
     def filter_function(self, frame):
+        """Subtract the stored background from a frame when enabled.
+
+        Args:
+            frame: The frame to filter.
+
+        Returns:
+            numpy.ndarray: The background-subtracted frame, or the unchanged
+            frame when ``backgrounded`` is False.
+        """
         if self.backgrounded:
             return frame - self.background
         else:
             return frame
 
     def get_pixis_parameters(self):
+        """Collect current camera settings into a metadata dictionary.
+
+        Returns:
+            dict: Temperature, exposure time, ROI, and (if enabled) the stored
+            background frame.
+        """
         print(self.GetExposureTime())
         pixis_parameters = dict()
         pixis_parameters['Temperature'] = self.pixis_temperature
@@ -477,6 +590,7 @@ class Pixis(CameraRoiScale):
         return pixis_parameters
 
     def get_control_widget(self):
+        """Return a Qt control widget bound to this camera."""
         return PixisUI(self)
 
 
@@ -486,8 +600,17 @@ parameters = dict()
 
 
 class PixisUI(QtWidgets.QWidget, UiTools):
+    """Qt control widget for a :class:`Pixis` camera."""
 
     def __init__(self, pixis):
+        """Build the widget and wire up signals.
+
+        Args:
+            pixis: The :class:`Pixis` instance to control.
+
+        Raises:
+            TypeError: If ``pixis`` is not a :class:`Pixis`.
+        """
         if not isinstance(pixis, Pixis):
             raise TypeError('instrument must be a Pixis camera')
         super(PixisUI, self).__init__()
@@ -522,10 +645,22 @@ class PixisUI(QtWidgets.QWidget, UiTools):
         self.save_pushButton.clicked.connect(self.Save)
 
     def Capture(self):
+        """Trigger a single capture from the camera.
+
+        Delegates to ``self.Pixis.raw_image(update_latest_frame=True)`` — the
+        acquisition method inherited from the ``Camera`` base class (via
+        ``CameraRoiScale``), which refreshes the live-view frame.
+        """
         #print('capture')
         self.Pixis.raw_image(update_latest_frame=True)
 
     def exposure(self, input=None):
+        """Read, scale, and apply the exposure time from the GUI.
+
+        Args:
+            input: ``None`` to use the entered value as-is, ``'x'`` to multiply
+                the entered value by 5, or ``'/'`` to divide it by 5.
+        """
         if input == None:
             ExTime = float(self.lineEditExpT.text())
         elif input == 'x':
@@ -538,33 +673,45 @@ class PixisUI(QtWidgets.QWidget, UiTools):
         print(self.Pixis.GetExposureTime())
 
     def update_Exposure(self, value):
+        """Write an exposure value into the GUI field.
+
+        Args:
+            value: Exposure time to display.
+        """
         self.lineEditExpT.setText(str(value))
 
     def update_temperature_display(self):
+        """Refresh the temperature LCD from the camera reading."""
         temperature = self.Pixis.pixis_temperature
         self.temperature_lcdNumber.display(float(temperature))
 
     def take_background(self):
+        """Acquire and store a background frame, then enable subtraction."""
         self.Pixis.background = self.Pixis.raw_snapshot()[1]
         self.Pixis.backgrounded = True
         self.checkBoxRemoveBG.setChecked(True)
 
     def remove_background(self):
+        """Toggle background subtraction from the checkbox state."""
         if self.checkBoxRemoveBG.isChecked():
             self.Pixis.backgrounded = True
         else:
             self.Pixis.backgrounded = False
 
     def Live(self):
+        """Enable live view on the camera."""
         self.Pixis.live_view = True
 
     def Abort(self):
+        """Disable live view on the camera."""
         self.Pixis.live_view = False
 
     def number_frames(self):
+        """Read the requested frame count from the GUI (currently unused)."""
         num_frames = self.spinBoxNumFrames.value()
 
     def number_rows(self):
+        """Update the camera ROI rows from the centre-row and row-count fields."""
         num_rows = self.spinBoxNumRows.value()
         center_row = self.spinBoxCenterRow.value()
         self.Pixis.center_row = center_row
@@ -573,10 +720,12 @@ class PixisUI(QtWidgets.QWidget, UiTools):
         self.Pixis.y_max = int(center_row + (num_rows / 2))
 
     def read_mode(self):
+        """Update the camera acquisition mode from the read-mode combo box."""
         if self.Pixis.aquisition_mode != self.comboBoxReadMode.currentText():
             self.Pixis.aquisition_mode = self.comboBoxReadMode.currentText()
 
     def Save(self):
+        """Save the current frame and metadata into the active data file."""
         if self.data_file is None:
             self.data_file = df.current()
         data = self.Pixis.current_frame
