@@ -1,9 +1,5 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Tue Oct 21 15:58:04 2014
-
-@author: Hera
-"""
+"""Serial driver for the Ondax laser."""
 
 from contextlib import closing
 
@@ -14,6 +10,7 @@ from pyopenlab.instrument.serial_instrument import SerialInstrument
 
 
 class OndaxLaser(SerialInstrument, LightSource):
+    """Serial interface to an Ondax laser, with power limited to 12-70 mW."""
 
     def __init__(self, port=None):
         self.port_settings = {
@@ -31,15 +28,29 @@ class OndaxLaser(SerialInstrument, LightSource):
         self.max_power = 70
 
     def get_power(self):
-        """read the current power output in mW"""
+        """Read the current power output in mW.
+
+        Returns:
+            The output power in mW.
+        """
         return self.float_query("rli?")
 
     def readpower(self):
-        """deprecated: returns get_power()"""
+        """Deprecated alias for :meth:`get_power`."""
         return self.get_power()
 
     def set_power(self, power):
-        """set the power output in mW"""
+        """Set the power output in mW.
+
+        Args:
+            power: Requested output power in mW.
+
+        Returns:
+            The measured power after setting, from :meth:`readpower`.
+
+        Raises:
+            AssertionError: If ``power`` is above ``max_power`` or below ``min_power``.
+        """
         power = float(power)
         assert power <= self.max_power, ValueError("Exceeded maximum power")
         assert power >= self.min_power, ValueError("Below minimum power")
