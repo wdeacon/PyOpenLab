@@ -1,6 +1,13 @@
 ﻿# -*- coding: utf-8 -*-
+"""VISA driver for the Princeton Instruments Acton SP-2750 monochromator.
 
-from builtins import str
+The :class:`SP2750` class wraps the serial command set documented in the
+manufacturer manual to control the centre wavelength, grating selection and
+entrance/exit diverter mirrors, and to compute the per-pixel wavelength axis of
+an attached detector from a JSON calibration file.
+
+See ftp://ftp.princetoninstruments.com/public/manuals/Acton/SP-2750.pdf
+"""
 import json
 import os
 import re
@@ -13,12 +20,11 @@ from pyopenlab.instrument.visa_instrument import VisaInstrument
 
 
 class SP2750(VisaInstrument):
-    """ Monochromator class
-    ftp://ftp.princetoninstruments.com/public/manuals/Acton/SP-2750.pdf
-    """
+    """Acton SP-2750 monochromator controlled over a VISA serial connection."""
 
     @property
     def wavelength(self):
+        """float: The present centre wavelength in nm (moves the grating when set)."""
         return self.get_wavelength()
 
     @wavelength.setter
@@ -26,6 +32,14 @@ class SP2750(VisaInstrument):
         self.set_wavelength_fast(value)
 
     def __init__(self, address, calibration_file=None):
+        """Open the monochromator and configure serial communications.
+
+        Args:
+            address: VISA resource address of the monochromator.
+            calibration_file: Optional path to a JSON calibration file used by
+                :meth:`get_wavelengths`. If None, a default file alongside this
+                module is used on first access.
+        """
         port_settings = dict(baud_rate=9600,
                              read_termination="\r\n",
                              write_termination="\r",
@@ -37,11 +51,22 @@ class SP2750(VisaInstrument):
         self.metadata_property_names += ('wavelength',)
 
     def query(self, *args, **kwargs):
-        """
-        Simple query wrapper that checks whether the command was received properly
-        :param args:
-        :param kwargs:
-        :return:
+        """Send a command and validate the device's acknowledgement.
+
+        The SP-2750 terminates a successful reply with "ok". This wrapper strips
+        that status, and if it is missing performs additional reads until "ok"
+        is seen.
+
+        Args:
+            *args: Positional arguments forwarded to the underlying VISA query.
+            **kwargs: Keyword arguments forwarded to the underlying VISA query.
+
+        Returns:
+            The reply text with the "ok" status stripped, or the concatenated
+            multi-read text if the status did not arrive on the first read.
+
+        Raises:
+            ValueError: If "ok" is not seen after more than ten extra reads.
         """
         full_reply = self.instr.query(*args, **kwargs)
 
@@ -65,6 +90,16 @@ class SP2750(VisaInstrument):
             return read
 
     def calibrate(self, wvl, to_device=True):
+        """Apply a wavelength calibration correction (currently a no-op).
+
+        Args:
+            wvl: Wavelength in nm.
+            to_device: True when converting a requested wavelength for the
+                device, False when converting a value read back from it.
+
+        Returns:
+            The (currently uncorrected) wavelength.
+        """
         if to_device:
             calibrated = wvl
         else:
@@ -84,11 +119,14 @@ class SP2750(VisaInstrument):
                 time.sleep(1)  # This you get from testing
 
     def set_wavelength_fast(self, wvl):
-        """
-        Goes to a destination wavelength at maximum motor speed. Accepts destination wavelength in nm as a floating
-        point number with up to 3 digits after the decimal point or whole number wavelength with no decimal point.
-        :param wvl:
-        :return:
+        """Move to a destination wavelength at maximum motor speed.
+
+        Args:
+            wvl: Destination wavelength in nm. Accepts a float with up to 3
+                decimal places, or a whole number with no decimal point.
+
+        Returns:
+            The device's reply once movement has finished.
         """
 
         self.write("%0.3f GOTO" % self.calibrate(wvl))
@@ -97,69 +135,68 @@ class SP2750(VisaInstrument):
         return self.read()
 
     def set_wavelength(self, wvl):
-        """
-        Goes to a destination wavelength at constant nm/min rate specified by last NM/MIN
-        command. Accepts destination wavelength in nm as a floating point number with up
-        to 3 digits after the decimal point or whole number wavelength with no decimal point.
-        :param wvl:
-        :return:
+        """Move to a destination wavelength at the rate set by the last NM/MIN command.
+
+        Args:
+            wvl: Destination wavelength in nm. Accepts a float with up to 3
+                decimal places, or a whole number with no decimal point.
         """
 
         self.write("%0.3f NM" % self.calibrate(wvl))
 
     def get_wavelength(self):
-        """
-        Returns present wavelength in nm to 0.01nm resolution with units nm appended.
-        :return:
+        """Read the present wavelength.
+
+        Returns:
+            The present wavelength in nm (0.01 nm resolution), calibration applied.
         """
         string = self.query("?NM")
         wvl = float(re.findall("([0-9]+\.[0-9]+) ", string)[0])
         return self.calibrate(wvl, False)
 
     def set_speed(self, rate):
-        """
-        Sets the scan rate in nm/min to 0.01 nm/min resolution with units nm/min
-        :param rate:
-        :return:
+        """Set the grating scan rate.
+
+        Args:
+            rate: Scan rate in nm/min (0.01 nm/min resolution).
         """
         self.query("%0.3f NM/MIN" % rate)
 
     def is_ready(self):
+        """Return True if the monochromator has finished its current move."""
         return bool(self.query("MONO-?DONE"))
 
     # GRATING CONTROL
     def set_grating(self, index):
-        """
-        Places specified grating in position to the wavelength of the wavelength on the
-        present grating. Up to nine (9) gratings are allowed on three (3) turrets. This
-        command takes a grating number from 1 -9. IMPORTANT NOTE: This command
-        assumes that the correct turret is specified by the TURRET command. For example,
-        using grating numbers 1, 4 and 7 will place the first grating on the installed turret into
-        that position and call up the parameters for the grating number specified.
-        :param index:
-        :return:
+        """Select the grating to place into position.
+
+        Up to nine gratings across three turrets are supported. The correct
+        turret must already be selected via the TURRET command; this only chooses
+        among the gratings on the installed turret.
+
+        Args:
+            index: Grating number from 1 to 9.
         """
 
         self.query("%d GRATING" % index)
 
     def get_grating(self):
-        """
-        Returns the number of gratings presently being used numbered 1 -9.
-        :return:
-        """
+        """Return the number (1-9) of the grating presently in use."""
         return self.query("?GRATING")
 
     def get_gratings(self):
-        """
-        Returns the list of installed gratings with position groove density and blaze. The
-        present grating is specified with an arrow.
-        :return:
+        """Return the list of installed gratings with groove density and blaze.
+
+        Returns:
+            The device's grating listing; the present grating is marked with an
+            arrow character.
         """
         return self.query("?GRATINGS")
 
     # DIVERTER MIRRORS
     @property
     def exit_mirror(self):
+        """str: Exit diverter mirror position ('SIDE' or 'FRONT')."""
         self.query('EXIT-MIRROR')
         return self.query('?MIRROR')
 
@@ -171,6 +208,7 @@ class SP2750(VisaInstrument):
 
     @property
     def entrance_mirror(self):
+        """str: Entrance diverter mirror position ('SIDE' or 'FRONT')."""
         self.query('ENT-MIRROR')
         return self.query('?MIRROR')
 
@@ -191,7 +229,18 @@ class SP2750(VisaInstrument):
 
     @calibration_file.setter
     def calibration_file(self, path):
-        """Ensures the path is absolute and points to a .json file"""
+        """Resolve a relative path against this module's directory as a .json file.
+
+        Args:
+            path: Path to the calibration file; relative paths are made absolute
+                relative to this module's directory and given a ``.json`` suffix.
+
+        Note:
+            The extension check compares against ``'json'`` rather than ``'.json'``
+            (``os.path.splitext`` returns the dot), so an already-``.json`` path is
+            still treated as needing conversion. Left unfixed per the
+            surgical-changes policy as it alters behaviour.
+        """
         if not os.path.isabs(path):
             default_directory = os.path.dirname(__file__)
             path, ext = os.path.splitext(path)
@@ -203,23 +252,25 @@ class SP2750(VisaInstrument):
         self._calibration_file = path
 
     def get_wavelengths(self):
-        """Returns the current wavelength range being shown on a detector attached to the SP2750
+        """Compute the per-pixel wavelength axis for a detector attached to the SP2750.
 
-        Reads from a calibration file that contains the detector size being used, and the dispersion. Example JSONs:
-            {
-              "detector_size": 100,
-              "dispersion": 0.01
-            }
-            {
-              "detector_size": 100,
-              "dispersion": [0.0001, 0.02]
-            }
-            {
-              "detector_size": 2048,
-              "dispersion": {"1": 0.014, "2": [0.0001, 0.02]},
-              "offset": {"1": [0.00001, 1]}
-            }
-        :return:
+        Reads the detector size and dispersion (and optional offset) from the
+        JSON calibration file, evaluates them as polynomials of the central
+        wavelength, and spreads them across the detector pixels. Example JSONs::
+
+            {"detector_size": 100, "dispersion": 0.01}
+            {"detector_size": 100, "dispersion": [0.0001, 0.02]}
+            {"detector_size": 2048,
+             "dispersion": {"1": 0.014, "2": [0.0001, 0.02]},
+             "offset": {"1": [0.00001, 1]}}
+
+        Returns:
+            A numpy array of wavelengths in nm, one per detector pixel.
+
+        Note:
+            Uses ``np.float``, which was removed in NumPy 1.24+; on a modern
+            NumPy this raises ``AttributeError``. Left unfixed per the
+            surgical-changes policy.
         """
         central_wavelength = self.wavelength
 

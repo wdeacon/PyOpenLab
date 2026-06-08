@@ -1,7 +1,8 @@
-﻿"""
-Created on Tue Apr 14 18:45:32 2015
+﻿"""Alternative base driver for the Triax spectrometer (quadratic-interpolation calibration).
 
-@author: jpg66. Based on code by Hamid Ohadi (hamid.ohadi@gmail.com)
+This is a near-duplicate variant of the :class:`Triax` driver in this package that uses 3x3
+per-grating calibration arrays and quadratic interpolation. It is intended to be wrapped per-lab
+because the wavelength calibration differs between setups.
 """
 
 import copy
@@ -12,12 +13,22 @@ import scipy.interpolate as scint
 
 from pyopenlab.instrument.visa_instrument import VisaInstrument
 
-"""
-This is the base class for the Triax spectrometer. This should be wrapped for each lab use, due to the differences in calibrations.
-"""
-
 
 def Quad_Interp(x_Points, y_Points, Input):  #x are in order
+    """Piecewise-quadratic interpolation of ``y_Points`` over ``x_Points`` at ``Input``.
+
+    For each input value the two overlapping three-point quadratic fits bracketing it are blended
+    linearly; at the edges only the single available quadratic is used. ``x_Points`` must be in
+    ascending order.
+
+    Args:
+        x_Points: Sorted (ascending) array of sample x-coordinates.
+        y_Points: Array of sample y-coordinates corresponding to ``x_Points``.
+        Input: Array of x-values at which to evaluate the interpolation.
+
+    Returns:
+        numpy.ndarray: Interpolated y-values, one per element of ``Input``.
+    """
 
     Number = np.ones(len(Input)).astype(int)
     Barrier = []
@@ -59,12 +70,21 @@ def Quad_Interp(x_Points, y_Points, Input):  #x are in order
 
 
 class Triax(VisaInstrument):
+    """VISA driver for the Triax using 3x3 per-grating calibration arrays."""
+
     metadata_property_names = ('wavelength',)
 
     def __init__(self, Address, Calibration_Arrays=[], CCD_Horizontal_Resolution=1600):
-        """
-        Initialisation function for the triax class. Address in the port address of the triax connection. Calibration_Arrays is a list of 3x3 numpy arrays
-        containing the calibration coefficents for each grating in the spectrometer.
+        """Open communication with the Triax and store the calibration arrays.
+
+        Args:
+            Address: VISA resource address of the Triax connection.
+            Calibration_Arrays: Per-grating calibration; a list of 3x3 numpy arrays holding the
+                calibration coefficients for each grating.
+            CCD_Horizontal_Resolution: Horizontal size, in pixels, of the camera used.
+
+        Raises:
+            Exception: If communication with the Triax cannot be established.
         """
 
         #--------Attempt to open communication------------
@@ -96,8 +116,15 @@ class Triax(VisaInstrument):
         self.Number_of_Pixels = CCD_Horizontal_Resolution
 
     def Get_Wavelength_Array(self):
-        """
-        Returns the wavelength array in memory. If it is yet to be calculated, it is caluculated here
+        """Return the cached wavelength array, computing it from the pixel range if not yet set.
+
+        Returns:
+            numpy.ndarray: The wavelength (nm) assigned to each CCD pixel.
+
+        Note:
+            The calibration-range check references ``self.Grating_Information``, which is never
+            assigned by this class, so this method raises ``AttributeError`` whenever the array
+            must be (re)computed. Logged rather than changed to avoid altering behaviour.
         """
         if self.Wavelength_Array is None:
             Steps = self.Motor_Steps()
@@ -108,9 +135,16 @@ class Triax(VisaInstrument):
         return self.Wavelength_Array
 
     def Grating(self, Set_To=None):
-        """
-        Function for checking or setting the grating number. If Set_To is left as None, current grating number is returned. If 0,1 or 2 is passed as Set_To, the
-        corresponding grating position is rotated to.
+        """Query or set the active grating.
+
+        Args:
+            Set_To: ``None`` to query, or ``0``, ``1`` or ``2`` to rotate to that grating position.
+
+        Returns:
+            int or None: The current grating number when querying; ``None`` when setting.
+
+        Raises:
+            ValueError: If ``Set_To`` is not one of ``None``, ``0``, ``1`` or ``2``.
         """
 
         #-----Check Input-------
@@ -130,13 +164,26 @@ class Triax(VisaInstrument):
             self.Grating_Number = Set_To
 
     def Motor_Steps(self):
-        """
-        Returns the current rotation of the grating in units of steps of the internal stepper motor
+        """Return the current grating rotation in internal stepper-motor steps.
+
+        Returns:
+            int: The current stepper-motor position.
         """
         self.write("H0\r")
         return int(self.read()[1:])
 
     def Convert_Pixels_to_Wavelengths(self, Pixel_Array, Steps=None):
+        """Convert pixel indices to wavelengths via the grating's quadratic calibration.
+
+        Positions outside the calibrated step range are extrapolated linearly with a warning.
+
+        Args:
+            Pixel_Array: Array of CCD pixel indices to convert.
+            Steps: Stepper-motor position to assume; if ``None`` the current position is queried.
+
+        Returns:
+            numpy.ndarray: Wavelength (nm) for each input pixel.
+        """
         if Steps is None:
             Steps = self.Motor_Steps()
 
@@ -177,6 +224,19 @@ class Triax(VisaInstrument):
         return np.array(Output)
 
     def Find_Required_Step(self, Wavelength, Pixel, Require_Integer=True):
+        """Find the motor step that places a wavelength on a given pixel via bisection.
+
+        Args:
+            Wavelength: Target wavelength in nm.
+            Pixel: CCD pixel index the wavelength should land on.
+            Require_Integer: If True, round the result to an int.
+
+        Returns:
+            int or float: The required stepper-motor position.
+
+        Raises:
+            Exception: If ``Wavelength`` lies outside the calibrated range for this pixel.
+        """
         Bounds = []
         Calibration_Data = self.Calibration_Data[self.Grating()]
         Root = Calibration_Data[1]
@@ -219,8 +279,10 @@ class Triax(VisaInstrument):
         return Step
 
     def Move_Steps(self, Steps):
-        """
-        Function to move the grating by a number of stepper motor Steps.
+        """Move the grating by a number of stepper-motor steps.
+
+        Args:
+            Steps: Number of stepper-motor steps to move (may be negative).
         """
 
         if (
@@ -237,6 +299,14 @@ class Triax(VisaInstrument):
             self.waitTillReady()
 
     def Set_Center_Wavelength(self, Wavelength):
+        """Move the grating so ``Wavelength`` falls on the centre CCD pixel.
+
+        Args:
+            Wavelength: Desired centre wavelength in nm.
+
+        Raises:
+            ValueError: If ``ccd_size`` has not been set by a child class.
+        """
         if self.ccd_size is None:
             raise ValueError('ccd_size must be set in child class')
         Centre_Pixel = int(self.ccd_size / 2)
@@ -245,14 +315,30 @@ class Triax(VisaInstrument):
         self.Move_Steps(Required_Step - Current_Step)
 
     def Get_Center_Wavelength(self):
+        """Return the wavelength (nm) of the centre CCD pixel.
+
+        Returns:
+            float: The centre-pixel wavelength.
+        """
         wls = self.Get_Wavelength_Array()
         return wls[len(wls) // 2]
 
     center_wavelength = property(Get_Center_Wavelength, Set_Center_Wavelength)
 
     def Slit(self, Width=None):
-        """
-        Function to return or set the triax slit with in units of um. If Width is None, the current width is returned. 
+        """Query or set the entrance slit width in micrometres.
+
+        A backlash correction is applied when widening the slit.
+
+        Args:
+            Width: ``None`` to query the current width, or the desired width in um to set.
+
+        Returns:
+            int or None: The current slit width when querying; ``None`` when setting.
+
+        Note:
+            A ``Width`` of ``0`` would raise ``UnboundLocalError`` because ``To_Move`` is only
+            assigned in the ``elif Width > 0`` branch. Logged rather than changed.
         """
 
         Current_Width = int(self.query("j0,0\r")[1:])
@@ -274,8 +360,10 @@ class Triax(VisaInstrument):
             self.waitTillReady()
 
     def _isBusy(self):
-        """
-        Queries whether the Triax is willing to accept further commands
+        """Return whether the Triax is currently unable to accept further commands.
+
+        Returns:
+            bool: ``True`` if busy, ``False`` if ready.
         """
 
         if self.query("E") == 'oz':
@@ -284,9 +372,10 @@ class Triax(VisaInstrument):
             return True
 
     def waitTillReady(self, Timeout=120):
-        """
-        When called, this function checks the triax status once per second to check if it is busy. When it is not, the function returns. Also return automatically 
-        after Timeout seconds.
+        """Block until the Triax reports ready, polling once per second.
+
+        Args:
+            Timeout: Maximum time to wait in seconds before giving up.
         """
 
         Start_Time = time.time()

@@ -1,8 +1,10 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Fri Apr 10 08:43:56 2015
+"""ctypes driver for the Andor Kymera spectrograph.
 
-@author: Felix Benz (fb400), William Deacon(wmd22)
+Wraps the ATSpectrograph DLL (the successor to the older ShamrockCIF API),
+exposing gratings, wavelength, slits, the output flipper mirror and calibration.
+A legacy :class:`KymeraLegacy` driver targeting the older Shamrock DLLs is kept
+for 32-bit and Windows <10 systems.
 """
 from ctypes import *
 import os
@@ -29,8 +31,10 @@ from pyopenlab.utils.notified_property import NotifiedProperty
 
 
 class Kymera(Instrument):
+    """Driver for an Andor Kymera spectrograph via the ATSpectrograph DLL."""
 
     def __init__(self):
+        """Load the ATSpectrograph DLL and initialise the device."""
         super(Kymera, self).__init__()
         #for Windows
         architecture = platform.architecture()
@@ -42,14 +46,27 @@ class Kymera(Instrument):
         self._logger.setLevel('WARNING')
 
     def verbose(self, error, function=''):
+        """Log a decoded DLL result at info level.
+
+        Args:
+            error (str): Human-readable error string (typically from
+                ``ERROR_CODE``).
+            function (str): Name of the calling DLL wrapper, for context.
+        """
         self.log("[%s]: %s" % (function, error), level='info')
 
     #basic Kymera features
     def Initialize(self):
+        """Initialise the ATSpectrograph library."""
         error = self.dll.ATSpectrographInitialize("")
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
 
     def GetNumberDevices(self):
+        """Return the number of connected Kymera devices.
+
+        Returns:
+            int: Count of detected Kymera spectrographs.
+        """
         no_kymeras = c_int()
         error = self.dll.ATSpectrographGetNumberDevices(byref(no_kymeras))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -58,10 +75,16 @@ class Kymera(Instrument):
     num_kymeras = property(GetNumberDevices)
 
     def Close(self):
+        """Close the ATSpectrograph library and release the device."""
         error = self.dll.ATSpectrographClose()
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
 
     def GetSerialNumber(self):
+        """Return the device serial number.
+
+        Returns:
+            ctypes.c_char: Raw serial-number buffer as populated by the DLL.
+        """
         ATSpectrographSN = c_char()
         error = self.dll.ATSpectrographGetSerialNumber(self.current_kymera, byref(ATSpectrographSN))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -70,6 +93,12 @@ class Kymera(Instrument):
     serial_number = property(GetSerialNumber)
 
     def EepromGetOpticalParams(self):
+        """Read the spectrograph optical parameters from EEPROM.
+
+        Returns:
+            dict: Mapping with ``FocalLength``, ``AngularDeviation`` and
+            ``FocalTilt`` as ``ctypes.c_float`` values.
+        """
         self.FocalLength = c_float()
         self.AngularDeviation = c_float()
         self.FocalTilt = c_float()
@@ -84,26 +113,51 @@ class Kymera(Instrument):
 
     #basic Grating features
     def GratingIsPresent(self):
+        """Return whether a grating is fitted.
+
+        Returns:
+            int: Non-zero if a grating is present.
+
+        Note:
+            The DLL output ``is_present`` is passed by value rather than by
+            reference, so the returned flag may not be populated correctly. Left
+            as-is to preserve behaviour.
+        """
         is_present = c_int()
         error = self.dll.ATSpectrographGratingIsPresent(self.current_kymera, is_present)
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
-        return is_present.vlaue
+        return is_present.value
 
     grating_present = property(GratingIsPresent)
 
     def GetTurret(self):
+        """Return the current turret index.
+
+        Returns:
+            int: Active turret position.
+        """
         Turret = c_int()
         error = self.dll.ATSpectrographGetTurret(self.current_kymera, byref(Turret))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
         return Turret.value
 
     def SetTurret(self, turret):
+        """Select the turret.
+
+        Args:
+            turret (int): Turret index to move to.
+        """
         error = self.dll.ATSpectrographSetTurret(self.current_kymera, c_int(turret))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
 
     turret_position = NotifiedProperty(GetTurret, SetTurret)
 
     def GetNumberGratings(self):
+        """Return the number of gratings on the active turret.
+
+        Returns:
+            ctypes.c_int: Grating count as populated by the DLL.
+        """
         self.noGratings = c_int()
         error = self.dll.ATSpectrographGetNumberGratings(self.current_kymera,
                                                          byref(self.noGratings))
@@ -114,12 +168,22 @@ class Kymera(Instrument):
     print(num_gratings)
 
     def GetGrating(self):
+        """Return the active grating index.
+
+        Returns:
+            int: Currently selected grating.
+        """
         grating = c_int()
         error = self.dll.ATSpectrographGetGrating(self.current_kymera, byref(grating))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
         return grating.value
 
     def SetGrating(self, grating_num):
+        """Select a grating.
+
+        Args:
+            grating_num (int): Grating index to move to (coerced to int).
+        """
         grating_num = int(grating_num)
         grating = c_int(grating_num)
         error = self.dll.ATSpectrographSetGrating(self.current_kymera, grating)
@@ -128,6 +192,13 @@ class Kymera(Instrument):
     current_grating = NotifiedProperty(GetGrating, SetGrating)
 
     def GetGratingInfo(self):
+        """Return descriptive parameters for the active grating.
+
+        Returns:
+            list: ``[lines, blaze, home, offset]`` where ``lines`` is the groove
+            density, ``blaze`` the blaze label, and ``home``/``offset`` are motor
+            step values.
+        """
         lines = c_float()
         blaze = c_char()
         home = c_int()
@@ -142,6 +213,11 @@ class Kymera(Instrument):
     GratingInfo = property(GetGratingInfo)
 
     def GetGratingOffset(self):
+        """Return the active grating's offset in motor steps.
+
+        Returns:
+            ctypes.c_int: Grating offset in steps as populated by the DLL.
+        """
         GratingOffset = c_int()  #not this is in steps, so int
         error = self.dll.ATSpectrographGetGratingOffset(self.current_kymera, self.current_grating,
                                                         byref(GratingOffset))
@@ -149,6 +225,11 @@ class Kymera(Instrument):
         return GratingOffset
 
     def SetGratingOffset(self, offset):
+        """Set the active grating's offset.
+
+        Args:
+            offset (int): Grating offset in motor steps.
+        """
         error = self.dll.ATSpectrographSetGratingOffset(self.current_kymera, self.current_grating,
                                                         c_int(offset))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -156,6 +237,11 @@ class Kymera(Instrument):
     Grating_offset = NotifiedProperty(GetGratingOffset, SetGratingOffset)
 
     def GetDetectorOffset(self):
+        """Return the detector offset in motor steps.
+
+        Returns:
+            int: Detector offset in steps.
+        """
         DetectorOffset = c_int()  #note this is in steps, so int
         #error = self.dll.ShamrockGetDetectorOffset(self.current_kymera,byref(self.DetectorOffset))
         error = self.dll.ATSpectrographGetDetectorOffset(self.current_kymera, byref(DetectorOffset))
@@ -163,6 +249,11 @@ class Kymera(Instrument):
         return DetectorOffset.value
 
     def SetDetectorOffset(self, offset):
+        """Set the detector offset.
+
+        Args:
+            offset (int): Detector offset in motor steps.
+        """
         error = self.dll.ATSpectrographSetDetectorOffset(self.current_kymera, self.current_grating,
                                                          c_int(offset))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -171,6 +262,11 @@ class Kymera(Instrument):
 
     #Wavelength features
     def WavelengthIsPresent(self):
+        """Return whether the wavelength drive motor is present.
+
+        Returns:
+            int: Non-zero if the wavelength motor is fitted.
+        """
         ispresent = c_int()
         error = self.dll.ATSpectrographWavelengthIsPresent(self.current_kymera, byref(ispresent))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -179,18 +275,33 @@ class Kymera(Instrument):
     motor_present = property(WavelengthIsPresent)
 
     def GetWavelength(self):
+        """Return the current centre wavelength.
+
+        Returns:
+            float: Centre wavelength in nm.
+        """
         curr_wave = c_float()
         error = self.dll.ATSpectrographGetWavelength(self.current_kymera, byref(curr_wave))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
         return curr_wave.value
 
     def SetWavelength(self, centre_wl):
+        """Move the grating to a centre wavelength.
+
+        Args:
+            centre_wl (float): Target centre wavelength in nm.
+        """
         error = self.dll.ATSpectrographSetWavelength(self.current_kymera, c_float(centre_wl))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
 
     center_wavelength = NotifiedProperty(GetWavelength, SetWavelength)
 
     def AtZeroOrder(self):
+        """Return whether the grating is at zero order.
+
+        Returns:
+            int: Non-zero if positioned at zero order.
+        """
         is_at_zero = c_int()
         error = self.dll.ATSpectrographAtZeroOrder(self.current_kymera, byref(is_at_zero))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -199,6 +310,11 @@ class Kymera(Instrument):
     wavelength_is_zero = property(AtZeroOrder)
 
     def GetWavelengthLimits(self):
+        """Return the accessible wavelength range for the active grating.
+
+        Returns:
+            list: ``[min_wl, max_wl]`` in nm.
+        """
         min_wl = c_float()
         max_wl = c_float()
         error = self.dll.ATSpectrographGetWavelengthLimits(self.current_kymera,
@@ -211,11 +327,17 @@ class Kymera(Instrument):
     wavelength_limits = property(GetWavelengthLimits)
 
     def GotoZeroOrder(self):
+        """Drive the grating to zero order."""
         error = self.dll.ATSpectrographGotoZeroOrder(self.current_kymera)
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
 
     #Slit functions
     def AutoSlitIsPresent(self):
+        """Return which motorised slits are fitted.
+
+        Returns:
+            list[int]: Presence flag for each of the four slit indices (1-4).
+        """
         present = c_int()
         slits = []
 
@@ -228,11 +350,26 @@ class Kymera(Instrument):
 
     #Sets the slit to the default value (10um)
     def AutoSlitReset(self, slit):
+        """Reset a motorised slit to its default 10 um width.
+
+        Args:
+            slit (int): Slit index to reset.
+
+        Note:
+            The DLL call uses ``self.current_slit`` (which is never defined on
+            this class) instead of the ``slit`` argument, so this raises
+            AttributeError. Logged and left unchanged.
+        """
         error = self.dll.ATSpectrographAutoSlitReset(self.current_kymera, self.current_slit)
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
 
     #finds if input slit is present
     def SlitIsPresent(self):
+        """Return whether the input slit is fitted.
+
+        Returns:
+            int: Non-zero if the input slit is present.
+        """
         slit_present = c_int()
         error = self.dll.ATSpectrographSlitIsPresent(self.current_kymera, byref(slit_present))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -242,12 +379,34 @@ class Kymera(Instrument):
 
     #Output Slits
     def GetAutoSlitWidth(self, slit):
+        """Return the width of a motorised slit.
+
+        Args:
+            slit (int): Slit index to query.
+
+        Returns:
+            float: Slit width in microns.
+        """
         slitw = c_float()
         error = self.dll.ATSpectrographGetAutoSlitWidth(self.current_kymera, slit, byref(slitw))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
         return slitw.value
 
     def SetAutoSlitWidth(self, slit, width):
+        """Set the width of a motorised slit.
+
+        Args:
+            slit (int): Slit index to set.
+            width (float): Target slit width in microns.
+
+        Returns:
+            float: The requested ``width``.
+
+        Note:
+            The DLL call omits the ``slit`` index argument (passing only the
+            width), so the wrong slit may be addressed. Logged and left
+            unchanged.
+        """
         slit_w = c_float(width)
         error = self.dll.ATSpectrographSetAutoSlitWidth(self.current_kymera, slit_w)
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -255,12 +414,22 @@ class Kymera(Instrument):
 
     #Input Slits
     def GetSlit(self):
+        """Return the input slit width.
+
+        Returns:
+            float: Input slit width in microns.
+        """
         slitw = c_float()
         error = self.dll.ATSpectrographGetSlitWidth(self.current_kymera, c_ulong(1), byref(slitw))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
         return slitw.value
 
     def SetSlit(self, width):
+        """Set the input slit width.
+
+        Args:
+            width (float): Target slit width in microns.
+        """
         slit_w = c_float(width)
         error = self.dll.ATSpectrographSetSlitWidth(self.current_kymera, c_ulong(1), slit_w)
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -268,11 +437,17 @@ class Kymera(Instrument):
     slit_width = NotifiedProperty(GetSlit, SetSlit)
 
     def SlitReset(self):
+        """Reset the input slit to its default width."""
         error = self.dll.ATSpectrographSlitReset(self.current_kymera)
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
 
     #Output Flipper Mirror functions
     def FlipperMirrorIsPresent(self):
+        """Return whether the output flipper mirror is fitted.
+
+        Returns:
+            int: Non-zero if the flipper mirror is present.
+        """
         flipper_present = c_int()
         error = self.dll.ATSpectrographFlipperMirrorIsPresent(self.current_kymera, c_ulong(2),
                                                               byref(flipper_present))
@@ -282,10 +457,16 @@ class Kymera(Instrument):
     flipper_present = property(FlipperMirrorIsPresent)
 
     def FlipperMirrorReset(self):
+        """Reset the output flipper mirror to its default position."""
         error = self.dll.ATSpectrographFlipperMirrorReset(self.current_kymera, c_ulong(2))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
 
     def GetFlipperMirror(self):
+        """Return the active output port via the flipper mirror.
+
+        Returns:
+            int: Output port number (1-based; see :meth:`SetFlipperMirror`).
+        """
         flipper_position = c_int()
         error = self.dll.ATSpectrographGetFlipperMirror(self.current_kymera, c_ulong(2),
                                                         byref(flipper_position))
@@ -293,10 +474,14 @@ class Kymera(Instrument):
         return flipper_position.value + 1
 
     def SetFlipperMirror(self, out_port_nr):
-        '''
-        1 - direct port, usually into CCD
-        2 - side port, when flipper mirror is slotted in
-        '''
+        """Select the output port via the flipper mirror.
+
+        Args:
+            out_port_nr (int): Output port to select; 1 is the direct port
+                (usually into the CCD) and 2 is the side port (used when the
+                flipper mirror is slotted in). Converted to the 0-based value the
+                DLL expects.
+        """
         out_port_nr = int(out_port_nr - 1)
         out_port = c_int(out_port_nr)
         error = self.dll.ATSpectrographSetFlipperMirror(self.current_kymera, c_ulong(2), out_port)
@@ -306,10 +491,20 @@ class Kymera(Instrument):
 
     #Calibration functions
     def SetPixelWidth(self, width):
+        """Set the detector pixel width used for calibration.
+
+        Args:
+            width (float): Pixel width in microns.
+        """
         error = self.dll.ATSpectrographSetPixelWidth(self.current_kymera, c_float(width))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
 
     def GetPixelWidth(self):
+        """Return the configured detector pixel width.
+
+        Returns:
+            float: Pixel width in microns.
+        """
         pixelw = c_float()
         error = self.dll.ATSpectrographGetPixelWidth(self.current_kymera, byref(pixelw))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -318,18 +513,33 @@ class Kymera(Instrument):
     pixel_width = NotifiedProperty(GetPixelWidth, SetPixelWidth)
 
     def GetNumberPixels(self):
+        """Return the configured detector pixel count.
+
+        Returns:
+            int: Number of pixels along the dispersion axis.
+        """
         numpix = c_int()
         error = self.dll.ATSpectrographGetNumberPixels(self.current_kymera, byref(numpix))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
         return numpix.value
 
     def SetNumberPixels(self, pixels):
+        """Set the detector pixel count used for calibration.
+
+        Args:
+            pixels (int): Number of detector pixels along the dispersion axis.
+        """
         error = self.dll.ATSpectrographSetNumberPixels(self.current_kymera, pixels)
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
 
     pixel_number = NotifiedProperty(GetNumberPixels, SetNumberPixels)
 
     def GetCalibration(self):
+        """Return the per-pixel wavelength calibration.
+
+        Returns:
+            list[float]: Wavelength (nm) for each detector pixel.
+        """
         ccalib = c_float * self.pixel_number
         ccalib_array = ccalib()
         error = self.dll.ATSpectrographGetCalibration(self.current_kymera, pointer(ccalib_array),
@@ -343,6 +553,12 @@ class Kymera(Instrument):
     wl_calibration = property(GetCalibration)
 
     def GetPixelCalibrationCoefficients(self):
+        """Return the polynomial pixel-to-wavelength calibration coefficients.
+
+        Returns:
+            list: ``[ca, cb, cc, cd]`` as ``ctypes.c_float`` polynomial
+            coefficients.
+        """
         ca = c_float()
         cb = c_float()
         cc = c_float()
@@ -355,6 +571,11 @@ class Kymera(Instrument):
     PixelCalibrationCoefficients = property(GetPixelCalibrationCoefficients)
 
     def get_qt_ui(self):
+        """Return a Qt control widget for this spectrograph.
+
+        Returns:
+            KymeraControlUI: A new control widget bound to this instance.
+        """
         return KymeraControlUI(self)
 
 
@@ -371,9 +592,17 @@ ERROR_CODE = {
 
 
 class KymeraLegacy(Instrument):
-    '''This is for use with the older shamrock drivers - works with 32bit PCs and windows <10'''
+    """Legacy Kymera driver for the older Shamrock DLLs (32-bit, Windows <10).
+
+    Note:
+        ``__init__`` calls ``super(Kymera, self).__init__()`` rather than
+        ``super(KymeraLegacy, self)``. Because ``KymeraLegacy`` is not a subclass
+        of ``Kymera`` this raises TypeError on instantiation. Logged and left
+        unchanged.
+    """
 
     def __init__(self):
+        """Load the architecture-specific Shamrock DLLs and initialise."""
         super(Kymera, self).__init__()
         #for Windows
         architecture = platform.architecture()
@@ -396,14 +625,17 @@ class KymeraLegacy(Instrument):
         self.center_wavelength = 0.0
 
     def verbose(self, error, function=''):
+        """Log a decoded DLL result at info level."""
         self.log("[%s]: %s" % (function, error), level='info')
 
     #basic Shamrock features
     def Initialize(self):
+        """Initialise the Shamrock library."""
         error = self.dll.ShamrockInitialize("")
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
 
     def GetNumberDevices(self):
+        """Return the number of connected Shamrock devices."""
         no_shamrocks = c_int()
         error = self.dll.ShamrockGetNumberDevices(byref(no_shamrocks))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -412,10 +644,12 @@ class KymeraLegacy(Instrument):
     num_shamrocks = property(GetNumberDevices)
 
     def Close(self):
+        """Close the Shamrock library and release the device."""
         error = self.dll.ShamrockClose()
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
 
     def GetSerialNumber(self):
+        """Return the device serial number as a raw ctypes buffer."""
         ShamrockSN = c_char()
         error = self.dll.ShamrockGetSerialNumber(self.current_shamrock, byref(ShamrockSN))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -424,6 +658,7 @@ class KymeraLegacy(Instrument):
     serial_number = property(GetSerialNumber)
 
     def EepromGetOpticalParams(self):
+        """Read optical parameters from EEPROM as a dict of c_float values."""
         self.FocalLength = c_float()
         self.AngularDeviation = c_float()
         self.FocalTilt = c_float()
@@ -438,26 +673,30 @@ class KymeraLegacy(Instrument):
 
     #basic Grating features
     def GratingIsPresent(self):
+        """Return whether a grating is fitted (non-zero if present)."""
         is_present = c_int()
         error = self.dll.ShamrockGratingIsPresent(self.current_shamrock, is_present)
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
-        return is_present.vlaue
+        return is_present.value
 
     grating_present = property(GratingIsPresent)
 
     def GetTurret(self):
+        """Return the current turret index."""
         Turret = c_int()
         error = self.dll.ShamrockGetTurret(self.current_shamrock, byref(Turret))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
         return Turret.value
 
     def SetTurret(self, turret):
+        """Select the turret given by index ``turret``."""
         error = self.dll.ShamrockSetTurret(self.current_shamrock, c_int(turret))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
 
     turret_position = NotifiedProperty(GetTurret, SetTurret)
 
     def GetNumberGratings(self):
+        """Return the number of gratings as a c_int."""
         self.noGratings = c_int()
         error = self.dll.ShamrockGetNumberGratings(self.current_shamrock, byref(self.noGratings))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -466,12 +705,14 @@ class KymeraLegacy(Instrument):
     num_gratings = property(GetNumberGratings)
 
     def GetGrating(self):
+        """Return the active grating index."""
         grating = c_int()
         error = self.dll.ShamrockGetGrating(self.current_shamrock, byref(grating))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
         return grating.value
 
     def SetGrating(self, grating_num):
+        """Select grating ``grating_num`` (coerced to int)."""
         grating_num = int(grating_num)
         grating = c_int(grating_num)
         error = self.dll.ShamrockSetGrating(self.current_shamrock, grating)
@@ -480,6 +721,7 @@ class KymeraLegacy(Instrument):
     current_grating = NotifiedProperty(GetGrating, SetGrating)
 
     def GetGratingInfo(self):
+        """Return ``[lines, blaze, home, offset]`` for the active grating."""
         lines = c_float()
         blaze = c_char()
         home = c_int()
@@ -494,6 +736,7 @@ class KymeraLegacy(Instrument):
     GratingInfo = property(GetGratingInfo)
 
     def GetGratingOffset(self):
+        """Return the active grating's offset (steps) as a c_int."""
         GratingOffset = c_int()  #not this is in steps, so int
         error = self.dll.ShamrockGetGratingOffset(self.current_shamrock, self.current_grating,
                                                   byref(GratingOffset))
@@ -501,6 +744,7 @@ class KymeraLegacy(Instrument):
         return GratingOffset
 
     def SetGratingOffset(self, offset):
+        """Set the active grating's offset to ``offset`` motor steps."""
         error = self.dll.ShamrockSetGratingOffset(self.current_shamrock, self.current_grating,
                                                   c_int(offset))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -508,6 +752,7 @@ class KymeraLegacy(Instrument):
     Grating_offset = NotifiedProperty(GetGratingOffset, SetGratingOffset)
 
     def GetDetectorOffset(self):
+        """Return the detector offset in motor steps."""
         DetectorOffset = c_int()  #note this is in steps, so int
         #error = self.dll.ShamrockGetDetectorOffset(self.current_shamrock,byref(self.DetectorOffset))
         error = self.dll.ShamrockGetDetectorOffset(self.current_shamrock, byref(DetectorOffset))
@@ -515,6 +760,7 @@ class KymeraLegacy(Instrument):
         return DetectorOffset.value
 
     def SetDetectorOffset(self, offset):
+        """Set the detector offset to ``offset`` motor steps."""
         error = self.dll.ShamrockSetDetectorOffset(self.current_shamrock, self.current_grating,
                                                    c_int(offset))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -523,6 +769,7 @@ class KymeraLegacy(Instrument):
 
     #Wavelength features
     def WavelengthIsPresent(self):
+        """Return whether the wavelength drive motor is fitted."""
         ispresent = c_int()
         error = self.dll.ShamrockWavelengthIsPresent(self.current_shamrock, byref(ispresent))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -531,18 +778,21 @@ class KymeraLegacy(Instrument):
     motor_present = property(WavelengthIsPresent)
 
     def GetWavelength(self):
+        """Return the current centre wavelength in nm."""
         curr_wave = c_float()
         error = self.dll.ShamrockGetWavelength(self.current_shamrock, byref(curr_wave))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
         return curr_wave.value
 
     def SetWavelength(self, centre_wl):
+        """Move the grating to centre wavelength ``centre_wl`` (nm)."""
         error = self.dll.ShamrockSetWavelength(self.current_shamrock, c_float(centre_wl))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
 
     center_wavelength = NotifiedProperty(GetWavelength, SetWavelength)
 
     def AtZeroOrder(self):
+        """Return whether the grating is at zero order."""
         is_at_zero = c_int()
         error = self.dll.ShamrockAtZeroOrder(self.current_shamrock, byref(is_at_zero))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -551,6 +801,7 @@ class KymeraLegacy(Instrument):
     wavelength_is_zero = property(AtZeroOrder)
 
     def GetWavelengthLimits(self):
+        """Return ``[min_wl, max_wl]`` (nm) for the active grating."""
         min_wl = c_float()
         max_wl = c_float()
         error = self.dll.ShamrockGetWavelengthLimits(self.current_shamrock, self.current_grating,
@@ -562,11 +813,13 @@ class KymeraLegacy(Instrument):
     wavelength_limits = property(GetWavelengthLimits)
 
     def GotoZeroOrder(self):
+        """Drive the grating to zero order."""
         error = self.dll.ShamrockGotoZeroOrder(self.current_shamrock)
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
 
     #Slit functions
     def AutoSlitIsPresent(self):
+        """Return a presence flag for each of the four motorised slits."""
         present = c_int()
         slits = []
 
@@ -579,11 +832,18 @@ class KymeraLegacy(Instrument):
 
     #Sets the slit to the default value (10um)
     def AutoSlitReset(self, slit):
+        """Reset a motorised slit to its default 10 um width.
+
+        Note:
+            Uses ``self.current_slit`` (never defined) instead of ``slit``, so
+            this raises AttributeError. Logged and left unchanged.
+        """
         error = self.dll.ShamrockAutoSlitReset(self.current_shamrock, self.current_slit)
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
 
     #finds if input slit is present
     def SlitIsPresent(self):
+        """Return whether the input slit is fitted."""
         slit_present = c_int()
         error = self.dll.ShamrockSlitIsPresent(self.current_shamrock, byref(slit_present))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -593,12 +853,14 @@ class KymeraLegacy(Instrument):
 
     #Output Slits
     def GetAutoSlitWidth(self, slit):
+        """Return the width (microns) of motorised slit ``slit``."""
         slitw = c_float()
         error = self.dll.ShamrockGetAutoSlitWidth(self.current_shamrock, slit, byref(slitw))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
         return slitw.value
 
     def SetAutoSlitWidth(self, slit, width):
+        """Set motorised slit ``slit`` to ``width`` microns; return ``width``."""
         slit_w = c_float(width)
         error = self.dll.ShamrockSetAutoSlitWidth(self.current_shamrock, slit, slit_w)
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -606,12 +868,14 @@ class KymeraLegacy(Instrument):
 
     #Input Slits
     def GetSlit(self):
+        """Return the input slit width in microns."""
         slitw = c_float()
         error = self.dll.ShamrockGetSlit(self.current_shamrock, byref(slitw))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
         return slitw.value
 
     def SetSlit(self, width):
+        """Set the input slit to ``width`` microns."""
         slit_w = c_float(width)
         error = self.dll.ShamrockSetSlit(self.current_shamrock, slit_w)
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -619,15 +883,18 @@ class KymeraLegacy(Instrument):
     slit_width = NotifiedProperty(GetSlit, SetSlit)
 
     def SlitReset(self):
+        """Reset the input slit to its default width."""
         error = self.dll.ShamrockSlitReset(self.current_shamrock)
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
 
     #Calibration functions
     def SetPixelWidth(self, width):
+        """Set the detector pixel width to ``width`` microns."""
         error = self.dll.ShamrockSetPixelWidth(self.current_shamrock, c_float(width))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
 
     def GetPixelWidth(self):
+        """Return the configured detector pixel width in microns."""
         pixelw = c_float()
         error = self.dll.ShamrockGetPixelWidth(self.current_shamrock, byref(pixelw))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
@@ -636,18 +903,21 @@ class KymeraLegacy(Instrument):
     pixel_width = NotifiedProperty(GetPixelWidth, SetPixelWidth)
 
     def GetNumberPixels(self):
+        """Return the configured detector pixel count."""
         numpix = c_int()
         error = self.dll.ShamrockGetNumberPixels(self.current_shamrock, byref(numpix))
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
         return numpix.value
 
     def SetNumberPixels(self, pixels):
+        """Set the detector pixel count to ``pixels``."""
         error = self.dll.ShamrockSetNumberPixels(self.current_shamrock, pixels)
         self.verbose(ERROR_CODE[error], sys._getframe().f_code.co_name)
 
     pixel_number = NotifiedProperty(GetNumberPixels, SetNumberPixels)
 
     def GetCalibration(self):
+        """Return the per-pixel wavelength calibration as a list of floats."""
         ccalib = c_float * self.pixel_number
         ccalib_array = ccalib()
         error = self.dll.ShamrockGetCalibration(self.current_shamrock, pointer(ccalib_array),
@@ -661,6 +931,7 @@ class KymeraLegacy(Instrument):
     wl_calibration = property(GetCalibration)
 
     def GetPixelCalibrationCoefficients(self):
+        """Return polynomial calibration coefficients ``[ca, cb, cc, cd]``."""
         ca = c_float()
         cb = c_float()
         cc = c_float()
@@ -673,15 +944,24 @@ class KymeraLegacy(Instrument):
     PixelCalibrationCoefficients = property(GetPixelCalibrationCoefficients)
 
     def get_qt_ui(self):
+        """Return a Qt control widget for this spectrograph."""
         return KymeraControlUI(self)
 
 
 class KymeraControlUI(QtWidgets.QWidget, UiTools):
+    """Qt control widget (loaded from a .ui file) for a Kymera spectrograph."""
 
     def __init__(self,
                  kymera,
                  ui_file=os.path.join(os.path.dirname(__file__), 'kymera_4grating.ui'),
                  parent=None):
+        """Load the .ui layout and wire its widgets to a Kymera instance.
+
+        Args:
+            kymera (Kymera): The spectrograph to control.
+            ui_file (str): Path to the Qt Designer .ui file describing the layout.
+            parent: Optional parent Qt widget.
+        """
         assert isinstance(kymera, Kymera), "instrument must be a Triax"
         super(KymeraControlUI, self).__init__()
         uic.loadUi(ui_file, self)
@@ -697,12 +977,20 @@ class KymeraControlUI(QtWidgets.QWidget, UiTools):
         getattr(self, f'grating_{self.kymera.current_grating}_radioButton').setChecked(True)
 
     def set_wl_gui(self):
+        """Push the centre-wavelength text field value to the Kymera."""
         self.kymera.center_wavelength = float(self.centre_wl_lineEdit.text().strip())
 
     def set_slit_gui(self):
+        """Push the slit-width text field value to the Kymera."""
         self.kymera.slit_width = float(self.slit_lineEdit.text().strip())
 
     def set_grating_gui(self):
+        """Set the active grating from the checked radio button.
+
+        Raises:
+            ValueError: If the sending widget is not one of the grating radio
+                buttons.
+        """
         s = self.sender()
         if s is self.grating_1_radioButton:
             self.kymera.current_grating = 1
@@ -717,6 +1005,7 @@ class KymeraControlUI(QtWidgets.QWidget, UiTools):
 
 
 def main():
+    """Launch a standalone Kymera control window."""
     app = get_qt_app()
     s = Kymera()
     ui = KymeraControlUI(kymera=s)
