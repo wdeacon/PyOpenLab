@@ -1,4 +1,5 @@
-﻿import json
+﻿"""Thorlabs NR360SM motorised rotation stage (APT serial via BSC10x controller)."""
+import json
 import struct
 import sys
 import threading
@@ -17,8 +18,22 @@ DEBUG = False
 
 
 class Thorlabs_NR360SM(APT_VCP_motor):
+    """NR360SM rotation stage driven over the APT serial protocol.
+
+    Provides angle/velocity/acceleration conversion specific to the NR360SM
+    (25600 microsteps per 5.4546 degrees) and sets sensible motion and homing
+    parameters on construction. The count conventions follow the BSC10x
+    controllers; newer BSC20x controllers may be incompatible.
+    """
 
     def __init__(self, port='/dev/ttyUSB1', source=0x01, destination=0x50):
+        """Connect to the stage and apply default motion and homing parameters.
+
+        Args:
+            port: Serial port name.
+            source: APT source address (default ``0x01``).
+            destination: APT destination address (default ``0x50``).
+        """
         Stage.__init__(self, unit="u")
         APT_VCP_motor.__init__(self, port=port, destination=destination, source=source)
         self.axis_names = ["x"]
@@ -36,9 +51,13 @@ class Thorlabs_NR360SM(APT_VCP_motor):
         # self.get_limit_switch_parameters()
 
     def set_motion_params(self, velocity=10, acceleration=5, channel=1):
-        '''
-		Set velocity parameters in units of deg/sec [both for velocity and acceleration]
-		'''
+        """Set the velocity-profile parameters (0x0413).
+
+        Args:
+            velocity: Maximum velocity in deg/s.
+            acceleration: Acceleration in deg/s^2.
+            channel: APT channel number (default 1).
+        """
         chanIdent = channel
         minVel = 0
         acc = self.convert(acceleration, "acceleration", "counts")
@@ -50,7 +69,14 @@ class Thorlabs_NR360SM(APT_VCP_motor):
         return
 
     def set_home_parameters(self, velocity=6, homeAngle=0.1, channel=1, debug=False):
-        #1 2 1 28160 469
+        """Set the homing parameters (0x0440): reverse direction toward the rev limit.
+
+        Args:
+            velocity: Homing velocity in deg/s.
+            homeAngle: Offset distance from the limit switch, in degrees.
+            channel: APT channel number (default 1).
+            debug: If truthy (or module ``DEBUG``), print the packed parameters.
+        """
         chanIdent = channel
         homeDirection = {"forward": 1, "reverse": 2}
         limitSwitch = {"hardwareReverse": 1, "hardwareForward": 1}
@@ -67,10 +93,11 @@ class Thorlabs_NR360SM(APT_VCP_motor):
         return
 
     def get_home_parameters(self, channel=1):
-        '''
-		Set velocity parameters in units of deg/sec [both for velocity and acceleration]
-		'''
+        """Query and print the controller's homing parameters (0x0441).
 
+        Args:
+            channel: APT channel number (default 1).
+        """
         resp = self.query(0x0441, param1=channel, param2=0x00)
         data = resp["data"]
 
@@ -79,12 +106,22 @@ class Thorlabs_NR360SM(APT_VCP_motor):
         return
 
     def set_limit_switch_parameters(self):
+        """Set the limit-switch parameters (0x0423) to values captured from Kinesis."""
         bs = [1, 3, 1, 14080, 4693, 1]  #parameters loaded from kinesis
         ds = bytearray(struct.pack("<HHHLLH", *bs))
         self.write(0x0423, param1=0x10, param2=0x00, data=ds)
         return
 
     def get_limit_switch_parameters(self, debug=False):
+        """Query the limit-switch parameters (0x0424).
+
+        Args:
+            debug: If truthy (or module ``DEBUG``), print the decoded values.
+
+        Returns:
+            ``[chanIdent, cwHardLimit, ccwHardLimit, cwSoftLimit, ccwSoftLimit,
+            limitMode]``.
+        """
         resp = self.query(0x0424, param1=0x10, param2=0x00)
         data = resp["data"]
         chanIdent, cwHardLimit, ccwHardLimit, cwSoftLimit, ccwSoftLimit, limitMode = struct.unpack(
@@ -95,22 +132,38 @@ class Thorlabs_NR360SM(APT_VCP_motor):
         return outp
 
     def get_motion_params(self):
+        """Not implemented (placeholder)."""
         pass
 
     def home(self, channel=1):
+        """Send the APT home command (0x0443) for the given channel."""
         self.write(0x0443, channel, 0)
 
     def stop(self, channel=1):
+        """Stop motion with a profiled (deceleration) stop (0x0465)."""
         stopMode = {"immediate": 0x01, "profiled": 0x02}
         self.write(0x0465, channel, stopMode["profiled"])
         return
 
     def convert(self, value, from_, to_, debug=False):
-        '''for NR360SM stage the conversion is:
-		25600 microsteps for 5.4546 degrees
-		see page 35 of 359 of Thorlabs programming manual
-		configuration applicable to BSC10x stage controllers, newer versions BSC20x may be incompatible
-		'''
+        """Convert between encoder counts and degrees / deg-s units for the NR360SM.
+
+        Uses the NR360SM calibration of 25600 microsteps per 5.4546 degrees (see
+        the Thorlabs programming manual); velocity and acceleration use a fixed
+        4693 counts-per-unit factor. Applicable to BSC10x controllers; BSC20x
+        may differ.
+
+        Args:
+            value: Value to convert.
+            from_: Source unit (``'counts'``, ``'position'``, ``'velocity'`` or
+                ``'acceleration'``).
+            to_: Target unit (same set as ``from_``).
+            debug: If truthy (or module ``DEBUG``), print the conversion.
+
+        Returns:
+            The converted value; positions/velocities/accelerations going to
+            counts are rounded to the nearest integer.
+        """
         count_to_deg = (float(5.4546) / float(25600))
         deg_to_count = 1.0 / count_to_deg
 
@@ -141,8 +194,23 @@ class Thorlabs_NR360SM(APT_VCP_motor):
 
 
 class Thorlabs_NR360SM_UI(QtWidgets.QWidget, UiTools):
+    """Qt control panel for a :class:`Thorlabs_NR360SM` rotation stage.
+
+    Runs a background thread to continuously update the displayed angle and
+    exposes move/home/stop controls plus angle-bound and speed settings.
+    """
 
     def __init__(self, stage, parent=None, debug=0):
+        """Build the UI and start the angle-update thread.
+
+        Args:
+            stage: The :class:`Thorlabs_NR360SM` instance to control.
+            parent: Optional Qt parent widget.
+            debug: Stored for optional debug output.
+
+        Raises:
+            ValueError: If ``stage`` is not a :class:`Thorlabs_NR360SM`.
+        """
         if not isinstance(stage, Thorlabs_NR360SM):
             raise ValueError("Object is not an instance of the Thorlabs_NR360SM Stage")
         super(Thorlabs_NR360SM_UI, self).__init__()

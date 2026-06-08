@@ -1,7 +1,4 @@
-﻿from past.utils import old_div
-
-__author__ = 'alansanders, chrisgrosse'
-
+﻿"""Drivers for SmarAct MCS controllers (ctypes DLL and RS232 serial variants)."""
 import ctypes
 from ctypes import byref
 from ctypes import c_int
@@ -371,10 +368,16 @@ class SmaractMCS(PiezoStage):
     ## ===================================================== ###
 
     def get_position(self, axis=None):
-        """
-        Get the position of the stage or of a specified axis.
-        :param axis:
-        :return:
+        """Get the position of the stage or of a specified axis.
+
+        Args:
+            axis: Channel index to query; if None, all axes are returned.
+
+        Returns:
+            The position in metres (or a list of positions if ``axis`` is None).
+
+        Raises:
+            ValueError: If ``axis`` is not a valid axis.
         """
         if axis is None:
             return [self.get_position(axis) for axis in self.axis_names]
@@ -389,13 +392,16 @@ class SmaractMCS(PiezoStage):
             return 1e-9 * position.value
 
     def move(self, position, axis, relative=False):
-        """
-        Move the stage to the requested position. The function should block all further
-        actions until the stage has finished moving.
-        :param position: units of m (SI units, converted to nm in the method)
-        :param axis: integer channel index
-        :param relative:
-        :return:
+        """Move the stage to the requested position, blocking until it stops.
+
+        Args:
+            position (float): Target in metres (SI units, converted to nm
+                internally).
+            axis: Integer channel index.
+            relative (bool): If True, move relative to the current position.
+
+        Raises:
+            ValueError: If ``axis`` is not a valid axis.
         """
         if axis not in self.axis_names:
             raise ValueError("{0} is not a valid axis, must be one of {1}".format(
@@ -487,19 +493,20 @@ class SmaractMCS(PiezoStage):
     ### ==================================== ###
 
     def slip_stick_move(self, axis, steps=1, amplitude=1800, frequency=100):
-        """
-        this method perforems a burst of slip-stick coarse motion steps.
+        """Perform a burst of slip-stick coarse motion steps.
 
-        :param axis: chanel index of selected SmarAct stage
-        :param steps: number and direction of steps, ranging between -30,000 .. 30,000
-                      with 0 stopping the positioner and +/-30,000 perfomes unbounded
-                      move, which is strongly riscouraged!
-        :param amplitude: voltage amplitude of the pulse send to the piezo,
-                          ranging from 0 .. 4,095 with 0 corresponding to 0 V
-                          and 4,095 corresponding to 100 V, a value of 2047
-                          roughly leads to a 500 nm step
-        :param frequency: frequency the steps are performed with in Hz, ranging
-                          from 1 .. 18,500
+        Args:
+            axis: Channel index of the selected SmarAct stage.
+            steps (int): Number and direction of steps, in the range
+                -30,000 .. 30,000. A value of 0 stops the positioner; +/-30,000
+                performs an unbounded move (strongly discouraged).
+            amplitude (int): Voltage amplitude of the pulse sent to the piezo,
+                0 .. 4,095 (0 = 0 V, 4,095 = 100 V); ~2047 gives roughly a 500 nm
+                step.
+            frequency (int): Step frequency in Hz, in the range 1 .. 18,500.
+
+        Raises:
+            ValueError: If ``axis`` is not a valid axis.
         """
         if axis not in self.axis_names:
             raise ValueError("{0} is not a valid axis, must be one of {1}".format(
@@ -518,10 +525,16 @@ class SmaractMCS(PiezoStage):
     ### primary methods that provide diret interface to MCS main controller
 
     def get_piezo_position(self, axis=None):
-        """
-        Get the scanning position of the stage or of a specified axis.
-        :param axis:
-        :return:
+        """Get the scanning (piezo) position of the stage or of a specified axis.
+
+        Args:
+            axis: Channel index to query; if None, all axes are returned.
+
+        Returns:
+            The piezo position in metres (or a list if ``axis`` is None).
+
+        Raises:
+            ValueError: If ``axis`` is not a valid axis.
         """
         if axis is None:
             return [1e-9 * 10. * self.get_voltage(axis) for axis in self.axis_names]
@@ -1033,10 +1046,16 @@ class SmaractMCSSerial(SerialInstrument, PiezoStage):
 ## ===================================================== ###
 
     def get_position(self, axis=None):
-        """
-        Get the position of the stage or of a specified axis.
-        :param axis:
-        :return:
+        """Get the position of the stage or of a specified axis.
+
+        Args:
+            axis: Channel index to query; if None, all axes are returned.
+
+        Returns:
+            The position in metres (or a list of positions if ``axis`` is None).
+
+        Raises:
+            ValueError: If ``axis`` is not in 0-5.
         """
         if axis is None:
             return [self.get_position(axis) for axis in self.axis_names]
@@ -1049,13 +1068,25 @@ class SmaractMCSSerial(SerialInstrument, PiezoStage):
                 return 1e-9 * float(response[response.index(",") + 1:])
 
     def move(self, position, axis, relative=False, holdTime=0):
-        """
-        Move the stage to the requested position. The function should block all further
-        actions until the stage has finished moving.
-        :param position: units of m (SI units, converted to nm in the method)
-        :param axis: integer channel index
-        :param relative:
-        :return:
+        """Move the stage to the requested position.
+
+        Args:
+            position (float): Target in metres (SI units, converted to nm
+                internally).
+            axis: Integer channel index.
+            relative (bool): If True, move relative to the current position.
+            holdTime (int): Time in ms to actively hold the target after
+                reaching it.
+
+        Returns:
+            The controller's response to the move command.
+
+        Raises:
+            ValueError: If ``axis`` is not in 0-5.
+
+        Note:
+            ``wait_until_stopped`` is dead code here: both branches return before
+            it is reached, so this method does not block until the move finishes.
         """
         if axis not in [0, 1, 2, 3, 4, 5]:  #self.axis_names:
             raise ValueError("{0} is not a valid axis, must be one of {1}".format(
@@ -1122,19 +1153,20 @@ class SmaractMCSSerial(SerialInstrument, PiezoStage):
     ### ==================================== ###
 
     def slip_stick_move(self, axis, steps=1, amplitude=1800, frequency=100):
-        """
-        this method perforems a burst of slip-stick coarse motion steps.
+        """Perform a burst of slip-stick coarse motion steps.
 
-        :param axis: chanel index of selected SmarAct stage
-        :param steps: number and direction of steps, ranging between -30,000 .. 30,000
-                      with 0 stopping the positioner and +/-30,000 perfomes unbounded
-                      move, which is strongly riscouraged!
-        :param amplitude: voltage amplitude of the pulse send to the piezo,
-                          ranging from 0 .. 4,095 with 0 corresponding to 0 V
-                          and 4,095 corresponding to 100 V, a value of 2047
-                          roughly leads to a 500 nm step
-        :param frequency: frequency the steps are performed with in Hz, ranging
-                          from 1 .. 18,500
+        Args:
+            axis: Channel index of the selected SmarAct stage.
+            steps (int): Number and direction of steps, in the range
+                -30,000 .. 30,000. A value of 0 stops the positioner; +/-30,000
+                performs an unbounded move (strongly discouraged).
+            amplitude (int): Voltage amplitude of the pulse sent to the piezo,
+                0 .. 4,095 (0 = 0 V, 4,095 = 100 V); ~2047 gives roughly a 500 nm
+                step.
+            frequency (int): Step frequency in Hz, in the range 1 .. 18,500.
+
+        Raises:
+            ValueError: If ``axis`` is not a valid axis.
         """
         if axis not in self.axis_names:
             raise ValueError("{0} is not a valid axis, must be one of {1}".format(
@@ -1265,17 +1297,17 @@ class SmaractScanStageUI(PiezoStageUI):
 #                self.positions[i].setText(p)
         else:
             if axis % 3 == 0:
-                self.position_widgets[old_div(axis, 3)].xy_widget.setValue(
+                self.position_widgets[axis // 3].xy_widget.setValue(
                     piezo_levels[axis],
                     self.stage.max_voltage_levels[axis + 1] - piezo_levels[axis + 1])
             elif axis % 3 == 1:
-                self.position_widgets[old_div(axis, 3)].xy_widget.setValue(
+                self.position_widgets[axis // 3].xy_widget.setValue(
                     piezo_levels[axis - 1],
                     self.stage.max_voltage_levels[axis] - piezo_levels[axis])
             else:
-                self.position_widgets[old_div(
-                    axis,
-                    3)].z_bar.setValue(self.stage.max_voltage_levels[axis] - piezo_levels[axis])
+                self.position_widgets[axis //
+                                      3].z_bar.setValue(self.stage.max_voltage_levels[axis] -
+                                                        piezo_levels[axis])
 
 
 #            i = self.stage.axis_names.index(axis)

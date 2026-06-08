@@ -1,12 +1,9 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Mon Aug  9 16:22:04 2021
+"""Driver for the Thorlabs ELL20 linear Elliptec translation stage.
 
-@author: Hera
+Unlike the rotary ELLx models, the ELL20 measures travel in millimetres. Pulse scaling
+therefore uses ``PULSES_PER_MM`` (pulses per mm) rather than pulses per revolution.
 """
-'''
-author: im354
-'''
 
 import numpy as np
 
@@ -20,29 +17,45 @@ from pyopenlab.utils.notified_property import NotifiedProperty
 
 
 class Ell20(ElloDevice):
+    """Thorlabs ELL20 linear translation stage (positions in millimetres).
+
+    ``TRAVEL`` (mm) and ``PULSES_PER_MM`` are read from the device at construction.
+
+    Note:
+        ``__init__`` passes literal ``device_index=0, debug=0`` to ``super().__init__``,
+        discarding the values supplied by the caller. Left unfixed as it is a behavioral
+        change beyond a surgical fix.
+    """
 
     def __init__(self, serial_device, device_index=0, debug=0):
-        '''can be passed either a BusDistributor instance, or  "COM5"  '''
+        """Connect and read travel/pulse parameters from the device.
+
+        Args:
+            serial_device: A ``BusDistributor`` or a serial port name (e.g. ``"COM5"``).
+            device_index: Device bus address.
+            debug: Debug verbosity passed to the base class.
+        """
         super().__init__(serial_device, device_index=0, debug=0)
 
         self.configuration = self.get_device_info()
         self.TRAVEL = self.configuration["travel"]
         self.PULSES_PER_MM = self.configuration["pulses"]
         if self.debug > 0:
-            print("Travel (degrees):", self.TRAVEL)
-            print("Pulses per revolution", self.PULSES_PER_MM)
+            print("Travel (mm):", self.TRAVEL)
+            print("Pulses per mm", self.PULSES_PER_MM)
             print("Device status:", self.get_device_status())
 
     def _position_to_pulse_count(self, position):
-        '''
-        Convert from an position (specified in degrees) into the number of pulses
-        that need to be applied to the motor to turn it. 
+        """Convert a position in mm to a rounded motor pulse count.
 
-        pulses_per_revolution - specified by Thorlabs as number of pulses for a revolution (360 deg) of stage
-        travel - the maximum angular motion of stage (==360 for ELL8K)
+        Used when building move commands sent to the stage.
 
-        Method used when sending instructions to move to stage
-        '''
+        Args:
+            position: Target position in millimetres.
+
+        Returns:
+            int: Nearest integer pulse count (``position * PULSES_PER_MM``).
+        """
         pulses = int(np.rint(position * self.PULSES_PER_MM))
         if self.debug > 0:
             print("Input position:", position)
@@ -50,22 +63,27 @@ class Ell20(ElloDevice):
         return pulses
 
     def _pulse_count_to_position(self, pulse_count):
-        '''
-        Convert from an pulse count into the degrees. 
+        """Convert a motor pulse count back to a position in mm.
 
-        pulses_per_revolution - specified by Thorlabs as number of pulses for a revolution (360 deg) of stage
-        travel - the maximum angular motion of stage (==360 for ELL8K)
+        Inverse of ``_position_to_pulse_count``; used when decoding stage responses.
 
-        Method used when reading data received from stage
-        '''
+        Args:
+            pulse_count: Signed pulse count reported by the stage.
+
+        Returns:
+            float: Position in millimetres.
+        """
         return pulse_count / self.PULSES_PER_MM
 
     def _position_to_hex_pulses(self, position):
-        '''
-        Convert position in range (-360.0,360.0) (exclusive of edges) into a hex representation of pulse
-        count required for talking to the ELL8K stage
+        """Encode a position (mm) as the hex pulse-count string the protocol expects.
 
-        '''
+        Args:
+            position: Target position in millimetres.
+
+        Returns:
+            str: Hex string of a two's-complement pulse count.
+        """
 
         # convert position to number of pulses used to drive motors:
         pulses_int = self._position_to_pulse_count(position)
@@ -82,25 +100,27 @@ class Ell20(ElloDevice):
         return pulses_hex
 
     def _hex_pulses_to_position(self, hex_pulse_position):
-        '''
-        Convert position to position - full method for processing responses from stage
-        '''
+        """Decode a hex pulse-count string from the stage into a position in mm.
+
+        Args:
+            hex_pulse_position: Hex string carrying a two's-complement pulse count.
+
+        Returns:
+            float: Position in millimetres.
+        """
         binary_pulse_position = bytes_to_binary(hex_pulse_position)
         int_pulse_position = twos_complement_to_int(binary_pulse_position)
         return self._pulse_count_to_position(int_pulse_position)
 
     def move_absolute(self, position, blocking=True):
-        """Move to absolute position relative to home setting
+        """Move to an absolute position measured from the home position.
 
         Args:
-            position (float): position to move to, specified in degrees.
+            position: Target position in millimetres.
+            blocking: If True, wait until motion stops before returning.
 
         Returns:
-            None
-
-        Raises:
-            None
-
+            dict: Decoded status/position reply.
         """
 
         pulses_hex = self._position_to_hex_pulses(position)
@@ -113,10 +133,19 @@ class Ell20(ElloDevice):
         return self._decode_position_response(response)
 
     def get_position(self, axis=None):
-        '''
-        Query stage for its current position, in degrees
-        This method overrides the Stage class' method
-        '''
+        """Query the stage and return its current position in mm.
+
+        Overrides ``Stage.get_position``.
+
+        Args:
+            axis: Ignored; present for ``Stage`` interface compatibility.
+
+        Returns:
+            float: Current position in millimetres.
+
+        Raises:
+            ValueError: If the reply header is not a position (``PO``) response.
+        """
         response = self.query_device("gp")
         header = response[0:3]
         if header == "{0}PO".format(self.device_index):
@@ -130,10 +159,17 @@ class Ell20(ElloDevice):
             raise ValueError("Incompatible Header received:{}".format(header))
 
     def move_home(self, blocking=True):
-        '''
-        Move stage to factory default home location. 
-        Note: Thorlabs API allows resetting stages home but this not implemented as it isnt' advised 
-        '''
+        """Move to the factory default home position.
+
+        Resetting the home position (supported by the Thorlabs API) is intentionally not
+        exposed here, as Thorlabs advises against it.
+
+        Args:
+            blocking: If True, wait until motion stops before returning.
+
+        Returns:
+            dict: Decoded status/position reply.
+        """
 
         response = self.query_device("ho")
         if blocking:
@@ -141,10 +177,12 @@ class Ell20(ElloDevice):
         return self._decode_position_response(response)
 
     def get_qt_ui(self):
+        """Return the Qt control widget for this stage."""
         return ELL20UI(self)
 
 
 class ELL20UI(QuickControlBox):
+    """Qt control box with a position spinbox spanning the stage's full travel."""
 
     def __init__(self, stage):
         super().__init__()
@@ -153,16 +191,34 @@ class ELL20UI(QuickControlBox):
 
 
 class Ell20BiPositional(Ell20):
+    """ELL20 used as a two-state device, snapping to fixed slots along its travel.
+
+    ``SLOTS`` are fractions of ``TRAVEL`` and ``TOLERANCE`` is the fractional window
+    within which the stage is considered to be at a slot.
+    """
+
     SLOTS = (0.05, 0.95)  # fractions of travel
     TOLERANCE = 0.05
 
     def __init__(self, *args, **kwargs):
+        """Initialize as an ELL20 and alias the pulse scaling for inherited helpers.
+
+        Args:
+            *args: Forwarded to ``Ell20.__init__``.
+            **kwargs: Forwarded to ``Ell20.__init__``.
+        """
         super().__init__(*args, **kwargs)
         # self.move_home()
         # self.slot = 0
         self.PULSES_PER_REVOLUTION = self.PULSES_PER_MM
 
     def get_slot(self):
+        """Return the index of the slot the stage is currently at.
+
+        Returns:
+            int: Index into ``SLOTS`` if within ``TOLERANCE`` of a slot, else ``None``
+            (a warning is logged when at no recognized position).
+        """
         frac = self.get_position() / self.TRAVEL
         for i, slot in enumerate(self.SLOTS):
             if abs(frac - slot) < self.TOLERANCE:
@@ -170,20 +226,28 @@ class Ell20BiPositional(Ell20):
         self.log('not in either position', level='warn')
 
     def set_slot(self, index):
+        """Move to the slot at ``index``.
+
+        Args:
+            index: Index into ``SLOTS``.
+        """
         self.move(self.SLOTS[index] * self.TRAVEL)
 
     slot = NotifiedProperty(get_slot, set_slot)
 
     def center(self):
+        """Snap to whichever slot is closest to the current position."""
         slot = min(enumerate(self.SLOTS),
                    key=lambda i_s: abs(i_s[1] - (self.get_position() / self.TRAVEL)))[0]
         self.slot = slot
 
     def get_qt_ui(self):
+        """Return the Qt control widget for the bi-positional stage."""
         return Ell20BiPositionalUi(self)
 
 
 class Ell20BiPositionalUi(QuickControlBox):
+    """Qt control box exposing the slot selector for a bi-positional ELL20."""
 
     def __init__(self, stage):
         super().__init__()

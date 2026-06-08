@@ -1,4 +1,5 @@
 ﻿# -*- coding: utf-8 -*-
+"""Driver for Prior ProScan microscope stage controllers."""
 
 import re
 import time
@@ -10,9 +11,7 @@ import pyopenlab.instrument.stage as stage
 
 
 class ProScan(serial.SerialInstrument, stage.Stage):
-    """
-    This class handles the Prior stage.
-    """
+    """Driver for a Prior ProScan stage controller (II or III)."""
     port_settings = dict(
         baudrate=9600,
         bytesize=serial.EIGHTBITS,
@@ -28,10 +27,14 @@ class ProScan(serial.SerialInstrument, stage.Stage):
     termination_line = "END"  #: If multi-line responses are recieved, they must end with this string
 
     def __init__(self, port=None, use_si_units=False, hardware_version=None):
-        """
-        Set up the serial port and so on. 
-        If the controller is a ProScan II not a ProScan III. 
-        The hardware_version must be set to two or the Stopbit value will be incorrect
+        """Open the serial port and configure the controller.
+
+        Args:
+            port: Serial port to connect to (e.g. ``'COM7'``).
+            use_si_units: If True, positions are interpreted in metres rather
+                than microns.
+            hardware_version: Set to ``2`` for a ProScan II (which needs one stop
+                bit instead of two); leave None for a ProScan III.
         """
         if hardware_version == 2:
             self.port_settings['stopbits'] = serial.STOPBITS_ONE
@@ -62,16 +65,23 @@ class ProScan(serial.SerialInstrument, stage.Stage):
         self.axis_names = ('x', 'y', 'z')
 
     def move_rel(self, dx, block=True):
-        """Make a relative move by dx microns/metres (see move)"""
+        """Make a relative move by ``dx`` microns/metres (see :meth:`move`).
+
+        Args:
+            dx: Displacement in microns (or metres if ``use_si_units`` is True).
+            block: If True, block until the move completes.
+        """
         return self.move(dx, relative=True, block=block)
 
     def move(self, x, relative=False, axis=None, block=True):
-        """
-        Move to coordinate x (a np.array of coordinates) in microns, or metres if use_si_units is true
-        
-        By default we block until the move is over (if possible), if wait==False
-        we return immediately.  relative=True does relative motion, otherwise
-        motion is absolute.
+        """Move to coordinate ``x`` in microns (or metres if ``use_si_units``).
+
+        Args:
+            x: Target coordinate(s) as an array, or a scalar when ``axis`` is set.
+            relative: If True, move relative to the current position.
+            axis: Optional single axis name to move; None moves all axes.
+            block: If True, block until the move completes; otherwise return
+                immediately.
         """
         querystring = "G"
         if axis is not None and relative:
@@ -109,7 +119,14 @@ class ProScan(serial.SerialInstrument, stage.Stage):
             self.emergency_stop()
 
     def move_axis(self, pos, axis, relative=False, **kwargs):
-        """Move along one axis"""
+        """Move along a single axis.
+
+        Args:
+            pos: Target position for the axis.
+            axis: Axis name to move.
+            relative: If True, move relative to the current position.
+            **kwargs: Forwarded to :meth:`move` (e.g. ``block``).
+        """
         # We use the built-in emulation for relative moves
         if relative:
             return stage.Stage.move_axis(self, pos, axis, relative=True, **kwargs)
@@ -117,7 +134,14 @@ class ProScan(serial.SerialInstrument, stage.Stage):
             return self.move(pos, axis=axis, relative=relative, **kwargs)
 
     def get_position(self, axis=None):
-        """return the current position in microns"""
+        """Return the current position in microns (or metres if ``use_si_units``).
+
+        Args:
+            axis: Optional single axis name; None returns all axes.
+
+        Returns:
+            A numpy array of positions, or a scalar when ``axis`` is given.
+        """
         if axis is not None:
             return self.select_axis(self.get_position(), axis)
         else:
@@ -129,14 +153,19 @@ class ProScan(serial.SerialInstrument, stage.Stage):
     position = property(get_position)
 
     def is_moving(self):
-        """return true if the stage is in motion"""
+        """Return True if the stage is currently in motion."""
         return self.int_query("$,S") > 0
 
     def emergency_stop(self):
+        """Immediately halt all stage motion (sends the ``K`` command)."""
         return self.query("K")
 
     def test_communications(self):
-        """Check there is a prior stage at the other end of the COM port."""
+        """Check that a Prior stage is responding on the COM port.
+
+        Returns:
+            True if the controller identifies as a ProScan, otherwise False.
+        """
         response = self.query("?", multiline=True)
         if response.startswith("PROSCAN"):
             return True
@@ -145,6 +174,7 @@ class ProScan(serial.SerialInstrument, stage.Stage):
 
     @property
     def max_speed_z(self):
+        """Maximum Z-axis speed reported by the controller (``SMZ`` command)."""
         return self.query('SMZ')
 
     @max_speed_z.setter
@@ -152,9 +182,11 @@ class ProScan(serial.SerialInstrument, stage.Stage):
         return self.query(f'SMZ {int(speed)}')
 
     def disable_joy(self):
+        """Disable the joystick (sends the ``H`` command)."""
         self.query('H')
 
     def enable_joy(self):
+        """Enable the joystick (sends the ``J`` command)."""
         self.query('J')
 
 

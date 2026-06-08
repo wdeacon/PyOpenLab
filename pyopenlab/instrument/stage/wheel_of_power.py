@@ -1,8 +1,9 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Sun Oct 07 12:43:44 2018
+"""Power-calibration helpers pairing a power meter with a rotation/filter stage.
 
-@author: wmd22, ydb20
+Provides :class:`WheelOfPower`, a thin wrapper for moving to a target power, and
+:class:`PowerWheelMixin`, a reusable calibration mixin for power-controlling
+instruments.
 """
 from collections import deque
 import os
@@ -17,10 +18,19 @@ from pyopenlab.experiment.gui import run_function_modally
 
 
 class WheelOfPower(object):
-    """A quick wrapper to add a filter wheel and a powermeter together to create
-    an autocalibrate object which can move to a given power"""
+    """Wrapper combining a filter wheel and a power meter to move to a set power.
+
+    Builds an interpolated lookup of stage angle versus measured power so the
+    stage can be driven to a requested power level.
+    """
 
     def __init__(self, power_meter, rotation_stage):
+        """Store the instruments and initialise the rolling power history.
+
+        Args:
+            power_meter: Power meter instrument exposing ``average_power``.
+            rotation_stage: Rotation/filter stage exposing ``move``.
+        """
         self.power_meter = power_meter
         self.rotation_stage = rotation_stage
         self.abort_deque = False
@@ -29,6 +39,13 @@ class WheelOfPower(object):
         self.history_deque = deque(maxlen=self.deque_length)
 
     def calibrate(self, start=0, stop=360, steps=360):
+        """Sweep the stage and build an interpolated power-versus-angle table.
+
+        Args:
+            start: First stage position to measure.
+            stop: Last stage position to measure.
+            steps: Number of measurement points across the sweep.
+        """
         stage_positions = np.linspace(start, stop, steps)
         powers = []
         for position in stage_positions:
@@ -42,18 +59,43 @@ class WheelOfPower(object):
         self.stage_position = new_stage_positions
 
     def power_to_pos(self, power):
-        """Find the closest power by looking up the interpolated table """
+        """Return the stage position(s) whose calibrated power is closest to ``power``.
+
+        Args:
+            power: Target power level.
+
+        Returns:
+            The stage position(s) from the interpolated table nearest to ``power``.
+        """
         return self.stage_position[self.powers == self.find_nearest(self.powers, power)]
 
     def find_nearest(self, array, value):
-        """ find the minimum value of an array"""
+        """Return the element of ``array`` closest to ``value``.
+
+        Args:
+            array: Array to search.
+            value: Target value.
+
+        Returns:
+            The array element with the smallest absolute difference from ``value``.
+        """
         return array[np.abs(array - value).argmin()]
 
     def move_to_power(self, power):
+        """Move the rotation stage to the position giving the requested power.
+
+        Args:
+            power: Target power level.
+        """
         pos = self.power_to_pos(power)
         self.rotation_stage.move(pos)
 
     def update_deque(self):
+        """Continuously average power readings into the history deque until aborted.
+
+        Each iteration averages readings over ``deque_time`` seconds and appends
+        the mean to ``history_deque``. Set ``abort_deque`` True to stop the loop.
+        """
         running = True
         while running:
             t0 = time.time()
@@ -66,10 +108,17 @@ class WheelOfPower(object):
         self.abort_deque = False
 
     def start_deque_thread(self):
+        """Start a background thread running :meth:`update_deque`."""
         self.deque_thread = threading.Thread(target=self.update_deque)
         self.deque_thread.start()
 
     def clear_deque_thread(self):
+        """Reset the power history deque to an empty deque.
+
+        Note:
+            Despite the name, this only clears ``history_deque``; it does not stop
+            the running thread (use ``abort_deque`` for that).
+        """
         self.history_deque = deque(maxlen=self.deque_length)
 
 
@@ -83,6 +132,7 @@ class PowerWheelMixin(object):
     """
 
     def __init__(self):
+        """Initialise identity calibration functions and empty calibration state."""
         super(PowerWheelMixin, self).__init__()
         self.cal_to_raw = lambda x: x
         self.raw_to_cal = lambda x: x
@@ -93,6 +143,11 @@ class PowerWheelMixin(object):
 
     @property
     def raw_power(self):
+        """Raw, uncalibrated power setting. Must be implemented by subclasses.
+
+        Raises:
+            NotImplementedError: Always, until overridden by a subclass.
+        """
         raise NotImplementedError
 
     @raw_power.setter
@@ -100,27 +155,40 @@ class PowerWheelMixin(object):
         raise NotImplementedError
 
     def prepare_calibration(self, calibration):
-        """
-        Allows the user to perform some analysis on the raw_calibration before making an interpolation.
-        Useful in a situation where the calibration is not monotonic (making one of the interpolations multivalued)
-        :return:
+        """Optionally process the raw calibration before interpolation.
+
+        Useful when the calibration is not monotonic (which would make one of the
+        interpolations multivalued). The default implementation is a no-op.
+
+        Args:
+            calibration: The raw calibration array.
+
+        Returns:
+            The (optionally processed) calibration array.
         """
         return calibration
 
     def _calibration_functions(self, calibration=None):
+        """Build the cal-to-raw and raw-to-cal interpolation functions.
+
+        Args:
+            calibration: A ``[raw, cal]`` array. Defaults to ``self.calibration``.
+        """
         if calibration is None:
             calibration = self.calibration
         self.cal_to_raw = interp1d(calibration[1], calibration[0])
         self.raw_to_cal = interp1d(calibration[0], calibration[1])
 
     def recalibrate(self, power_meter, points=3):
-        """
-        Selects a few random points. Finds the factor that would most closely bring the calibration to these
-        points. This assumes that the only possible change is a multiplicative factor
+        """Rescale the existing calibration by a single multiplicative factor.
 
-        :param power_meter: instrument instance with a 'power' property
-        :param points: int. Number of points you want to check
-        :return:
+        Selects a few random points and finds the factor that best matches the
+        calibration to freshly measured values, assuming the only change is a
+        multiplicative scaling.
+
+        Args:
+            power_meter: Instrument instance with a ``power`` property.
+            points: Number of points to check.
         """
         assert self.calibration is not None
 

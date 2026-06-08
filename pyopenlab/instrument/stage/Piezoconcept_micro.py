@@ -1,12 +1,5 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Thu Oct 01 11:52:44 2015
-
-@author: wmd22
-"""
-from __future__ import print_function
-
-from builtins import str
+"""Serial driver for the Piezoconcept objective collar nanopositioner."""
 import time
 
 import numpy as np
@@ -17,17 +10,19 @@ from pyopenlab.instrument.stage import Stage
 
 
 class Piezoconcept(SerialInstrument, Stage):
-    '''A class for the Piezoconcept objective collar '''
+    """A class for the Piezoconcept objective collar."""
     axis_names = ('z',)
 
     def __init__(self, port=None, unit='u', cmd_axis='Z'):
-        '''Set up baudrate etc and recenters the stage to the center of it's range (50um)
-        
+        """Set up the serial port and configure the command axis and units.
+
         Args:
-            port(int/str):  The port the device is connected 
-                            to in any of the accepted serial formats
-            
-        '''
+            port (int or str): The port the device is connected to, in any of
+                the accepted serial formats.
+            unit (str): Default distance unit, ``'u'`` for microns or ``'n'``
+                for nanometres.
+            cmd_axis (str): The controller axis letter used in commands.
+        """
         self.termination_character = '\n'
         self.port_settings = {
             'baudrate': 115200,
@@ -45,12 +40,17 @@ class Piezoconcept(SerialInstrument, Stage):
         self.distance_scale = 1 if unit == 'n' else 1_000.
 
     def move(self, value, axis=None, relative=False):
-        '''Move to an absolute positions between 0 and 100 um 
-        
-        Args:
-            value(float):   position to move to
+        """Move to a position between 0 and 100 um.
 
-        '''
+        Out-of-range moves are rejected with a logged warning.
+
+        Args:
+            value (float): Position (or displacement, if ``relative``) to move,
+                in the configured ``unit``.
+            axis (optional): Accepted for API compatibility; ignored
+                (single-axis device).
+            relative (bool): If True, move relative to the current position.
+        """
         nm = int(self.distance_scale * value)
         if relative:
             if 0 <= nm / 1_000 + self.position * 1_000 < 100_000:
@@ -68,26 +68,38 @@ class Piezoconcept(SerialInstrument, Stage):
                 self._logger.warn("The value is out of range! 0-100 um (0-1E8 nm) (Z)")
 
     def get_position(self):
+        """Query the controller for the current position.
+
+        Returns:
+            float: The current axis position in nanometres.
+        """
         return float(self.query(f'GET_{self.cmd_axis}')[:-3])
 
     def move_step(self, direction):
-        '''Move a predefined step in either direction
+        """Move by a predefined step in either direction.
+
         Args:
-            direction(int):     +1/-1 corresponding to either positive or negative directions
-            
-        Notes:
-            There is no value checking on the directions value therefore 
-            it can also be used to perform integer multiples of steps
-        '''
+            direction (int): +1/-1 for positive or negative direction.
+
+        Note:
+            There is no value checking on ``direction``, so it can also be used
+            to perform integer multiples of the step size. This class defines
+            neither ``move_rel`` nor ``stepsize``, so calling this raises
+            ``AttributeError``; left unfixed as correcting it is a behavioural
+            change.
+        """
         self.move_rel(direction * self.stepsize)
 
     def recenter(self):
-        '''Recenter the stage (50um) and reset software position 
-        '''
+        """Recenter the stage to mid-range (50 um)."""
         self.move(50)
 
     def INFO(self):
-        ''' '''
+        """Query the controller's info string.
+
+        Returns:
+            str: The multi-line ``INFOS`` response from the controller.
+        """
         return self.query(
             "INFOS",
             multiline=True,
@@ -96,7 +108,11 @@ class Piezoconcept(SerialInstrument, Stage):
         )
 
     def DSIO(self):
-        ''' '''
+        """Query the controller's digital signal I/O state.
+
+        Returns:
+            str: The multi-line ``DSIO 1`` response from the controller.
+        """
         return self.query(
             "DSIO 1",
             multiline=True,
@@ -105,6 +121,11 @@ class Piezoconcept(SerialInstrument, Stage):
         )
 
     def HELP(self):
+        """Query the controller's help string.
+
+        Returns:
+            str: The ``HELP_`` response from the controller.
+        """
         return self.query('HELP_')
 
 

@@ -1,7 +1,4 @@
-﻿"""
-Base class and interface for Stages.
-"""
-__author__ = 'alansanders, richardbowman'
+﻿"""Base class and interface for motion-control stages, plus Qt control widgets."""
 
 import collections
 from collections import OrderedDict
@@ -23,44 +20,72 @@ from pyopenlab.utils.gui import uic
 
 
 class Stage(Instrument):
-    """A class representing motion-control stages.
-    
-    This class primarily provides two things: the ability to find the position
-    of the stage (using `Stage.position` or `Stage.get_position(axis="a")`), 
-    and the ability to move the stage (see `Stage.move()`).
-    
-    Subclassing Notes
-    -----------------
-    The minimum you need to do in order to subclass this is to override the
-    `move` method and the `get_position` method.  NB you must handle the case
-    where `axis` is specified and where it is not.  For `move`, `move_axis` is
-    provided, which will help emulate single-axis moves on stages that can't 
-    make them natively.
-    
-    In the future, a class factory method might be available, that will 
-    simplify the emulation of various features.
+    """Base class representing a motion-control stage.
+
+    A stage provides two core capabilities: reporting its position (via the
+    ``position`` property or ``get_position(axis=...)``) and moving (via
+    ``move()``). Positions are expressed in the units given by ``unit`` and,
+    when no single axis is selected, are ordered to match ``axis_names``.
+
+    To subclass, override at minimum ``move()`` and ``get_position()``. Both
+    must handle the case where ``axis`` is given and where it is ``None`` (all
+    axes). For stages that cannot move a single axis natively, ``move_axis()``
+    emulates single-axis moves by issuing a full-position move.
+
+    Attributes:
+        axis_names: Tuple of axis labels defining axis count and ordering.
+        unit: Distance unit for positions and steps (e.g. ``'m'``, ``'u'``,
+            ``'step'``, ``'deg'``).
     """
     axis_names = ('x', 'y', 'z')
 
     def __init__(self, unit='m'):
+        """Initialise the stage.
+
+        Args:
+            unit: Distance unit used for positions and step sizes.
+        """
         Instrument.__init__(self)
         self.unit = unit
 
     def move(self, pos, axis=None, relative=False):
+        """Move the stage. Must be overridden by subclasses.
+
+        Args:
+            pos: Target position, or displacement when ``relative`` is True.
+            axis: Axis to move, or ``None`` to move all axes.
+            relative: If True, move by ``pos`` relative to the current position.
+
+        Raises:
+            NotImplementedError: Always, unless overridden by a subclass.
+        """
         raise NotImplementedError("You must override move() in a Stage subclass")
 
     def move_rel(self, position, axis=None):
-        """Make a relative move, see move() with relative=True."""
+        """Make a relative move; equivalent to ``move(..., relative=True)``.
+
+        Args:
+            position: Displacement to move by.
+            axis: Axis to move, or ``None`` to move all axes.
+        """
         self.move(position, axis, relative=True)
 
     def move_axis(self, pos, axis, relative=False, **kwargs):
-        """Move along one axis.
-        
-        This function moves only in one axis, by calling self.move with 
-        appropriately generated values (i.e. it supplies all axes with position
-        instructions, but those not moving just get the current position).
-        
-        It's intended for use in stages that don't support single-axis moves."""
+        """Move a single axis by emulating it with a full-position move.
+
+        Builds a full-position vector (all current positions for an absolute
+        move, or zeros for a relative move), sets the selected axis, and calls
+        ``move()``. Intended for stages that do not support single-axis moves.
+
+        Args:
+            pos: Target position for the axis, or displacement if ``relative``.
+            axis: Axis to move; must be in ``axis_names``.
+            relative: If True, treat ``pos`` as a relative displacement.
+            **kwargs: Forwarded to ``move()``.
+
+        Raises:
+            ValueError: If ``axis`` is not in ``axis_names``.
+        """
         if axis not in self.axis_names:
             raise ValueError("{0} is not a valid axis, must be one of {1}".format(
                 axis, self.axis_names))
@@ -70,32 +95,75 @@ class Stage(Instrument):
         self.move(full_position, relative=relative, **kwargs)
 
     def get_position(self, axis=None):
+        """Return the current position. Must be overridden by subclasses.
+
+        Args:
+            axis: Axis to query, or ``None`` to return all axes.
+
+        Returns:
+            The current position of the requested axis, or of all axes when
+            ``axis`` is ``None`` (ordered to match ``axis_names``).
+
+        Raises:
+            NotImplementedError: Always, unless overridden by a subclass.
+        """
         raise NotImplementedError("You must override get_position in a Stage subclass.")
 
     def select_axis(self, iterable, axis):
-        """Pick an element from a tuple, indexed by axis name."""
+        """Pick the element of ``iterable`` corresponding to a named axis.
+
+        Args:
+            iterable: A sequence ordered to match ``axis_names``.
+            axis: Axis name to select.
+
+        Returns:
+            The element of ``iterable`` at the index of ``axis`` in
+            ``axis_names``.
+        """
         assert axis in self.axis_names, ValueError("{0} is not a valid axis name.".format(axis))
         return iterable[self.axis_names.index(axis)]
 
     def _get_position_proxy(self):
-        """Return self.get_position() (this is a convenience to avoid having
-        to redefine the position property every time you subclass - don't call
-        it directly)"""
+        """Return ``get_position()`` for the ``position`` property.
+
+        Provided so subclasses need not redefine the ``position`` property.
+        Not intended to be called directly.
+        """
         return self.get_position()
 
     position = property(fget=_get_position_proxy, doc="Current position of the stage (all axes)")
 
     def is_moving(self, axes=None):
-        """Returns True if any of the specified axes are in motion."""
+        """Report whether any of the specified axes are in motion.
+
+        Args:
+            axes: Axes to check, or ``None`` to check all axes.
+
+        Returns:
+            True if any of the axes are moving.
+
+        Raises:
+            NotImplementedError: Always, unless overridden by a subclass.
+        """
         raise NotImplementedError(
             "The is_moving method must be subclassed and implemented before it's any use!")
 
     def wait_until_stopped(self, axes=None):
-        """Block until the stage is no longer moving."""
+        """Block until the stage is no longer moving.
+
+        Args:
+            axes: Axes to wait on, or ``None`` to wait on all axes.
+        """
         while self.is_moving(axes=axes):
             time.sleep(0.01)
 
     def get_qt_ui(self):
+        """Return a Qt control widget appropriate for this stage's unit.
+
+        Returns:
+            A ``StageUI`` configured with step-size bounds suited to ``unit``,
+            or ``None`` (after logging a warning) if ``unit`` is unrecognised.
+        """
         if self.unit == 'm':
             return StageUI(self)
         elif self.unit == 'u':
@@ -108,6 +176,22 @@ class Stage(Instrument):
             self._logger.warn('Tried displaying a GUI for an unrecognised unit: %s' % self.unit)
 
     def get_axis_param(self, get_func, axis=None):
+        """Query a per-axis parameter, broadcasting over one or many axes.
+
+        Args:
+            get_func: Callable taking a single axis name and returning its value.
+            axis: A single axis name, a sequence of axis names, or ``None`` for
+                all axes.
+
+        Returns:
+            A tuple of values when ``axis`` is ``None`` or a sequence, otherwise
+            the single value returned by ``get_func(axis)``.
+
+        Note:
+            ``collections.Sequence`` was moved to ``collections.abc`` in Python
+            3.3 and removed from ``collections`` in 3.10, so the sequence branch
+            raises ``AttributeError`` on modern Python. Logged, not fixed.
+        """
         if axis is None:
             return tuple(get_func(axis) for axis in self.axis_names)
         elif isinstance(axis, collections.Sequence) and not isinstance(axis, str):
@@ -116,6 +200,19 @@ class Stage(Instrument):
             return get_func(axis)
 
     def set_axis_param(self, set_func, value, axis=None):
+        """Set a per-axis parameter, broadcasting value(s) over axis/axes.
+
+        Args:
+            set_func: Callable taking ``(value, axis)`` to set one axis.
+            value: A single value applied to every selected axis, or a sequence
+                of values paired positionally with the selected axes.
+            axis: A single axis name, a sequence of axis names, or ``None`` for
+                all axes.
+
+        Note:
+            See ``get_axis_param``: the ``collections.Sequence`` checks here
+            raise ``AttributeError`` on Python 3.10+. Logged, not fixed.
+        """
         if axis is None:
             if isinstance(value, collections.Sequence):
                 tuple(set_func(v, axis) for v, axis in zip(value, self.axis_names))
@@ -133,13 +230,25 @@ class Stage(Instrument):
 
 
 class PiezoStage(Stage):
+    """Stage base class for piezo actuators, adding voltage-level controls.
+
+    All piezo accessors are abstract and must be overridden; the base
+    implementations raise ``NotImplementedError``.
+    """
 
     def __init__(self):
         super(PiezoStage, self).__init__()
 
     def get_piezo_level(self, axis=None):
-        """ Returns the voltage levels of the specified piezo axis. """
-        raise NotImplementedError("You must override get_piezo_leveln in a Stage subclass.")
+        """Return the voltage levels of the specified piezo axis.
+
+        Args:
+            axis: Axis to query, or ``None`` for all axes.
+
+        Raises:
+            NotImplementedError: Always, unless overridden by a subclass.
+        """
+        raise NotImplementedError("You must override get_piezo_level in a Stage subclass.")
         if axis is None:
             return [self.get_scanner_level(axis) for axis in self.axis_names]
         else:
@@ -148,30 +257,69 @@ class PiezoStage(Stage):
                     axis, self.axis_names))
 
     def set_piezo_level(self, level, axis):
-        """ Sets the voltage levels of the specified piezo axis. """
+        """Set the voltage level of the specified piezo axis.
+
+        Args:
+            level: Voltage level to apply.
+            axis: Axis to set.
+
+        Raises:
+            NotImplementedError: Always, unless overridden by a subclass.
+        """
         raise NotImplementedError("You must override set_piezo_level in a Stage subclass.")
         if axis not in self.axis_names:
             raise ValueError("{0} is not a valid axis, must be one of {1}".format(
                 axis, self.axis_names))
 
     def get_piezo_voltage(self, axis):
-        """ Returns the voltage of the specified piezo axis. """
+        """Return the voltage of the specified piezo axis.
+
+        Args:
+            axis: Axis to query.
+
+        Raises:
+            NotImplementedError: Always, unless overridden by a subclass.
+        """
         raise NotImplementedError("You must override get_piezo_voltage in a Stage subclass.")
 
     def set_piezo_voltage(self, axis, voltage):
-        """ Sets the voltage of the specified piezo axis. """
+        """Set the voltage of the specified piezo axis.
+
+        Args:
+            axis: Axis to set.
+            voltage: Voltage to apply.
+
+        Raises:
+            NotImplementedError: Always, unless overridden by a subclass.
+        """
         raise NotImplementedError("You must override set_piezo_voltage in a Stage subclass.")
 
     def get_piezo_position(self, axis=None):
-        """ Returns the position of the specified piezo axis. """
+        """Return the position of the specified piezo axis.
+
+        Args:
+            axis: Axis to query, or ``None`` for all axes.
+
+        Raises:
+            NotImplementedError: Always, unless overridden by a subclass.
+        """
         raise NotImplementedError("You must override get_piezo_position in a Stage subclass.")
 
     def set_piezo_position(self, axis=None):
-        """ Sets the position of the specified piezo axis. """
+        """Set the position of the specified piezo axis.
+
+        Args:
+            axis: Axis to set, or ``None`` for all axes.
+
+        Raises:
+            NotImplementedError: Always, unless overridden by a subclass.
+        """
         raise NotImplementedError("You must override set_piezo_position in a Stage subclass.")
 
 
 class StageUI(QtWidgets.QWidget, UiTools):
+    """Qt widget providing absolute and relative position controls for a Stage."""
+
     update_ui = QtCore.Signal([int], [str])
 
     def __init__(self,
@@ -194,6 +342,12 @@ class StageUI(QtWidgets.QWidget, UiTools):
         self.update_positions()
 
     def move_axis_absolute(self, position, axis):
+        """Move one axis to an absolute position and refresh its display.
+
+        Args:
+            position: Absolute target position.
+            axis: Axis name (str) or index (int) to move.
+        """
         self.stage.move(position, axis=axis, relative=False)
         if type(axis) == str:
             self.update_ui[str].emit(axis)
@@ -201,6 +355,13 @@ class StageUI(QtWidgets.QWidget, UiTools):
             self.update_ui[int].emit(axis)
 
     def move_axis_relative(self, index, axis, dir=1):
+        """Move one axis by its configured step size and refresh its display.
+
+        Args:
+            index: Index into ``self.step_size`` for the per-axis step.
+            axis: Axis name (str) or index (int) to move.
+            dir: Sign multiplier for the step (``1`` forward, ``-1`` back).
+        """
         self.stage.move(dir * self.step_size[index], axis=axis, relative=True)
         if type(axis) == str:
             #    axis = QtCore.QString(axis)
@@ -216,17 +377,22 @@ class StageUI(QtWidgets.QWidget, UiTools):
 #            self.move_axis_absolute(0, axis)
 
     def create_axes_layout(self, default_step=1e-6, arrange_buttons='cross', rows=None):
-        """Layout of the PyQt widgets for absolute and relative movement of all axis
+        """Build the Qt widgets for absolute and relative movement of every axis.
 
-        :param default_step:
-        :param arrange_buttons: either 'cross' or 'stack'. If 'cross', assumes the stages axes are x,y,z movement,
-        placing the arrows in an intuitive cross pattern
-        :param rows: number of rows per column when distributing the QtWidgets
-        :return:
+        Args:
+            default_step: Initial relative step size selected per axis.
+            arrange_buttons: ``'cross'`` lays the direction arrows out in an
+                intuitive x/y/z cross; ``'stack'`` stacks them in rows.
+            rows: Rows per column when distributing widgets; defaults to
+                ``ceil(sqrt(number_of_axes))``.
+
+        Raises:
+            ValueError: If ``arrange_buttons`` is neither ``'cross'`` nor
+                ``'stack'``.
         """
         if rows is None:
             rows = np.ceil(np.sqrt(len(self.stage.axis_names)))
-        rows = int(rows)  # int is needed for the old_div and the modulo operations
+        rows = int(rows)  # int is needed for the floor-division and modulo operations
 
         uic.loadUi(os.path.join(os.path.dirname(__file__), 'stage.ui'), self)
         self.update_pos_button.clicked.connect(partial(self.update_positions, None))
@@ -314,6 +480,7 @@ class StageUI(QtWidgets.QWidget, UiTools):
             minus_button.resize(icon_size)
 
     def button_pressed(self, *args, **kwargs):
+        """Handle a "go" button: move its axis to the value in the text field."""
         sender = self.sender()
         if sender in self.set_position_buttons:
             index = self.set_position_buttons.index(sender)
@@ -322,13 +489,18 @@ class StageUI(QtWidgets.QWidget, UiTools):
             self.move_axis_absolute(position, axis)
 
     def on_activated(self, index, value):
-        # print self.sender(), index, value
+        """Store the step size chosen in axis ``index``'s step-size combo box."""
         self.step_size[index] = self.step_size_values[value]
 
     @QtCore.Slot(int)
-    # @QtCore.pyqtSlot('QString')
     @QtCore.Slot(str)
     def update_positions(self, axis=None):
+        """Refresh the displayed position for one axis, or all axes.
+
+        Args:
+            axis: Axis name to refresh; any value not in ``axis_names`` (including
+                ``None``) refreshes every axis.
+        """
         if axis not in self.stage.axis_names:
             axis = None
         if axis is None:
@@ -346,13 +518,29 @@ class StageUI(QtWidgets.QWidget, UiTools):
 
 
 def step_size_dict(smallest, largest, mantissas=[1, 2, 5], unit='m'):
-    """Return a dictionary with nicely-formatted distances as keys and metres as values."""
+    """Build an ordered map of formatted step sizes to their numeric values.
+
+    Args:
+        smallest: Smallest step size to include (inclusive).
+        largest: Largest step size to include (inclusive).
+        mantissas: Significand multipliers used at each power of ten.
+        unit: Unit passed to ``engineering_format`` for the string keys.
+
+    Returns:
+        An ``OrderedDict`` mapping engineering-formatted strings to the numeric
+        step sizes they represent, in ascending order.
+    """
     log_range = np.arange(np.floor(np.log10(smallest)), np.floor(np.log10(largest)) + 1)
     steps = [m * 10**e for e in log_range for m in mantissas if smallest <= m * 10**e <= largest]
     return OrderedDict((engineering_format(s, unit), s) for s in steps)
 
 
 class PiezoStageUI(StageUI):
+    """Qt control widget for piezo stages, with XY crosshair and Z-bar widgets.
+
+    Axes are grouped in threes (one XYZ stage per group), so ``axis_names``
+    length should be a multiple of three.
+    """
 
     def __init__(self,
                  stage,
@@ -369,6 +557,12 @@ class PiezoStageUI(StageUI):
                                            default_step)
 
     def create_axes_layout(self, default_step=1e-8, stack_multiple_stages='horizontal'):
+        """Build per-stage XYZ position widgets and step controls.
+
+        Args:
+            default_step: Initial relative step size selected per axis.
+            stack_multiple_stages: Reserved for future layout control; unused.
+        """
         uic.loadUi(os.path.join(os.path.dirname(__file__), 'piezo_stage.ui'), self)
         path = os.path.dirname(os.path.realpath(pyopenlab.ui.__file__))
         icon_size = QtCore.QSize(12, 12)
@@ -461,6 +655,7 @@ class PiezoStageUI(StageUI):
             minus_button.resize(icon_size)
 
     def crosshair_moved(self):
+        """Push a dragged XY crosshair's position to the stage's piezo levels."""
         sender = self.sender()
         if sender in self.xy_positions:
             i = self.xy_positions.index(sender)
@@ -472,6 +667,11 @@ class PiezoStageUI(StageUI):
     @QtCore.Slot(int)
     @QtCore.Slot(str)
     def update_positions(self, axis=None):
+        """Refresh the XY widgets and Z bars from the stage's piezo levels.
+
+        Args:
+            axis: Axis index to refresh, or ``None`` to refresh every stage.
+        """
         piezo_levels = self.stage.piezo_levels
         if axis is None:
             for i in range(len(self.position_widgets)):
@@ -593,7 +793,7 @@ class PiezoStageUI(StageUI):
 
 
 class DummyStage(Stage):
-    """A stub stage for testing purposes, prints moves to the console."""
+    """In-memory stub stage for testing; tracks position without hardware."""
 
     def __init__(self):
         super(DummyStage, self).__init__()
@@ -603,6 +803,13 @@ class DummyStage(Stage):
         self.piezo_levels = [50, 50, 50]
 
     def move(self, position, axis=None, relative=False):
+        """Update the in-memory position for the given axis or axes.
+
+        Args:
+            position: Target position(s), or displacement(s) if ``relative``.
+            axis: Axis (or sequence of axes) to move, or ``None`` for all axes.
+            relative: If True, add to the current position instead of setting it.
+        """
 
         def move_axis(position, axis):
             if relative:
@@ -622,11 +829,20 @@ class DummyStage(Stage):
     #    self.move(position, relative=True)
 
     def get_position(self, axis=None):
+        """Return the in-memory position for the given axis or all axes.
+
+        Args:
+            axis: Axis (or sequence of axes) to query, or ``None`` for all axes.
+
+        Returns:
+            The stored position(s) for the requested axis or axes.
+        """
         return self.get_axis_param(lambda axis: self._position[self.axis_names.index(axis)], axis)
 
     position = property(get_position)
 
     def get_qt_ui(self):
+        """Return a ``PiezoStageUI`` for this stage with the Z display hidden."""
         return PiezoStageUI(self, show_z_pos=False)
 
 
