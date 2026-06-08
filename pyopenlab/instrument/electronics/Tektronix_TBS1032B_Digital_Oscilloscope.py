@@ -1,8 +1,10 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Mon Apr  5 15:28:19 2021
+"""VISA driver for the Tektronix TBS1032B digital storage oscilloscope.
 
-@author: Hera
+Note:
+    Importing this module instantiates a ``TBS1032B`` at the bottom of the file
+    (``o = TBS1032B(...)``), which attempts to open a VISA connection on import.
+    This is a pre-existing bug left for a later code pass.
 """
 
 from functools import partial
@@ -12,26 +14,57 @@ from pyopenlab.instrument.visa_instrument import VisaInstrument
 
 
 class TBS1032B(VisaInstrument):
-    """Visa Interface for TBS1032B Tektronix Digital Oscilloscope"""
+    """VISA interface for the Tektronix TBS1032B digital oscilloscope."""
 
     def __init__(self, address='GPIB0::3::INSTR'):
+        """Open VISA communication with the oscilloscope.
+
+        Args:
+            address: VISA resource address.
+        """
         super(TBS1032B, self).__init__(address)
 
     def channel(self, channel):
+        """Select the channel used for immediate measurements.
+
+        Args:
+            channel: Channel number to measure from.
+        """
         self.write('MEASUrement:IMMed:SOUrce CH' + str(channel))
 
     def set_probe(self, channel, probe):
+        """Set the probe attenuation for a channel.
+
+        Args:
+            channel: Channel number.
+            probe: Probe attenuation factor.
+        """
         self.write('CH' + str(channel) + ':PRObe' + str(probe))
 
     def autoset(self):
+        """Run the scope's autoset to fit the current signal."""
         self.write('AUTOSet EXECute')
 
     def acquisition(self, acq):
-        """ RUN or STOP"""
+        """Start or stop acquisition.
+
+        Args:
+            acq: ``'RUN'`` or ``'STOP'``.
+        """
         self.write('ACQuire:STATE ' + str(acq))
 
     def read_par(self, channel, parameter):
-        """Reading given parameter value and returning a list of (value type, value)"""
+        """Measure a named parameter on a channel.
+
+        Args:
+            channel: Channel number to measure.
+            parameter: Parameter name (many aliases accepted, e.g. ``'freq'``,
+                ``'Vpp'``, ``'mean'``, ``'probe'``).
+
+        Returns:
+            tuple: ``(value_type, value)``; ``('Nothing', None)`` if the
+            parameter is not recognised.
+        """
         avoid_random_output = False
 
         if parameter in ['frequency', 'freq', 'Frequency', 'Freq', 'FREQUENCY', 'FREQ']:
@@ -72,6 +105,16 @@ class TBS1032B(VisaInstrument):
             return ('Nothing', None)
 
     def output_typo_adjust(self, a, b):
+        """Strip trailing newlines from a measurement type/value pair.
+
+        Args:
+            a: Measurement type string.
+            b: Measurement value string.
+
+        Returns:
+            tuple: ``(type, value)`` with ``value`` coerced to float when it had
+            a trailing newline.
+        """
         a = a
         b = b
         if a[len(a) - 1] == '\n':

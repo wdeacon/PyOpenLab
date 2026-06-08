@@ -1,4 +1,5 @@
-﻿from __future__ import print_function
+﻿"""VISA driver for the Agilent/Keysight DSO-X 2012A oscilloscope."""
+from __future__ import print_function
 
 from builtins import object
 
@@ -17,12 +18,24 @@ from pyopenlab.utils.gui import *
 
 
 class AgilentDSOChannel(object):
+    """One input channel of an :class:`AgilentDSO`, exposing its SCPI settings.
+
+    The ``display``, ``range``, ``scale``, ``offset``, ``coupling``, ``units``,
+    ``label`` and ``probe`` attributes are channel-scoped queried properties.
+    """
 
     def __init__(self, dso, channel):
+        """Bind this channel to its parent scope.
+
+        Args:
+            dso: The owning :class:`AgilentDSO`.
+            channel: The channel number this object represents.
+        """
         self.parent = dso
         self.ch = channel
 
     def capture(self):
+        """Digitize this channel into the scope's acquisition memory."""
         self.parent.write(':digitize channel{0}'.format(self.ch))
 
     display = queried_channel_property(':channel{0}:display?',
@@ -45,11 +58,20 @@ class AgilentDSOChannel(object):
 
 
 class AgilentDSO(VisaInstrument):
-    """
-    Interface to the Agilent digital storage oscilloscopes.
+    """Interface to Agilent/Keysight digital storage oscilloscopes.
+
+    Acquisition, timebase, trigger and waveform settings are exposed as queried
+    properties (e.g. :attr:`time_range`, :attr:`trigger_level`). Per-channel
+    settings live on the :class:`AgilentDSOChannel` objects in :attr:`channels`.
+    This variant also drives the built-in waveform generator.
     """
 
     def __init__(self, address='USB0::0x0957::0x1799::MY51330673::INSTR'):
+        """Open VISA communication and create the channel objects.
+
+        Args:
+            address: VISA resource address.
+        """
         super(AgilentDSO, self).__init__(address=address)
         self.instr.read_termination = '\n'
         self.instr.write_termination = '\n'
@@ -65,15 +87,24 @@ class AgilentDSO(VisaInstrument):
         #self.instr.values_format.use_binary('B', byteorder, np.array)
 
     def reset(self):
+        """Reset the scope to its default state (``*RST``)."""
         self.write('*rst')
 
     def clear(self):
+        """Clear the scope's status registers (``*CLS``)."""
         self.write('*cls')
 
     def autoscale(self):
+        """Auto-scale the display to the current signals."""
         self.write(':autoscale')
 
     def capture(self, channel=None):
+        """Digitize one or all channels into acquisition memory.
+
+        Args:
+            channel: A channel from :attr:`channels` to digitize, or ``None``
+                to digitize all channels.
+        """
         if channel is None:
             self.write(':digitize')
         else:
@@ -81,41 +112,67 @@ class AgilentDSO(VisaInstrument):
             self.write(':digitize channel{0}'.format(channel))
 
     def run(self):
+        """Start continuous acquisition."""
         self.write(':run')
 
     def single_shot(self):
+        """Arm the scope for a single acquisition."""
         self.write(':single')
 
     def stop(self):
+        """Stop acquisition."""
         self.write(':stop')
 
     def force_trigger(self):
+        """Force an immediate trigger."""
         self.write(':trigger:force')
 
     def trigger_setup(self):
+        """Auto-set the trigger level to the current signal (``:asetup``)."""
         self.write(':trigger:level:asetup')
 
     def waveform_generator(self, state):
+        """Enable or disable the built-in waveform generator output.
+
+        Args:
+            state: Output state, e.g. ``1``/``0`` or ``'ON'``/``'OFF'``.
+        """
         self.write(f':wgen:output {state}')
 
     def waveform_frequency(self, freq):
+        """Set the waveform generator frequency.
+
+        Args:
+            freq: Frequency in Hz.
+        """
         self.write(f':wgen:frequency {freq}')
 
     def waveform(self, form):
-        self.write(':wgen:function form')
+        """Set the waveform generator function shape.
+
+        Args:
+            form: Waveform shape (e.g. ``'sinusoid'``, ``'square'``).
+        """
+        self.write(f':wgen:function {form}')
 
     def waveform_amplitude(self, amp):
+        """Set the waveform generator output amplitude.
+
+        Args:
+            amp: Amplitude in volts.
+        """
         self.write(f':wgen:voltage {amp}')
 
     def acquire(self):
+        """Set the acquisition type to normal."""
         self.write(':acquire:type normal')
 
     acquire_type = queried_property(':acquire:type?',
                                     ':acquire:type {0}',
                                     validate=['normal', 'average', 'hresolution', 'peak'],
-                                    dtype='str'),
-    acquire_complete = queried_property(':acquire:complete?', ':acquire:complete {0}'),
-    acquire_count = queried_property(':acquire:count?', ':acquire:count {0}'),
+                                    dtype='str')
+    acquire_complete = queried_property(':acquire:complete?', ':acquire:complete {0}')
+    acquire_count = queried_property(':acquire:count?', ':acquire:count {0}')
     acquire_points = queried_property(':acquire:points?', dtype='int')
     armed = queried_property(':aer?')
     opc = queried_property('*opc?')
@@ -184,6 +241,11 @@ class AgilentDSO(VisaInstrument):
 
     # read parameters
     def set_source(self, ch):
+        """Select the channel that subsequent waveform reads come from.
+
+        Args:
+            ch: Channel number, one of :attr:`channel_names`.
+        """
         assert ch in self.channel_names
         self.write(":waveform:source channel{0}".format(ch))
 
@@ -194,17 +256,41 @@ class AgilentDSO(VisaInstrument):
     y_ref = queried_property(":waveform:yreference?")
 
     def set_trace_parameters(self, ch, mode='maximum'):
+        """Configure the waveform source and point count before a read.
+
+        Args:
+            ch: Channel number to read from.
+            mode: Waveform points mode (e.g. ``'maximum'``, ``'normal'``,
+                ``'raw'``).
+        """
         assert ch in self.channel_names
         self.set_source(ch)
         self.waveform_points_mode = mode
         self.waveform_points = self.acquire_points
 
     def scale_trace(self, trace):
+        """Convert a raw trace to physical (time, voltage) arrays.
+
+        Args:
+            trace: Raw sample values from the scope.
+
+        Returns:
+            tuple: ``(time, trace)`` arrays in seconds and volts.
+        """
         trace = self.y_or + (self.y_inc * (trace - self.y_ref))
         time = np.arange(trace.size) * self.x_inc + self.x_or
         return time, trace
 
     def read_trace(self, ch, renew=True):
+        """Acquire and scale a waveform from a channel.
+
+        Args:
+            ch: Channel number to read.
+            renew: If True, reconfigure the trace parameters first.
+
+        Returns:
+            tuple: ``(time, trace)`` arrays in seconds and volts.
+        """
         assert ch in self.channel_names
         if renew:
             self.set_trace_parameters(ch)
@@ -215,23 +301,51 @@ class AgilentDSO(VisaInstrument):
         return time, trace
 
     def check_trigger(self, force=False):
+        """Return whether the scope has triggered.
+
+        Args:
+            force: If True, force a trigger before checking.
+
+        Returns:
+            bool: True if the trigger event register is set.
+        """
         if force:
             self.force_trigger()
         return bool(self.trigger_status)
 
     def is_running(self):
+        """Return whether the scope is currently acquiring.
+
+        Returns:
+            bool: False if the operation register shows the stopped state.
+        """
         if (self.operegister_condition == 4128):
             return False
         else:
             return True
 
     def get_qt_ui(self):
+        """Return the Qt control widget for this scope.
+
+        Returns:
+            AgilentDsoUI: A widget bound to this instrument.
+        """
         return AgilentDsoUI(self)
 
 
 class AgilentDsoUI(QtWidgets.QWidget, UiTools):
+    """Qt control panel for an :class:`AgilentDSO`."""
 
     def __init__(self, dso, parent=None):
+        """Build the UI for a scope.
+
+        Args:
+            dso: The :class:`AgilentDSO` to control.
+            parent: Optional parent widget.
+
+        Raises:
+            ValueError: If ``dso`` is not an :class:`AgilentDSO`.
+        """
         if not isinstance(dso, AgilentDSO):
             raise ValueError('dso must be an instance of DSO')
         super(AgilentDsoUI, self).__init__()

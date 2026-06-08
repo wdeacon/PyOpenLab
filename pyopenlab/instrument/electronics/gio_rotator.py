@@ -1,19 +1,34 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Thu Feb 27 10:36:15 2020
-
-@author: Eoin Elliott
-"""
+"""Serial driver for an Arduino-controlled rotation stage."""
 import time
 
 from pyopenlab.instrument.serial_instrument import SerialInstrument
 
 
 class ArduinoRotator(SerialInstrument):
+    """Rotation stage driven by an Arduino over a serial link.
+
+    Angles are tracked in software (``_angle``); the stage is commanded in motor
+    steps, converted via :attr:`STEPS_PER_REV`. Single moves are limited to
+    :attr:`max_int` steps, so large rotations are split into several commands.
+
+    Note:
+        The :attr:`speed` setter clamps ``value`` into separate ``_speed`` writes,
+        but then unconditionally overwrites ``_speed`` with ``int(value)``, so the
+        clamp to the 1-15 range has no effect. Left unfixed (behavioral change).
+    """
+
     STEPS_PER_REV = 16334.982528149094
     max_int = 32_767  # biggest integer the arduino can hold
 
     def __init__(self, port, unidirectional=False):
+        """Open the serial port and initialise the rotator.
+
+        Args:
+            port: Serial port name, e.g. ``'COM5'``.
+            unidirectional: If True, :meth:`move` only ever rotates in the positive
+                direction, wrapping past 360 degrees rather than reversing.
+        """
         self.termination_character = '\n'
         SerialInstrument.__init__(self, port)
         self.flush_input_buffer()
@@ -30,6 +45,7 @@ class ArduinoRotator(SerialInstrument):
 
     @property
     def speed(self):
+        """Current speed setting (1-15) last written to the Arduino."""
         return self._speed
 
     @speed.setter
@@ -43,6 +59,7 @@ class ArduinoRotator(SerialInstrument):
 
     @property
     def angle(self):
+        """Software-tracked current angle in degrees."""
         return self._angle
 
     @angle.setter
@@ -50,6 +67,14 @@ class ArduinoRotator(SerialInstrument):
         self.move(angle)
 
     def move_raw(self, steps):
+        """Command a single move in motor steps and wait for the done reply.
+
+        Args:
+            steps: Signed number of motor steps to move (cast to int).
+
+        Note:
+            Polls for the Arduino's ``'1'`` acknowledgement for up to 200 seconds.
+        """
         start = time.time()
         cmd = f'M{int(steps)}'
         self._logger.info('command: ' + cmd)
@@ -63,6 +88,13 @@ class ArduinoRotator(SerialInstrument):
             time.sleep(0.1)
 
     def move_a_lot(self, steps):
+        """Move a large number of steps, splitting moves exceeding :attr:`max_int`.
+
+        Args:
+            steps: Signed total number of steps to move. Moves larger than the
+                Arduino's integer limit are issued as several sequential commands,
+                so the rotation may be momentarily discontinuous at the seams.
+        """
         if steps == 0:
             return
 
@@ -81,22 +113,43 @@ class ArduinoRotator(SerialInstrument):
         self.move_raw(sign * steps)
 
     def move_rel(self, degrees):
-        ''''clockwise'''
+        """Rotate by a relative angle and update the tracked angle.
+
+        Args:
+            degrees: Relative rotation in degrees; positive is clockwise.
+        """
         self._logger.info(f'moving {degrees} degrees')
         self.move_a_lot(int(-degrees * self.STEPS_PER_REV / 360))
         self._angle += degrees
 
     def move(self, degree):
+        """Move to an absolute angle.
+
+        Args:
+            degree: Target absolute angle in degrees. In unidirectional mode, a
+                target behind the current angle is reached by adding 360 degrees so
+                the stage only ever turns one way.
+        """
         if self.angle > degree and self.unidirectional:
             degree += 360
         self.move_rel(degree - self.angle)
 
     def home(self):
+        """Rotate forward to the 0-degree position (no-op if already there)."""
         if self.angle == 0.:
             return
         self.move_rel(360 - self.angle)
 
     def calibrate(self, rotations: int = 5):
+        """Recalibrate :attr:`STEPS_PER_REV` from a measured over/undershoot.
+
+        Spins the stage a known number of rotations, then prompts the user for the
+        observed over/undershoot in degrees and adjusts the steps-per-revolution
+        constant accordingly.
+
+        Args:
+            rotations: Number of full clockwise rotations to perform.
+        """
         print(f'rotating clockwise {rotations} rotations')
         self.speed = 15
         self.move_rel(rotations * 360)

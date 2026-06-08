@@ -1,12 +1,10 @@
-﻿r'''
-You'll need the drivers for ximc, from https://files.xisupport.com/Software.en.html. - libximc-2.13.3-all.tar.gz
+﻿r'''Driver for the Eksma motorised iris, built on a Standa/ximc stepper controller.
 
-Extract this and place the ximc folder (C:\Users\Hera\Downloads\XIMC_Software_package-2022.02.15-win32_win64\libximc-2.13.3-all.tar\libximc-2.13.3-all\ximc-2.13.3\ximc)
-in C:\Program Files.
+You'll need the drivers for ximc, from https://files.xisupport.com/Software.en.html
+(libximc-2.13.3-all.tar.gz).
 
-
-Full path to the wrapper should be: C:\Program Files\ximc\crossplatform\wrappers\python\pyximc.py
-
+Extract this and place the ``ximc`` folder in ``C:\Program Files`` so that the wrapper
+lives at ``C:\Program Files\ximc\crossplatform\wrappers\python\pyximc.py``.
 '''
 
 from ctypes import byref
@@ -182,6 +180,18 @@ if type(open_name) is str:
 
 
 class Iris(Instrument):
+    """Motorised iris driven by a ximc stepper controller.
+
+    On construction the controller is opened, the engine is set to 256 microsteps,
+    a default speed is applied, and the iris is homed then driven fully closed and
+    fully open to calibrate the travel range used by the partial-close methods.
+
+    Note:
+        The fully-open and fully-closed limit positions (``_open_pos``,
+        ``_close_pos``) are recorded by :meth:`open_fully` / :meth:`close_fully`.
+        :meth:`close_partially` interpolates between them, so one of each must have
+        run before partial moves work; otherwise it logs a warning and does nothing.
+    """
 
     def __init__(self):
         super().__init__()
@@ -197,12 +207,17 @@ class Iris(Instrument):
         self.open_fully()
 
     def _wait(self):
+        # Block until the controller reports motion has stopped (100 ms poll).
         xi.lib.command_wait_for_stop(self.device_id, 100)
-        # 100 ms refresh rate
 
     def get_range(self):
+        """Return the controller-reported physical travel range of the stage.
+
+        Returns:
+            The ``TravelRange`` field from the controller's stage settings.
+        """
         sst = xi.stage_settings_t()
-        xi.lib.get_stage_settings(ir.device_id, byref(sst))
+        xi.lib.get_stage_settings(self.device_id, byref(sst))
         rang = sst.TravelRange
         return rang
 
@@ -213,18 +228,26 @@ class Iris(Instrument):
         xi.lib.command_right(self.device_id)
 
     def close_fully(self):
+        """Drive the iris fully closed and record the closed limit position."""
         self._close_fully()
         self._wait()
         self._close_pos = self.get_position()  # open, closed
         self._close_fraction = 1
 
     def open_fully(self):
+        """Drive the iris fully open and record the open limit position."""
         self._open_fully()
         self._wait()
         self._close_fraction = 0
         self._open_pos = self.get_position()
 
     def close_partially(self, frac):
+        """Close the iris to a fraction of its calibrated travel.
+
+        Args:
+            frac: Closed fraction in [0, 1]; 1 is fully closed, 0 fully open. The
+                target is interpolated between the open and closed limit positions.
+        """
         try:
             self.set_position(
                 *(int((c - o) * frac + o) for c, o in zip(self._close_pos, self._open_pos)))
@@ -233,21 +256,35 @@ class Iris(Instrument):
             self.log('must close fully before partially to calibrate range', level='warn')
 
     def open_partially(self, frac):
+        """Open the iris to ``frac`` of its travel (inverse of :meth:`close_partially`)."""
         self.close_partially(1 - frac)
 
     def get_close_fraction(self):
+        """Return the last commanded closed fraction (1 closed, 0 open)."""
         return self._close_fraction
 
     def get_open_fraction(self):
+        """Return the open fraction (complement of the closed fraction)."""
         return 1 - self.get_close_fraction()
 
     open_fraction = NotifiedProperty(get_open_fraction, open_partially)
 
     def set_position(self, pos, upos):
+        """Move to an absolute position and block until the move completes.
+
+        Args:
+            pos: Target position in whole steps.
+            upos: Target microstep offset within the step.
+        """
         xi.lib.command_move(self.device_id, pos, upos)
         self._wait()
 
     def get_position(self):
+        """Return the current position.
+
+        Returns:
+            Tuple ``(steps, microsteps)`` reporting the current stage position.
+        """
         x_pos = xi.get_position_t()
         xi.lib.get_position(self.device_id, byref(x_pos))
         return x_pos.Position, x_pos.uPosition
@@ -255,21 +292,34 @@ class Iris(Instrument):
     position = property(get_position, set_position)
 
     def set_speed(self, speed):
+        """Set the controller move speed.
+
+        Args:
+            speed: Speed in controller units; cast to int before being written.
+
+        Note:
+            A fresh ``move_settings_t`` is written without first reading the current
+            settings, so every field other than ``Speed`` is sent as zero. This can
+            clobber acceleration and other move parameters on the controller.
+        """
         mvst = xi.move_settings_t()
         mvst.Speed = int(speed)
         xi.lib.set_move_settings(self.device_id, byref(mvst))
 
     def get_speed(self):
+        """Return the controller's current move speed in controller units."""
         mvst = xi.move_settings_t()
         xi.lib.get_move_settings(self.device_id, byref(mvst))
         return mvst.Speed
 
     def get_control_settings(self):
+        """Return the controller's ``control_settings_t`` structure."""
         cst = xi.control_settings_t()
         xi.lib.get_control_settings(self.device_id, cst)
         return cst
 
     def _test(self):
+        # Exercise the module-level test_* helpers against this device for diagnostics.
         test_info(xi.lib, self.device_id)
         test_status(xi.lib, self.device_id)
         test_set_microstep_mode_256(xi.lib, self.device_id)
@@ -293,10 +343,12 @@ class Iris(Instrument):
         xi.lib.close_device(byref(xi.cast(self.device_id, POINTER(c_int))))
 
     def get_qt_ui(self):
+        """Return the Qt control widget for this iris."""
         return IrisGui(self)
 
 
 class IrisGui(QuickControlBox):
+    """Qt control box exposing the iris open fraction as a double spin box."""
 
     def __init__(self, iris):
         self.iris = iris

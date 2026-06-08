@@ -4,8 +4,6 @@ from __future__ import print_function
 
 from builtins import object
 
-from past.utils import old_div
-
 __copyright__ = "Copyright 2020, Cambridge Consultants"
 
 from datetime import datetime
@@ -36,6 +34,7 @@ class Message(suitcase.structure.Structure):
 
 
 class MessageType(Enum):
+    """Enumeration of the message type codes used in the Yeti binary protocol."""
     MESSAGE_ACK = 0
     MESSAGE_NAK = 1
     MESSAGE_ERROR = 2
@@ -47,6 +46,7 @@ class MessageType(Enum):
 
 
 class MessageStatus(suitcase.structure.Structure):
+    """Payload structure of a status message: buffer usage and overflow counters."""
     running = suitcase.fields.ULInt8()
     overflow_count = suitcase.fields.ULInt16()
     bd_used = suitcase.fields.ULInt32()
@@ -55,6 +55,7 @@ class MessageStatus(suitcase.structure.Structure):
 
 
 class MessageStart(suitcase.structure.Structure):
+    """Empty payload structure for a start-acquisition message."""
     pass
 
 
@@ -228,7 +229,7 @@ def main(ip, duration, out):
                     "DRAM buffer: {:3.0f} MB / {:3.0f} MB {:3.0f}%;\t FIFO: {:d} overflows".format(
                         (status.bd_used * status.bd_size) * 2**-20,
                         (status.bd_total * status.bd_size) * 2**-20,
-                        old_div(status.bd_used, status.bd_total * 100), status.overflow_count))
+                        status.bd_used / (status.bd_total * 100), status.overflow_count))
                 t_status = time.time()
 
             if time.time() - t_start > duration:

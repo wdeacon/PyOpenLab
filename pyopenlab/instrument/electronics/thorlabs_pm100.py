@@ -1,9 +1,5 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Thu Dec 19 16:24:49 2019
-
-@author: ee306
-"""
+"""VISA driver for the Thorlabs PM100-series optical power meter."""
 import numpy as np
 
 from pyopenlab.instrument.electronics.power_meter import PowerMeter
@@ -11,6 +7,7 @@ from pyopenlab.instrument.visa_instrument import VisaInstrument
 
 
 class ThorlabsPowermeter(PowerMeter, VisaInstrument):
+    """Thorlabs PM100 power meter, combining the PowerMeter UI with VISA I/O."""
 
     def __init__(
             self,
@@ -19,7 +16,12 @@ class ThorlabsPowermeter(PowerMeter, VisaInstrument):
                 # 'timeout': 0.1,
                 'read_termination': '\n',
                 'write_termination': '\r\n',}):
+        """Open VISA communication and initialise the meter.
 
+        Args:
+            address: VISA resource address.
+            settings: VISA session settings (read/write terminations, etc.).
+        """
         VisaInstrument.__init__(self, address=address, settings=settings)
         PowerMeter.__init__(self)
         self.query("*IDN?")  # Needed the initialise powermeter, apparently(?)
@@ -28,10 +30,16 @@ class ThorlabsPowermeter(PowerMeter, VisaInstrument):
         self.num_averages = 10
 
     def _read(self):
+        """Read the raw power in watts.
+
+        Returns:
+            float: The instantaneous power in watts.
+        """
         return float(self.query('READ?'))
 
     @property
     def wavelength(self):
+        """The correction wavelength in nm used for the power calibration."""
         return self.query('Sense:Correction:WAVelength?')
 
     @wavelength.setter
@@ -39,7 +47,18 @@ class ThorlabsPowermeter(PowerMeter, VisaInstrument):
         self.write('Sense:Correction:WAVelength ' + str(wl))
 
     def read_average(self, num_averages=None):
-        """a quick averaging tool for the pm100 power meter """
+        """Read and average several power measurements.
+
+        Pauses live mode, retries past transient read failures, and returns the
+        mean. Gives up after 20 consecutive failures.
+
+        Args:
+            num_averages: Number of readings to average; defaults to
+                :attr:`num_averages`.
+
+        Returns:
+            float: The mean power over the successful readings.
+        """
         live = self.live
         self.live = False
         if num_averages is None:
@@ -58,9 +77,15 @@ class ThorlabsPowermeter(PowerMeter, VisaInstrument):
         return average
 
     def read_power(self):
+        """Read the current power in milliwatts.
+
+        Returns:
+            float: The instantaneous power in mW.
+        """
         return self._read() * 1000
 
     def restart(self):
+        """Re-open the VISA connection by re-running ``__init__``."""
         self.__init__(self.address)
 
 

@@ -1,4 +1,15 @@
 # -*- coding: utf-8 -*-
+"""Phase pattern generators and iterative Fourier transform hologram algorithms for the SLM.
+
+Each pattern generator takes an input phase array and returns the input plus an added phase term,
+so generators can be chained. The iterative Fourier transform routines (``mraf``,
+``gerchberg_saxton``) compute holograms that reproduce a target intensity.
+
+Note:
+    ``mraf`` and ``test_ifft_smoothness`` use ``np.float`` / ``np.bool``, which were removed in
+    NumPy 1.24; they will raise ``AttributeError`` on recent NumPy. Replace with the builtin
+    ``float`` / ``bool`` to restore them.
+"""
 
 from __future__ import division
 
@@ -8,7 +19,6 @@ from builtins import zip
 from matplotlib import gridspec
 import matplotlib.pyplot as plt
 import numpy as np
-from past.utils import old_div
 # import pyfftw
 from scipy import misc
 
@@ -18,39 +28,60 @@ from scipy import misc
 
 
 def _get_coordinate_arrays(image, center=None):
-    """Creates coordinate arrays in pixel units
-    :param image: 2D array
-    :param center: two-tuple of floats. If <1, assumes it's a relative center (with the edges of the SLM being at
-                                        [-1, 1]. Otherwise, it should be in pixel units
-    :return: two 2D arrays of coordinates
+    """Create x and y coordinate arrays in pixel units, centred on a given point.
+
+    Args:
+        image (numpy.ndarray): 2D array whose shape sets the coordinate grid size.
+        center (tuple, optional): Centre of the grid. If each value is ``< 1`` it is treated as a
+            relative centre (with the SLM edges at ``[-1, 1]``); otherwise it is in pixel units. If
+            None, the geometric centre is used.
+
+    Returns:
+        tuple: Two 2D :class:`numpy.ndarray` coordinate grids ``(x, y)``.
     """
     shape = np.shape(image)
     if center is None:
-        center = [int(old_div(s, 2)) for s in shape]
+        center = [int(s // 2) for s in shape]
     elif any(np.array(center) < 1):
-        center = [int(old_div(s, 2) + c * s) for s, c in zip(shape, center)]
+        center = [int(s // 2 + c * s) for s, c in zip(shape, center)]
     yx = [np.arange(shape[idx]) - center[idx] for idx in range(2)[::-1]]
     x, y = np.meshgrid(*yx)
     return x, y
 
 
 def constant(input_phase, offset):
+    """Add a uniform phase offset.
+
+    Args:
+        input_phase (numpy.ndarray): Phase pattern to add to.
+        offset (float): Constant phase offset in radians.
+
+    Returns:
+        numpy.ndarray: ``input_phase + offset``.
+    """
     return input_phase + offset
 
 
 def calibration_responsiveness(input_phase, grey_level, axis=0):
-    """Function for calibrating the phase retardation as a function of addressing voltage
-    Need to image the reflected beam directly onto a camera, creating fringes. The fringe shift as a function of voltage
-    gives the responsiveness. Note it assumes the retardation is the same across the SLM. If this were not the case, see
-    https://doi.org/10.1364/AO.43.006400 for how to measure it.
+    """Generate a half-and-half pattern for calibrating phase retardation versus addressing voltage.
 
-    :param input_phase:
-    :param grey_level:
-    :param axis:
-    :return:
+    Image the reflected beam directly onto a camera to create fringes; the fringe shift as a
+    function of voltage gives the responsiveness. Assumes the retardation is uniform across the SLM.
+    If it is not, see https://doi.org/10.1364/AO.43.006400 for how to measure it.
+
+    Args:
+        input_phase (numpy.ndarray): Phase pattern (used only for its shape).
+        grey_level (float): Phase level applied to one half of the panel.
+        axis (int): Axis along which to split the panel: 0 (rows) or 1 (columns).
+
+    Returns:
+        numpy.ndarray: Phase pattern that is zero on one half and ``grey_level`` on the other.
+
+    Raises:
+        ValueError: If ``axis`` is not 0 or 1.
     """
     shape = np.shape(input_phase)
-    centers = [int(old_div(x, 2)) for x in shape]
+    centers = [int(x // 2) for x in shape]
     out_phase = np.zeros(shape)
     if axis == 0:
         out_phase[centers[0]:] = grey_level
@@ -62,12 +93,15 @@ def calibration_responsiveness(input_phase, grey_level, axis=0):
 
 
 def gratings(input_phase, grating_const_x=0, grating_const_y=0):
-    """Linear phase pattern corresponding to a grating/mirror
+    """Add a linear phase ramp corresponding to a grating or steering mirror.
 
-    :param input_phase:
-    :param grating_const_x: float. Period (in pixels) of the grating along the x direction. Default is no grating
-    :param grating_const_y: float. Period (in pixels) of the grating along the y direction. Default is no grating
-    :return:
+    Args:
+        input_phase (numpy.ndarray): Phase pattern to add to.
+        grating_const_x (float): Period (in pixels) of the grating along x. Default 0 means none.
+        grating_const_y (float): Period (in pixels) of the grating along y. Default 0 means none.
+
+    Returns:
+        numpy.ndarray: ``input_phase`` plus the grating phase.
     """
     x, y = _get_coordinate_arrays(input_phase)
     phase = np.zeros(x.shape)
@@ -80,13 +114,18 @@ def gratings(input_phase, grating_const_x=0, grating_const_y=0):
 
 
 def multispot_grating(input_phase, grating_const, n_spot, center=None):
-    """
+    """Add a phase that divides the SLM into angular segments, each with its own grating direction.
 
-    :param input_phase:
-    :param grating_const: float. Inverse period (in pixels) of the grating.
-    :param n_spot: int. Number of gratings to divide the SLM in.
-    :param center: two-tuple of floats. To be passed to _get_coordinate_arrays
-    :return:
+    This produces multiple focal spots arranged in a ring.
+
+    Args:
+        input_phase (numpy.ndarray): Phase pattern to add to.
+        grating_const (float): Inverse period (in pixels) of the gratings.
+        n_spot (int): Number of angular segments (spots) to divide the SLM into.
+        center (tuple, optional): Centre passed to :func:`_get_coordinate_arrays`.
+
+    Returns:
+        numpy.ndarray: ``input_phase`` plus the multi-spot grating phase.
     """
     x, y = _get_coordinate_arrays(input_phase, center)
     theta = np.arctan2(y, x) + np.pi
@@ -104,12 +143,15 @@ def multispot_grating(input_phase, grating_const, n_spot, center=None):
 
 
 def focus(input_phase, curvature=0, center=None):
-    """Quadratic phase pattern corresponding to a perfect lens
+    """Add a quadratic phase pattern corresponding to a perfect lens.
 
-    :param input_phase:
-    :param curvature: float. Inverse focal length of the lens in arbitrary units
-    :param center: two-tuple of floats. To be passed to _get_coordinate_arrays
-    :return:
+    Args:
+        input_phase (numpy.ndarray): Phase pattern to add to.
+        curvature (float): Inverse focal length of the lens, in arbitrary units.
+        center (tuple, optional): Centre passed to :func:`_get_coordinate_arrays`.
+
+    Returns:
+        numpy.ndarray: ``input_phase`` plus the lens phase.
     """
     x, y = _get_coordinate_arrays(input_phase, center)
     phase = curvature * (x**2 + y**2)
@@ -117,13 +159,16 @@ def focus(input_phase, curvature=0, center=None):
 
 
 def astigmatism(input_phase, amplitude=0, angle=0, center=None):
-    """Cylindrical phase pattern corresponding to astigmatism
+    """Add a cylindrical phase pattern corresponding to astigmatism.
 
-    :param input_phase:
-    :param amplitude: float. cylindrical curvature
-    :param angle: float. angle between the cylindrical curvature and the input axes
-    :param center: two-tuple of floats. To be passed to _get_coordinate_arrays
-    :return:
+    Args:
+        input_phase (numpy.ndarray): Phase pattern to add to.
+        amplitude (float): Cylindrical curvature.
+        angle (float): Angle (in degrees) between the cylindrical curvature and the input axes.
+        center (tuple, optional): Centre passed to :func:`_get_coordinate_arrays`.
+
+    Returns:
+        numpy.ndarray: ``input_phase`` plus the astigmatism phase.
     """
     x, y = _get_coordinate_arrays(input_phase, center)
     rho = np.sqrt(x**2 + y**2)
@@ -138,13 +183,16 @@ def astigmatism(input_phase, amplitude=0, angle=0, center=None):
 
 
 def vortexbeam(input_phase, order, angle, center=None):
-    """Vortices
+    """Add a helical phase pattern corresponding to an optical vortex.
 
-    :param input_phase:
-    :param order: int. Vortex order
-    :param angle: float. Orientation of the vortex, in degrees
-    :param center: two-iterable of integers. Location of the center of the vortex on the SLM panel
-    :return:
+    Args:
+        input_phase (numpy.ndarray): Phase pattern to add to.
+        order (int): Vortex order (topological charge).
+        angle (float): Orientation of the vortex, in degrees.
+        center (tuple, optional): Centre of the vortex, passed to :func:`_get_coordinate_arrays`.
+
+    Returns:
+        numpy.ndarray: ``input_phase`` plus the vortex phase.
     """
     # shape = np.shape(input_phase)
     # if center is None:
@@ -163,12 +211,15 @@ def vortexbeam(input_phase, order, angle, center=None):
 
 
 def linear_lut(input_phase, contrast, offset):
-    """
+    """Wrap the phase to ``[0, 2*pi)`` and apply a linear contrast and offset mapping.
 
-    :param input_phase:
-    :param contrast:
-    :param offset:
-    :return:
+    Args:
+        input_phase (numpy.ndarray): Phase pattern to remap.
+        contrast (float): Multiplicative scaling applied to the wrapped phase.
+        offset (float): Additive offset, applied as ``offset * pi``.
+
+    Returns:
+        numpy.ndarray: The remapped phase.
     """
     out_phase = np.copy(input_phase)
     # out_phase -= out_phase.min()
@@ -182,11 +233,24 @@ def linear_lut(input_phase, contrast, offset):
 
 
 def direct_superposition(input_phase, k_vectors, phases=None):
+    """Add a hologram phase that diffracts light into a set of spots given by k-vectors.
+
+    Builds a field by directly superposing plane waves, then takes the phase of its Fourier
+    transform.
+
+    Args:
+        input_phase (numpy.ndarray): Phase pattern to add to.
+        k_vectors (sequence): Sequence of ``(kx, ky)`` spatial frequencies, one per target spot.
+        phases (sequence, optional): Phase of each plane wave. Defaults to random phases.
+
+    Returns:
+        numpy.ndarray: ``input_phase`` plus the superposition hologram phase.
+    """
     if phases is None:
         phases = np.random.random(len(k_vectors))
     shape = np.shape(input_phase)
-    x = np.arange(shape[1]) - int(old_div(shape[1], 2))
-    y = np.arange(shape[0]) - int(old_div(shape[0], 2))
+    x = np.arange(shape[1]) - int(shape[1] // 2)
+    y = np.arange(shape[0]) - int(shape[0] // 2)
     x, y = np.meshgrid(x, y)
 
     real_plane = np.zeros(shape)
@@ -202,25 +266,34 @@ def mraf(original_phase,
          mixing_ratio=0.4,
          signal_region_size=0.5,
          iterations=30):
-    """Mixed-Region Amplitude Freedom algorithm for continuous patterns https://doi.org/10.1364/OE.16.002176
+    """Run the Mixed-Region Amplitude Freedom algorithm for continuous patterns.
 
-    :param original_phase:
-    :param target_intensity:
-    :param input_field:
-    :param mixing_ratio:
-    :param signal_region_size:
-    :param iterations:
-    :return:
+    See https://doi.org/10.1364/OE.16.002176.
+
+    Args:
+        original_phase (numpy.ndarray or float): Base phase the result is added to.
+        target_intensity (numpy.ndarray): Desired output intensity distribution.
+        input_field (numpy.ndarray, optional): Initial SLM-plane field. Defaults to a field that
+            focuses uniform illumination onto the signal region.
+        mixing_ratio (float): Fraction of amplitude freedom given to the signal region.
+        signal_region_size (float): Relative radius of the signal region.
+        iterations (int): Number of iterations to run.
+
+    Returns:
+        numpy.ndarray: ``original_phase`` plus the computed input-plane phase.
+
+    Note:
+        Uses ``np.float`` (removed in NumPy 1.24+); raises ``AttributeError`` on recent NumPy.
     """
     shp = target_intensity.shape
-    x, y = np.ogrid[old_div(-shp[1], 2):old_div(shp[1], 2), old_div(-shp[0], 2):old_div(shp[0], 2)]
+    x, y = np.ogrid[-shp[1] // 2:shp[1] // 2, -shp[0] // 2:shp[0] // 2]
     x, y = np.meshgrid(x, y)
 
     target_intensity = np.asarray(target_intensity, np.float)
     if input_field is None:
         # By default, the initial phase focuses a uniform SLM illumination onto the signal region
-        input_phase = ((old_div(x**2, (old_div(shp[1], (signal_region_size * 2 * np.sqrt(2)))))) +
-                       (old_div(y**2, (old_div(shp[0], (signal_region_size * 2 * np.sqrt(2)))))))
+        input_phase = ((x**2 / (shp[1] / (signal_region_size * 2 * np.sqrt(2)))) +
+                       (y**2 / (shp[0] / (signal_region_size * 2 * np.sqrt(2)))))
         input_field = np.exp(1j * input_phase)
     # Normalising the input field and target intensity to 1 (doesn't have to be 1, but they have to be equal)
     input_field /= np.sqrt(np.sum(np.abs(input_field)**2))
@@ -236,8 +309,9 @@ def mraf(original_phase,
 
     for _ in range(iterations):
         output_field = np.fft.fft2(input_field)
-        # makes sure power out = power in, so that the distribution of power in signal and noise regions makes sense
-        output_field = old_div(output_field, np.sqrt(np.prod(shp)))
+        # makes sure power out = power in, so that the distribution of power in signal and noise
+        # regions makes sense
+        output_field = output_field / np.sqrt(np.prod(shp))
         output_field = np.fft.fftshift(output_field)
         output_phase = np.angle(output_field)
 
@@ -253,16 +327,22 @@ def mraf(original_phase,
 
 
 def gerchberg_saxton(original_phase, target_intensity, input_field=None, iterations=30):
-    """Gerchberg Saxton algorithm for continuous patterns
+    """Run the Gerchberg-Saxton algorithm for continuous patterns.
 
-    Easiest version, where you don't need to keep track of FFT factors, normalising intensities, or FFT shifts since it
-    all gets discarded anyway.
+    Simplest version: FFT factors, intensity normalisation and FFT shifts are not tracked since
+    they are all discarded anyway.
 
-    :param original_phase:
-    :param target_intensity:
-    :param input_field:
-    :param iterations:
-    :return:
+    Args:
+        original_phase (numpy.ndarray or float): Base phase the result is added to.
+        target_intensity (numpy.ndarray): Desired output intensity distribution.
+        input_field (numpy.ndarray, optional): Initial SLM-plane field. Defaults to uniform.
+        iterations (int): Number of iterations to run; must be positive.
+
+    Returns:
+        numpy.ndarray: ``original_phase`` plus the computed input-plane phase.
+
+    Raises:
+        AssertionError: If ``iterations <= 0``.
     """
     assert iterations > 0
     shp = target_intensity.shape
@@ -284,15 +364,25 @@ def gerchberg_saxton(original_phase, target_intensity, input_field=None, iterati
 
 
 def test_ifft_smoothness(alg_func, *args, **kwargs):
-    """Evaluates smoothness of calculated vs target pattern as a function of iteration in an IFFT algorithm
+    """Evaluate the smoothness of calculated vs target pattern per iteration of an IFFT algorithm.
 
-    Smoothness is defined as the sum of absolute difference over the area of interest. For most algorithms the area of
-    interest is the whole plane, while for MRAF the area of interest is only the signal region
+    Smoothness is the sum of the absolute difference over the area of interest. For most algorithms
+    the area of interest is the whole plane; for MRAF it is only the signal region.
 
-    :param alg_func:
-    :param args:
-    :param kwargs:
-    :return:
+    Args:
+        alg_func (callable): The IFFT algorithm to test (:func:`gerchberg_saxton` or :func:`mraf`).
+        *args: Positional arguments forwarded to ``alg_func``.
+        **kwargs: Keyword arguments forwarded to ``alg_func`` (e.g. ``iterations``).
+
+    Returns:
+        numpy.ndarray: Smoothness value at each iteration.
+
+    Raises:
+        ValueError: If ``alg_func`` is not a recognised algorithm.
+
+    Note:
+        Uses ``np.bool`` (removed in NumPy 1.24+); raises ``AttributeError`` on recent NumPy when
+        ``alg_func`` is :func:`gerchberg_saxton`.
     """
     target = np.asarray(misc.face()[:, :, 0], np.float)
     x, y = _get_coordinate_arrays(target)
@@ -315,8 +405,7 @@ def test_ifft_smoothness(alg_func, *args, **kwargs):
         mask = np.ones(shp, dtype=np.bool)
         mixing_ratio = 1
     elif alg_func == mraf:
-        x, y = np.ogrid[old_div(-shp[1], 2):old_div(shp[1], 2),
-                        old_div(-shp[0], 2):old_div(shp[0], 2)]
+        x, y = np.ogrid[-shp[1] // 2:shp[1] // 2, -shp[0] // 2:shp[0] // 2]
         x, y = np.meshgrid(x, y)
         signal_region_size = 0.5
         if 'signal_region_size' in kwargs:
@@ -334,13 +423,13 @@ def test_ifft_smoothness(alg_func, *args, **kwargs):
         init_phase = alg_func(0, target, *args, **kwargs)
         input_field = np.exp(1j * init_phase)
         kwargs['input_field'] = input_field
-        output = old_div(np.fft.fftshift(np.fft.fft2(np.exp(1j * init_phase))), (np.prod(shp)))
+        output = np.fft.fftshift(np.fft.fft2(np.exp(1j * init_phase))) / (np.prod(shp))
         output_int = np.abs(output)**2
         # print(np.sum(np.abs(output_int)), np.sum(np.abs(output_int)[mask]))
-        smth += [old_div(np.sum(np.abs(output_int - mixing_ratio * target)[mask]), np.sum(mask))]
+        smth += [np.sum(np.abs(output_int - mixing_ratio * target)[mask]) / np.sum(mask)]
         outputs += [output]
 
-    fig = plt.figure(figsize=(old_div(8 * shp[1], shp[0]) * 2, 8))
+    fig = plt.figure(figsize=(8 * shp[1] / shp[0] * 2, 8))
     gs = gridspec.GridSpec(1, 2)
     gs2 = gridspec.GridSpecFromSubplotSpec(5, 6, gs[0], 0.001, 0.001)
     reindex = np.linspace(0, iterations - 1, 30)
@@ -358,15 +447,22 @@ def test_ifft_smoothness(alg_func, *args, **kwargs):
 
 
 def test_ifft_basic(alg_func, *args, **kwargs):
-    """Basic testing for IFFT algorithms to see if the final phase truly reproduces an initial target
+    """Test whether an IFFT algorithm's final phase reproduces an initial target.
 
-    Creates an image target (the center of the scipy.misc.face() image), runs the alg_func on it, and plots the results
-    for comparison by eye
+    Creates an image target (the centre of the ``scipy.misc.face()`` image), runs ``alg_func`` on
+    it, and plots the results for comparison by eye.
 
-    :param alg_func:
-    :param args:
-    :param kwargs:
-    :return:
+    Args:
+        alg_func (callable): The IFFT algorithm to test (:func:`gerchberg_saxton` or :func:`mraf`).
+        *args: Positional arguments forwarded to ``alg_func``.
+        **kwargs: Keyword arguments forwarded to ``alg_func`` (e.g. ``mixing_ratio``).
+
+    Returns:
+        tuple: ``(output, target)`` where ``output`` is the reconstructed complex field and
+        ``target`` is the normalised target intensity.
+
+    Note:
+        Uses ``np.float`` (removed in NumPy 1.24+); raises ``AttributeError`` on recent NumPy.
     """
     if 'mixing_ratio' in kwargs:
         intensity_correction = kwargs['mixing_ratio']
@@ -388,7 +484,7 @@ def test_ifft_basic(alg_func, *args, **kwargs):
                                                                             (y / np.max(y))**2))
     kwargs['input_field'] = input_field
     phase = alg_func(init_phase, target, *args, **kwargs)
-    output = old_div(np.fft.fftshift(np.fft.fft2(np.exp(1j * phase))), (np.prod(shp)))
+    output = np.fft.fftshift(np.fft.fft2(np.exp(1j * phase))) / (np.prod(shp))
     print(np.sum(np.abs(output)**2), np.sum(np.abs(output[~mask])**2),
           np.sum(np.abs(output[mask])**2))
     _errors = (target - np.abs(output)**2) / target

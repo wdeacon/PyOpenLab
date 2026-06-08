@@ -1,17 +1,23 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Fri Mar 12 16:51:30 2021
-
-@author: fh403
-"""
+"""Serial driver for the Aim-TTi TGF4242 dual-channel function generator."""
 import pyopenlab
 from pyopenlab.instrument.serial_instrument import SerialInstrument
 
 
 class TGF4242(SerialInstrument):
+    """Serial interface to the TGF4242 function generator.
+
+    Note:
+        Commands require a space between the keyword and its value (e.g.
+        ``'CHN 1'``); this is handled by each method below.
+    """
 
     def __init__(self, port=None):
-        """Serial Interface to TGF4242 function generator."""
+        """Open the serial port to the function generator.
+
+        Args:
+            port: Serial port name. ``None`` triggers interactive selection.
+        """
         SerialInstrument.__init__(self, port=port)  #this opens the port
 
     def channel(self, channel):

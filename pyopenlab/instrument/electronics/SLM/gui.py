@@ -11,7 +11,6 @@ from builtins import str
 import os
 
 import numpy as np
-from past.utils import old_div
 
 from pyopenlab.ui.ui_tools import UiTools
 from pyopenlab.utils.gui import QtWidgets
@@ -19,24 +18,38 @@ from pyopenlab.utils.gui import uic
 
 
 class BaseUi(QtWidgets.QWidget, UiTools):
+    """Base widget for SLM option GUIs that loads its ``.ui`` file by name and wires up signals."""
 
     def __init__(self, slm_gui, name):
+        """Load the ``ui_<name>.ui`` layout and connect its signals.
+
+        Args:
+            slm_gui (SlmUi): The parent SLM control GUI.
+            name (str): Option name, used to locate the ``ui_<name>.ui`` file.
+        """
         super(BaseUi, self).__init__()
         uic.loadUi(os.path.join(os.path.dirname(__file__), 'ui_%s.ui' % name), self)
         self.slm_gui = slm_gui
         self._connect()
 
     def _connect(self):
+        """Connect widget signals to slots. Subclasses override this; the base is a no-op."""
         return
 
     def get_params(self):
-        """
-        :return: list of parameters to be passed to the pattern_generator of the same name as the class
+        """Return the parameters to pass to the pattern generator of the same name as the class.
+
+        Returns:
+            tuple: Positional arguments for the matching pattern generator.
+
+        Raises:
+            NotImplementedError: Always; subclasses must override this method.
         """
         raise NotImplementedError
 
 
 class constantUi(BaseUi):
+    """GUI for the :func:`constant` pattern generator: a uniform phase offset."""
 
     def __init__(self, slm_gui):
         super(constantUi, self).__init__(slm_gui, 'constant')
@@ -47,20 +60,28 @@ class constantUi(BaseUi):
         self.offset_slider.valueChanged.connect(self.slm_gui.make)
 
     def update_offset_lineedit(self):
+        """Update the offset line edit from the offset slider position."""
         steps = self.offset_slider.value()
         value = 2 * steps / 100.
         self.offset_lineEdit.setText('%g' % value)
 
     def update_offset_slider(self):
+        """Update the offset slider from the offset line edit."""
         value = float(self.offset_lineEdit.text())
         steps = 100 * value / 2.
         self.offset_slider.setValue(steps)
 
     def get_params(self):
+        """Return the constant phase offset in radians.
+
+        Returns:
+            tuple: ``(offset,)`` where ``offset`` is in radians.
+        """
         return np.pi * float(self.offset_lineEdit.text()),
 
 
 class calibration_responsivenessUi(BaseUi):
+    """GUI for the :func:`calibration_responsiveness` pattern generator."""
 
     def __init__(self, slm_gui):
         super(calibration_responsivenessUi, self).__init__(slm_gui, 'calibration_responsiveness')
@@ -70,20 +91,28 @@ class calibration_responsivenessUi(BaseUi):
         self.offset_lineEdit.returnPressed.connect(self.update_offset_slider)
 
     def update_offset_lineedit(self):
+        """Update the offset line edit from the offset slider position."""
         steps = self.offset_slider.value()
         value = 2 * steps / 100.
         self.offset_lineEdit.setText('%g' % value)
 
     def update_offset_slider(self):
+        """Update the offset slider from the offset line edit."""
         value = float(self.offset_lineEdit.text())
         steps = 100 * value / 2.
         self.offset_slider.setValue(steps)
 
     def get_params(self):
+        """Return the calibration grey level and the axis to apply it along.
+
+        Returns:
+            tuple: ``(grey_level, axis)`` where ``grey_level`` is in radians and ``axis`` is 0 or 1.
+        """
         return np.pi * float(self.offset_lineEdit.text()), int(self.spinBox_axis.value())
 
 
 class gratingsUi(BaseUi):
+    """GUI for the :func:`gratings` pattern generator: a steerable linear (grating) phase ramp."""
 
     def __init__(self, slm_gui):
         super(gratingsUi, self).__init__(slm_gui, 'gratings')
@@ -98,6 +127,11 @@ class gratingsUi(BaseUi):
         self.gratingy_lineEdit.textChanged.connect(self.slm_gui.make)
 
     def update_gratings(self, direction):
+        """Nudge the grating constants in a given direction by the configured step size.
+
+        Args:
+            direction (str): One of ``'center'``, ``'up'``, ``'down'``, ``'left'`` or ``'right'``.
+        """
         step = float(self.lineEdit_step.text())
         grating_x = float(self.gratingx_lineEdit.text())
         grating_y = float(self.gratingy_lineEdit.text())
@@ -114,6 +148,11 @@ class gratingsUi(BaseUi):
             self.gratingx_lineEdit.setText('%g' % (grating_x - step))
 
     def get_params(self):
+        """Return the grating constants along x and y, defaulting empty fields to zero.
+
+        Returns:
+            tuple: ``(grating_x, grating_y)`` as floats.
+        """
         grating_x = self.gratingx_lineEdit.text()
         grating_y = self.gratingy_lineEdit.text()
         if grating_x == '':
@@ -124,6 +163,7 @@ class gratingsUi(BaseUi):
 
 
 class astigmatismUi(BaseUi):
+    """GUI for the :func:`astigmatism` pattern generator, with amplitude and angle controls."""
 
     def __init__(self, slm_gui):
         super(astigmatismUi, self).__init__(slm_gui, 'astigmatism')
@@ -142,6 +182,7 @@ class astigmatismUi(BaseUi):
         self.angle_slider.valueChanged.connect(self.slm_gui.make)
 
     def update_amplitude_lineedit(self):
+        """Update the amplitude line edit from the slider, step size and offset fields."""
         try:
             step_size = float(self.amplitude_step_lineEdit.text())
         except ValueError:
@@ -162,14 +203,16 @@ class astigmatismUi(BaseUi):
         self.amplitude_lineEdit.setText('%g' % value)
 
     def update_amplitude_slider(self):
+        """Update the amplitude slider position from the amplitude, step size and offset fields."""
         value = float(self.amplitude_lineEdit.text())
         step_size = float(self.amplitude_step_lineEdit.text())
         offset = float(self.amplitude_offset_lineEdit.text())
 
-        steps = int(old_div((value - offset), step_size))
+        steps = int((value - offset) / step_size)
         self.amplitude_slider.setValue(steps)
 
     def update_angle_lineedit(self):
+        """Update the angle line edit from the slider, step size and offset fields."""
         try:
             step_size = float(self.angle_step_lineEdit.text())
         except ValueError:
@@ -186,20 +229,27 @@ class astigmatismUi(BaseUi):
         self.angle_lineEdit.setText('%g' % value)
 
     def update_angle_slider(self):
+        """Update the angle slider position from the angle, step size and offset fields."""
         value = float(self.angle_lineEdit.text())
         step_size = float(self.angle_step_lineEdit.text())
         offset = float(self.angle_offset_lineEdit.text())
 
-        steps = int(old_div((value - offset), step_size))
+        steps = int((value - offset) / step_size)
         self.angle_slider.setValue(steps)
 
     def get_params(self):
+        """Return the astigmatism amplitude and angle.
+
+        Returns:
+            tuple: ``(amplitude, angle)`` where ``angle`` is in degrees.
+        """
         amplitude = float(self.amplitude_lineEdit.text())
         angle = float(self.angle_lineEdit.text())
         return amplitude, angle
 
 
 class focusUi(BaseUi):
+    """GUI for the :func:`focus` pattern generator: a quadratic (lens) phase profile."""
 
     def __init__(self, slm_gui):
         super(focusUi, self).__init__(slm_gui, 'focus')
@@ -213,6 +263,7 @@ class focusUi(BaseUi):
         self.slider.valueChanged.connect(self.slm_gui.make)
 
     def update_lineedit(self):
+        """Update the value line edit from the slider, step size and offset fields."""
         step_size = float(self.lineEdit_step.text())
         offset = float(self.lineEdit_offset.text())
         steps = self.slider.value()
@@ -221,19 +272,26 @@ class focusUi(BaseUi):
         self.lineEdit_value.setText('%g' % value)
 
     def update_slider(self):
+        """Update the slider position from the value, step size and offset fields."""
         value = float(self.lineEdit_value.text())
         step_size = float(self.lineEdit_step.text())
         offset = float(self.lineEdit_offset.text())
 
-        steps = int(old_div((value - offset), step_size))
+        steps = int((value - offset) / step_size)
         self.slider.setValue(steps)
 
     def get_params(self):
+        """Return the lens curvature.
+
+        Returns:
+            tuple: ``(curvature,)``.
+        """
         curvature = float(self.lineEdit_value.text())
         return curvature,
 
 
 class vortexbeamUi(BaseUi):
+    """GUI for the :func:`vortexbeam` pattern generator, with order, angle and centre controls."""
 
     def __init__(self, slm_gui):
         super(vortexbeamUi, self).__init__(slm_gui, 'vortexbeam')
@@ -261,10 +319,16 @@ class vortexbeamUi(BaseUi):
         self.lineEdit_center_y.textChanged.connect(self.slm_gui.make)
 
     def flip(self):
+        """Flip the sign of the vortex order."""
         order = int(float(self.lineEdit_order.text()))
         self.lineEdit_order.setText(str(-order))
 
     def get_params(self):
+        """Return the vortex order, angle and centre.
+
+        Returns:
+            tuple: ``(order, angle, (center_x, center_y))`` with ``angle`` in degrees.
+        """
         order = int(float(self.lineEdit_order.text()))
         angle = float(self.lineEdit_angle.text())
         center_x = float(self.lineEdit_center_x.text())
@@ -273,6 +337,7 @@ class vortexbeamUi(BaseUi):
 
 
 class multispot_gratingUi(BaseUi):
+    """GUI for the :func:`multispot_grating` pattern generator that splits the SLM into segments."""
 
     def __init__(self, slm_gui):
         super(multispot_gratingUi, self).__init__(slm_gui, 'multispot_grating')
@@ -287,12 +352,18 @@ class multispot_gratingUi(BaseUi):
         self.lineEdit_spots.textChanged.connect(self.slm_gui.make)
 
     def get_params(self):
+        """Return the grating constant and the number of spots.
+
+        Returns:
+            tuple: ``(grating_const, n_spot)``.
+        """
         spots = int(float(self.lineEdit_spots.text()))
         grating = float(self.lineEdit_grating.text())
         return grating, spots
 
 
 class linear_lutUi(BaseUi):
+    """GUI for the :func:`linear_lut` pattern generator, with contrast and offset controls."""
 
     def __init__(self, slm_gui):
         super(linear_lutUi, self).__init__(slm_gui, 'linear_lut')
@@ -313,6 +384,7 @@ class linear_lutUi(BaseUi):
         self.contrast_slider.valueChanged.connect(self.slm_gui.make)
 
     def update_offset_lineedit(self):
+        """Update the offset line edit from the slider, step size and offset fields."""
         step_size = float(self.offset_lineEdit_step.text())
         offset = float(self.offset_lineEdit_offset.text())
         steps = self.offset_slider.value()
@@ -321,14 +393,16 @@ class linear_lutUi(BaseUi):
         self.offset_lineEdit.setText('%g' % value)
 
     def update_offset_slider(self):
+        """Update the offset slider position from the value, step size and offset fields."""
         value = float(self.offset_lineEdit.text())
         step_size = float(self.offset_lineEdit_step.text())
         offset = float(self.offset_lineEdit_offset.text())
 
-        steps = int(old_div((value - offset), step_size))
+        steps = int((value - offset) / step_size)
         self.offset_slider.setValue(steps)
 
     def update_contrast_lineedit(self):
+        """Update the contrast line edit from the slider, step size and offset fields."""
         step_size = float(self.contrast_lineEdit_step.text())
         offset = float(self.contrast_lineEdit_offset.text())
         steps = self.contrast_slider.value()
@@ -337,14 +411,20 @@ class linear_lutUi(BaseUi):
         self.contrast_lineEdit.setText('%g' % value)
 
     def update_contrast_slider(self):
+        """Update the contrast slider position from the value, step size and offset fields."""
         value = float(self.contrast_lineEdit.text())
         step_size = float(self.contrast_lineEdit_step.text())
         offset = float(self.contrast_lineEdit_offset.text())
 
-        steps = int(old_div((value - offset), step_size))
+        steps = int((value - offset) / step_size)
         self.contrast_slider.setValue(steps)
 
     def get_params(self):
+        """Return the LUT contrast and offset.
+
+        Returns:
+            tuple: ``(contrast, offset)``.
+        """
         contrast = float(self.contrast_lineEdit.text())
         offset = float(self.offset_lineEdit.text())
         return contrast, offset

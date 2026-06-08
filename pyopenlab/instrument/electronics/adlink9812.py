@@ -1,4 +1,16 @@
-﻿import ctypes
+﻿"""Driver and Qt UI for the ADLINK PCI-9812 high-speed analog input card.
+
+The card is driven through the ADLINK PCIS-DASK DLL via ctypes. Captured voltage
+traces are used for dynamic light scattering (photon-counting / autocorrelation)
+post-processing.
+
+Note:
+    ``Adlink9812.get_card_sample_rate`` calls ``DLL.GetActualRate(...)`` where ``DLL``
+    is undefined (it should be ``self.dll``); the method raises ``NameError``. Several
+    methods also use bare ``except:`` clauses, which swallow all exceptions.
+"""
+
+import ctypes
 from ctypes import *
 import datetime
 import logging
@@ -11,7 +23,6 @@ import timeit
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-from past.utils import old_div
 import scipy.stats
 
 import pyopenlab
@@ -44,12 +55,30 @@ VERSION = 0.01
 
 
 class Adlink9812(Instrument):
+    """Instrument wrapper for the ADLINK PCI-9812 analog input card.
+
+    Loads the PCIS-DASK DLL, registers and configures the card, and provides
+    synchronous and asynchronous double-buffered analog input reads.
+
+    Note:
+        ``get_card_sample_rate`` references an undefined ``DLL`` global and raises
+        ``NameError``.
+    """
 
     def __init__(self,
                  dll_path="C:\ADLINK\PCIS-DASK\Lib\PCI-Dask64.dll",
                  verbose=False,
                  debug=False):
-        """Initialize DLL and configure card"""
+        """Load the PCIS-DASK DLL, then register and configure the card.
+
+        Args:
+            dll_path: Path to the PCIS-DASK DLL.
+            verbose: Unused; retained for call compatibility.
+            debug: If True, skip hardware access and generate synthetic data instead.
+
+        Raises:
+            ValueError: ``dll_path`` does not exist and debug mode is not enabled.
+        """
         super(Adlink9812, self).__init__()
         self.debug = debug
         if self.debug:
@@ -67,15 +96,28 @@ class Adlink9812(Instrument):
         self.ui = None
 
     def __del__(self):
-        '''Deregister the card on object deletion'''
+        """Deregister the card on object deletion."""
         self.release_card()
 
     def get_qt_ui(self):
+        """Return the card's Qt UI widget, creating it on first call.
+
+        Returns:
+            Adlink9812UI: The control widget bound to this card.
+        """
         if self.ui is None:
             self.ui = Adlink9812UI(card=self)
         return self.ui
 
     def register_card(self, channel=0):
+        """Register the PCI-9812 card with the PCIS-DASK driver.
+
+        Args:
+            channel: The card channel to register.
+
+        Returns:
+            int: The card id assigned by the driver; negative values indicate an error.
+        """
         outp = ctypes.c_int16(
             self.dll.Register_Card(adlink9812_constants.PCI_9812, c_ushort(channel)))
         if outp.value < 0:
@@ -83,12 +125,25 @@ class Adlink9812(Instrument):
         return outp.value
 
     def release_card(self):
+        """Release the card from the driver, logging a non-zero status code."""
         releaseErr = ctypes.c_int16(self.dll.Release_Card(self.card_id))
         if releaseErr.value != 0:
             self.log(message="Release_Card: Non-zero status code:" + str(releaseErr.value))
         return
 
     def get_card_sample_rate(self, sampling_freq):
+        """Query the actual sample rate the card will use for a requested frequency.
+
+        Args:
+            sampling_freq: The requested sampling frequency in Hz.
+
+        Returns:
+            float: The actual sample rate reported by the driver.
+
+        Raises:
+            NameError: ``DLL`` is undefined (it should be ``self.dll``), so this method
+                always fails before returning.
+        """
         actual = c_double()
         statusCode = ctypes.c_int16(
             DLL.GetActualRate(self.card_id, c_double(sampling_freq), byref(actual)))
@@ -98,6 +153,7 @@ class Adlink9812(Instrument):
         return actual.value
 
     def configure_card(self):
+        """Configure the card for recording (software trigger, internal clock)."""
         #Configure card for recording
         configErr = ctypes.c_int16(
             self.dll.AI_9812_Config(
@@ -115,6 +171,13 @@ class Adlink9812(Instrument):
         return
 
     def convert_to_volts(self, inputBuffer, outputBuffer, buffer_size):
+        """Convert raw 16-bit A/D samples to voltages using the driver's scaling.
+
+        Args:
+            inputBuffer: ctypes array of raw 16-bit A/D values.
+            outputBuffer: ctypes array that receives the converted voltages.
+            buffer_size: Number of samples to convert.
+        """
         convertErr = ctypes.c_int16(
             self.dll.AI_ContVScale(
                 c_ushort(self.card_id),  #CardNumber
@@ -129,6 +192,17 @@ class Adlink9812(Instrument):
         return
 
     def synchronous_analog_input_read(self, sample_freq, sample_count, verbose=False, channel=0):
+        """Perform a single synchronous (blocking) continuous read from one channel.
+
+        Args:
+            sample_freq: Sampling frequency in Hz.
+            sample_count: Number of samples to acquire.
+            verbose: Unused; retained for call compatibility.
+            channel: Input channel to read from.
+
+        Returns:
+            np.ndarray: The acquired samples converted to volts.
+        """
         #Initialize Buffers
         #databuffer for holding A/D samples + metadata bits
         dataBuff = (c_ushort * sample_count)()
@@ -160,8 +234,22 @@ class Adlink9812(Instrument):
                                                        card_buffer_size=500000,
                                                        verbose=False,
                                                        channel=0):
-        '''
-		Non-Triggered Double-Buffered Asynchronous  Analog Input Continuous Read
+        '''Perform a non-triggered double-buffered asynchronous continuous read.
+
+		Reads into the card's internal double buffer, transferring half-buffers into
+		user buffers as they become ready, then converts the accumulated raw samples
+		to volts.
+
+		Args:
+			sample_freq: Sampling frequency in Hz.
+			sample_count: Number of samples to acquire.
+			card_buffer_size: Size of the card's internal buffer, in samples.
+			verbose: If True, log additional driver status information.
+			channel: Input channel to read from.
+
+		Returns:
+			np.ndarray: The acquired samples converted to volts.
+
 		Steps: [Adlink PCIS-DASK manual,page 47]
 
 		1. AI_XXXX_Config
@@ -194,7 +282,7 @@ class Adlink9812(Instrument):
         cardBuffer = (c_ushort * card_buffer_size)()
 
         #user buffers
-        user_buffer_size = old_div(card_buffer_size, 2)  #half due to being full when buffer is read
+        user_buffer_size = card_buffer_size // 2  #half due to being full when buffer is read
         nbuff = int(math.ceil(sample_count / float(user_buffer_size)))
 
         # uBs = [(c_double*user_buffer_size)()]*nbuff
@@ -271,9 +359,36 @@ class Adlink9812(Instrument):
 
     @staticmethod
     def get_times(dt, nsamples):
+        """Return a list of sample timestamps.
+
+        Args:
+            dt: Time between samples, in seconds.
+            nsamples: Number of samples.
+
+        Returns:
+            list: Timestamps ``[0, dt, 2*dt, ...]`` of length ``nsamples``.
+        """
         return [i * dt for i in range(nsamples)]
 
     def capture(self, sample_freq, sample_count, verbose=False):
+        """Capture a voltage trace, choosing the read mode by sample count.
+
+        In debug mode returns synthetic random data. Otherwise uses an asynchronous
+        double-buffered read for large captures (> 100000 samples) and a synchronous
+        read for smaller ones.
+
+        Args:
+            sample_freq: Sampling frequency in Hz; must satisfy ``1 < f <= 2e7``.
+            sample_count: Number of samples to acquire.
+            verbose: If True, log additional driver status information.
+
+        Returns:
+            tuple: A ``(voltages, dt)`` pair, where ``voltages`` is an ``np.ndarray``
+            and ``dt`` is the sample interval in seconds.
+
+        Raises:
+            AssertionError: ``sample_freq`` is outside the range ``(1, 2e7]``.
+        """
         assert (sample_freq <= int(2e7) and sample_freq > 1)
         dt = 1.0 / sample_freq
         if self.debug:
@@ -292,8 +407,24 @@ class Adlink9812(Instrument):
 
 
 class Adlink9812UI(QtWidgets.QWidget, UiTools):
+    """Qt control widget for an :class:`Adlink9812` card.
+
+    Exposes capture settings and DLS post-processing stages (raw voltage, voltage
+    difference, photon counts, autocorrelation) and runs captures on a worker thread.
+    """
 
     def __init__(self, card, parent=None, debug=False, verbose=False):
+        """Build the widget and wire up the capture/settings controls.
+
+        Args:
+            card: The :class:`Adlink9812` instance to control.
+            parent: Optional parent widget.
+            debug: Enable debug behaviour in the UI.
+            verbose: Enable verbose logging in the UI.
+
+        Raises:
+            ValueError: ``card`` is not an :class:`Adlink9812` instance.
+        """
         if not isinstance(card, Adlink9812):
             raise ValueError("Object is not an instance of the Adlink9812 Daq")
         super(Adlink9812UI, self).__init__()
@@ -330,6 +461,7 @@ class Adlink9812UI(QtWidgets.QWidget, UiTools):
         # self.set_threshold()
 
     def set_averaging(self):
+        """Parse the number of averaging runs from the averaging text box."""
         try:
             self.averaging_runs = int(self.average_textbox.text())
         except:
@@ -345,6 +477,7 @@ class Adlink9812UI(QtWidgets.QWidget, UiTools):
     # 	return
 
     def set_bin_width(self):
+        """Parse the time bin width (seconds) from the binning text box."""
         try:
             self.bin_width = float(self.binning_textbox.text())
         except Exception as e:
@@ -353,6 +486,7 @@ class Adlink9812UI(QtWidgets.QWidget, UiTools):
         return
 
     def set_sample_freq(self):
+        """Parse the sampling frequency (entered in MHz) from its text box, in Hz."""
         MHz = 1e6
         try:
             self.sample_freq = int(float(self.sample_freq_textbox.text()) * MHz)
@@ -363,6 +497,7 @@ class Adlink9812UI(QtWidgets.QWidget, UiTools):
         return
 
     def set_sample_count(self):
+        """Parse the number of samples to acquire from the sample-count text box."""
         try:
 
             self.sample_count = int(float(self.sample_count_textbox.text()))
@@ -377,10 +512,25 @@ class Adlink9812UI(QtWidgets.QWidget, UiTools):
         return
 
     def set_series_name(self):
+        """Set the HDF5 series/group name from the series-name text box."""
         self.series_group = self.series_name_textbox.text()
         return
 
     def save_data(self, data, datatype, group, metadata=None):
+        """Save a dataset into an HDF5 group with units and axis-label metadata.
+
+        Args:
+            data: The array to store.
+            datatype: One of the valid datatypes (e.g. ``"raw_voltage"``,
+                ``"photon_counts"``, ``"autocorrelation"``); selects the attached
+                units and axis labels.
+            group: The HDF5 group to create the dataset in.
+            metadata: Optional dict of extra attributes to attach.
+
+        Raises:
+            AssertionError: ``datatype`` is not in the valid datatype list.
+            ValueError: ``datatype`` is unrecognised by the attribute switch.
+        """
         VALID_DATATYPES = [
             "raw_voltage", "voltage_difference", "photon_counts", "autocorrelation",
             "autocorrelation_stdev", "autocorrelation_skew"]
@@ -422,7 +572,23 @@ class Adlink9812UI(QtWidgets.QWidget, UiTools):
         return
 
     def postprocess(self, voltages, dt, save, group, metadata):
+        """Run the DLS post-processing chain on a voltage trace.
 
+        Computes the voltage difference, thresholds it to photon counts, bins the
+        counts, and computes the intensity autocorrelation, optionally saving each
+        enabled stage.
+
+        Args:
+            voltages: The raw voltage trace.
+            dt: Sample interval in seconds.
+            save: If True, save the stages whose checkboxes are enabled.
+            group: HDF5 group to save into.
+            metadata: Base metadata dict attached to saved datasets.
+
+        Returns:
+            tuple: A ``(times, autocorrelation)`` pair (delay axis and g2 values, with
+            the zero-delay point dropped).
+        """
         attributes = dict(metadata)
 
         #initial system parameters
@@ -465,6 +631,12 @@ class Adlink9812UI(QtWidgets.QWidget, UiTools):
         return times, autocorrelation
 
     def current_count_rate(self):
+        """Capture a short fixed trace and compute the current photon count rate.
+
+        Returns:
+            tuple: A ``(total_counts, count_rate)`` pair, where ``count_rate`` is in
+            counts per second.
+        """
         #measure for 0.05s for sampling photon count
 
         #fixed values of sampling - we want to keep things easy
@@ -475,13 +647,21 @@ class Adlink9812UI(QtWidgets.QWidget, UiTools):
         #convert rounded difference to integers
         thresholded = np.absolute(dls_signal_postprocessing.signal_diff(voltages)).astype(int)
         total_counts = np.sum(thresholded)
-        count_rate = old_div(total_counts, sample_time)
+        count_rate = total_counts / sample_time
         self.log("Total Counts: {0} [counts], Rate: {1} [counts/s]".format(
             int(total_counts), count_rate))
         return total_counts, count_rate
 
     def capture(self, metadata=None):
+        """Run a capture from the UI, post-process it, and optionally save/average.
 
+        Reads the sampling settings and stage checkboxes from the widget. If averaging
+        is enabled it captures ``averaging_runs`` traces and saves the mean, standard
+        deviation and skew of the autocorrelation.
+
+        Args:
+            metadata: Optional base metadata dict merged with the description text.
+        """
         save = self.save_checkbox.isChecked()
         plot = self.plot_checkbox.isChecked()
         average = self.average_checkbox.isChecked()
@@ -582,6 +762,11 @@ class Adlink9812UI(QtWidgets.QWidget, UiTools):
         return
 
     def threaded_capture(self, settings=None):
+        """Start :meth:`capture` on a background thread unless one is already running.
+
+        Args:
+            settings: Optional metadata passed through to :meth:`capture`.
+        """
         if isinstance(self.capture_thread, threading.Thread) and self.capture_thread.is_alive():
             self.card.log(message="Capture already running!", level="info")
             return

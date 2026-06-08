@@ -1,9 +1,5 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Thu Aug 01 16:38:56 2019
-
-@author: ee306
-"""
+"""Closed-loop laser power control via a calibrated attenuator and power meter."""
 
 import os
 import time
@@ -29,15 +25,25 @@ from pyopenlab.utils.notified_property import register_for_property_changes
 
 
 def isMonotonic(A):
+    """Return True if sequence ``A`` is monotonic (non-increasing or non-decreasing).
 
+    Args:
+        A: Indexable sequence of comparable values.
+
+    Returns:
+        bool: True if ``A`` never changes direction.
+    """
     return (all(A[i] <= A[i + 1] for i in range(len(A) - 1)) or
             all(A[i] >= A[i + 1] for i in range(len(A) - 1)))
 
 
 class PowerControl(Instrument):
-    '''
-    Controls the power. power_controller is something with a continuous input parameter like a filter wheel, or an AOM. 
-    '''
+    """Set laser power via a calibrated continuous attenuator.
+
+    The ``power_controller`` is anything with a continuous input parameter (a
+    rotation-stage filter wheel or an AOM); a calibration maps that parameter to
+    the power read by an attached power meter, so power can be set directly.
+    """
     calibrate_points = DumbNotifiedProperty(25)
 
     def __init__(self,
@@ -48,6 +54,20 @@ class PowerControl(Instrument):
                  calibration_points=25,
                  title='power control',
                  move_range=(0, 1)):
+        """Set up the controller, meter and parameter range.
+
+        Args:
+            power_controller: The attenuator (rotation stage or AOM) whose
+                continuous parameter sets the power.
+            power_meter: A :class:`PowerMeter` used to read the power.
+            before_calibration_func: Optional callable run before a calibration,
+                whose return value is passed to ``after_calibration_func``.
+            after_calibration_func: Optional callable run after a calibration.
+            calibration_points: Number of points to sample during calibration.
+            title: Name used for the calibration data group and config keys.
+            move_range: ``(min, max)`` parameter range for generic controllers
+                (overridden for known rotation stages and AOMs).
+        """
         super().__init__()
         self.pc = power_controller
         self.pometer = power_meter
@@ -80,6 +100,7 @@ class PowerControl(Instrument):
 
     @property
     def param(self):
+        """The attenuator's current control parameter (angle or AOM level)."""
         return self.get_param()
 
     @param.setter
@@ -88,10 +109,15 @@ class PowerControl(Instrument):
 
     @property
     def mid_param(self):
+        """float: The midpoint of the parameter range."""
         return (self.max_param - self.min_param) / 2
 
     @property
     def points(self):
+        """ndarray: The parameter values sampled during calibration.
+
+        Spaced logarithmically for rotation stages and linearly for AOMs.
+        """
         if isinstance(self.pc, RStage):
             if self.min_param < self.max_param:
                 return np.logspace(0, np.log10(self.max_param - self.min_param),
@@ -109,9 +135,19 @@ class PowerControl(Instrument):
                         fw_max=None,
                         num_points=None,
                         update_progress=lambda p: p):
-        '''
+        """Sweep the attenuator and record power at each point.
 
-        '''
+        Steps through :attr:`points`, reads the power meter at each, saves the
+        sweep to a new data group, recentres the attenuator and refreshes the
+        calibration.
+
+        Args:
+            fw_min: Optional override for the minimum parameter value.
+            fw_max: Optional override for the maximum parameter value.
+            num_points: Optional override for the number of calibration points.
+            update_progress: Callback invoked with the point index for progress
+                reporting.
+        """
         if self.before_calibration_func is not None:
             state = self.before_calibration_func()
         attrs = {}
@@ -149,10 +185,14 @@ class PowerControl(Instrument):
             self.after_calibration_func(*state)
 
     def update_power_calibration(self, specific_calibration=None, laser=None):
-        '''
-        specific_calibration should be the exact name of the power calibration group, otherwise
-        the most recent calibration for the given laser is used.
-        '''
+        """Load a power calibration into memory and into the config file.
+
+        Args:
+            specific_calibration: Exact name of the calibration data group to
+                load. If ``None``, the most recent matching calibration is used,
+                falling back to the config file.
+            laser: Unused; retained for backwards compatibility.
+        """
 
         initial = datafile._use_current_group
         datafile._use_current_group = False
@@ -200,6 +240,7 @@ class PowerControl(Instrument):
 
     @property
     def power(self):
+        """The measured power; setting it drives the attenuator to that power."""
         return self.pometer.power
 
     @power.setter
@@ -208,26 +249,51 @@ class PowerControl(Instrument):
         self.param = self.power_to_param(value)
 
     def power_to_param(self, power):
+        """Convert a target power to the attenuator parameter via the calibration.
 
+        Args:
+            power: Desired power.
+
+        Returns:
+            The interpolated attenuator parameter for ``power``.
+        """
         params = self.power_calibration['parameters']
         powers = np.array(self.power_calibration['powers'])
         curve = interpolate.interp1d(powers, params, kind='cubic')
         return curve(power)
 
     def param_to_power(self, param):
+        """Convert an attenuator parameter to power via the calibration.
 
+        Args:
+            param: Attenuator parameter value.
+
+        Returns:
+            The interpolated power for ``param``.
+        """
         params = self.power_calibration['parameters']
         powers = np.array(self.power_calibration['powers'])
         curve = interpolate.interp1d(params, powers, kind='cubic')
         return curve(param)
 
     def get_qt_ui(self):
+        """Return the Qt control widget for this power controller.
+
+        Returns:
+            PowerControl_UI: A widget bound to this instrument.
+        """
         return PowerControl_UI(self)
 
 
 class PowerControl_UI(QtWidgets.QWidget, UiTools):
+    """Qt control panel for a :class:`PowerControl` instrument."""
 
     def __init__(self, PC):
+        """Build the UI and bind it to the power controller.
+
+        Args:
+            PC: The :class:`PowerControl` instance to control.
+        """
         super(PowerControl_UI, self).__init__()
         uic.loadUi(os.path.join(os.path.dirname(__file__), 'power_control.ui'), self)
         self.PC = PC
@@ -239,6 +305,7 @@ class PowerControl_UI(QtWidgets.QWidget, UiTools):
         self.PC.power = new
 
     def calibrate_power_gui(self):
+        """Run a power calibration with a modal progress dialog."""
         run_function_modally(self.PC.calibrate_power, progress_maximum=len(self.PC.points))
 
 
