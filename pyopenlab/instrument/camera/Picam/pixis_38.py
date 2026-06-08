@@ -1,32 +1,21 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-# Ralf Mouthaan, Ilya Manyakin, Ermanno Miele
-# University of Cambridge
-# October 2018
-# 
-# Class to operate Pixis CCD camera. Communicates with Picam library to achieve
-# this. Aim is to use this class in conjunction with Acton spectormeter for
-# Raman measurements. Work done with Ermanno Miele.
-#
-# TODO:
-#   * Script connects to first camera it finds and uses this. This will cause 
-#       problems if no camera is connected, or more than one camera is
-#       connected, or if an unexpected camera is connected. 
-#       Should iterate through cameras, checking IDs to find the right one.
-#       This is complicated due to the way the C++ code uses lots of structures
-#       instead of native data types.
-#   * Will not find a camera if it is in use by another process or has not 
-#       been shut down properly.
+"""Driver for the Princeton Instruments Pixis CCD camera (64-bit DLL variant).
+
+Variant of the Pixis driver that loads ``picam_64bit.dll``. Communicates with
+the Picam DLL, intended for use alongside an Acton spectrometer for Raman
+measurements.
+
+Known limitations:
+    * Connects to the first camera found. This fails if no camera is connected,
+      more than one is connected, or an unexpected camera is connected. Ideally
+      the cameras would be iterated and selected by ID, which is awkward because
+      the C++ API uses many structures rather than native data types.
+    * A camera will not be found if it is in use by another process or has not
+      been shut down properly.
 
 Development notes:
     * API for DLL: Picam 5.x Programmers Manual, 4411-0161, Issue 5, August 2018
-    
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from builtins import range
 import ctypes as ct
 import logging
 import os
@@ -35,7 +24,6 @@ import time
 
 from matplotlib import pyplot as plt
 import numpy as np
-from past.utils import old_div
 from picam_constants import PI_V
 from picam_constants import PicamConstraintType
 from picam_constants import PicamError
@@ -50,12 +38,21 @@ PARENT_DIR = os.path.dirname(os.path.realpath(__file__))
 
 
 class clsPicamReadoutStruct(ct.Structure):
+    """ctypes mirror of the Picam readout struct (data pointer and count)."""
     _fields_ = [("ptr", ct.c_void_p), ("intCount", ct.c_int64)]
 
 
 class Pixis(Camera):
+    """Pixis CCD camera driver backed by the 64-bit Picam DLL."""
 
     def __init__(self, with_start_up=False, debug=0):
+        """Initialise the driver.
+
+        Args:
+            with_start_up: If True, open the camera and set a default 10 ms
+                exposure immediately.
+            debug: Verbosity level; values greater than 0 print debug output.
+        """
         self.debug = debug
         self.bolRunning = False
         self.y_max = 0
@@ -71,19 +68,42 @@ class Pixis(Camera):
             self.ShutDown()
 
     def raw_snapshot(self, suppress_errors=False):
-        """
-            Camera class override
+        """Acquire a single frame (Camera class override).
+
+        Args:
+            suppress_errors: If True, return ``(False, None)`` on failure
+                instead of propagating the exception.
+
+        Returns:
+            tuple: ``(success, image)`` where ``image`` is a numpy array.
+
+        Raises:
+            Exception: Re-raises any acquisition error when ``suppress_errors``
+                is False.
         """
         try:
             image = self.GetCurrentFrame()
             return True, image
         except Exception as e:
             if suppress_errors == True:
-                False, None
+                return False, None
             else:
                 raise e
 
     def get_roi(self, x_min=0, x_max=None, y_min=0, y_max=None, suppress_errors=False, debug=0):
+        """Acquire a frame and crop it to a region of interest.
+
+        Args:
+            x_min: Left column of the ROI.
+            x_max: Right column of the ROI; defaults to the sensor width.
+            y_min: Top row of the ROI.
+            y_max: Bottom row of the ROI; defaults to the sensor height.
+            suppress_errors: Forwarded to :meth:`raw_snapshot`.
+            debug: Verbosity level; values greater than 0 print debug output.
+
+        Returns:
+            numpy.ndarray: The cropped image.
+        """
         _, raw_image = self.raw_snapshot(suppress_errors=suppress_errors)
         if x_max is None:
             x_max = self.x_max
@@ -105,6 +125,24 @@ class Pixis(Camera):
                      y_max=None,
                      with_boundary_cut=True,
                      suppress_errors=False):
+        """Acquire a frame and reduce the ROI to a 1D spectrum.
+
+        The spectrum is the column-wise mean of the ROI. Edge pixels are
+        optionally discarded to remove edge effects.
+
+        Args:
+            x_min: Left column of the ROI.
+            x_max: Right column of the ROI; defaults to the sensor width.
+            y_min: Top row of the ROI.
+            y_max: Bottom row of the ROI; defaults to the sensor height.
+            with_boundary_cut: If True, trim ``boundary_cut`` pixels from each
+                end of the spectrum.
+            suppress_errors: Forwarded to :meth:`get_roi`.
+
+        Returns:
+            tuple: ``(spectrum, pixel_offsets)`` numpy arrays, where
+            ``pixel_offsets`` is measured from the frame centre.
+        """
         roi_image = self.get_roi(x_min, x_max, y_min, y_max, suppress_errors)
         #cut edge values from raw spectrum - remove edge effects
         raw_spectrum = np.mean(roi_image, axis=0)
@@ -117,9 +155,20 @@ class Pixis(Camera):
             return raw_spectrum, pixel_offsets
 
     def get_parameter(self, parameter_name, label="unknown"):
-        """
-        Perform GetParameterIntegerValue calls to DLL
-        parameter_name : name of parameter as specified in the picam_constants.py file
+        """Read a camera parameter via the appropriate Picam getter.
+
+        Args:
+            parameter_name: Parameter name as defined in ``picam_constants.py``.
+            label: Human-readable label used only in error messages.
+
+        Returns:
+            The parameter value, or ``numpy.nan`` if the DLL call fails.
+
+        Raises:
+            AssertionError: If the parameter or its types are not recognised.
+            ValueError: If no getter function exists for the parameter.
+            NotImplementedError: For value types not yet supported (Enumeration,
+                Rois, Pulse, Modulations).
         """
 
         if self.debug > 0:
@@ -203,10 +252,21 @@ class Pixis(Camera):
             raise NotImplementedError()
 
     def set_parameter(self, parameter_name, parameter_value):
-        '''
-        Perform GetParameterIntegerValue calls to DLL
-        parameter_name : name of parameter as specified in the picam_constants.py file
-        '''
+        """Write a camera parameter and commit it via the Picam setter.
+
+        Args:
+            parameter_name: Parameter name as defined in ``picam_constants.py``.
+            parameter_value: Value to write; coerced to the parameter's ctype.
+
+        Returns:
+            None on success, or ``numpy.nan`` if the DLL call fails.
+
+        Raises:
+            AssertionError: If the parameter/types are unrecognised or the
+                commit is not accepted by the camera.
+            NotImplementedError: For value types not yet supported (Enumeration,
+                Rois, Pulse, Modulations).
+        """
         assert (parameter_name in list(PicamParameter.keys())
                 )  #Check that the passed parameter name is valid (ie. in constants file)
         param_type, constraint_type, n = PicamParameter[parameter_name]
@@ -251,7 +311,7 @@ class Pixis(Camera):
 
             response = setter(self.CameraHandle, param_id, value)
             if response != 0:
-                print(("Could not SET value of parameter {0} [label:{1}]".format(parameter, label)))
+                print(("Could not SET value of parameter {0}".format(parameter_name)))
                 print(("[Code:{0}] {1}".format(response, PicamError[response])))
                 return np.nan
             #check if commit failed
@@ -286,6 +346,11 @@ class Pixis(Camera):
             raise NotImplementedError()
 
     def StartUp(self):
+        """Load the 64-bit Picam DLL, open the first camera and cool to -80 C.
+
+        Populates frame dimensions and sets ``bolRunning``. Returns early
+        (without raising) if the DLL or camera cannot be found.
+        """
         cint_temp = ct.c_int()
         # Find DLL
         try:
@@ -321,6 +386,7 @@ class Pixis(Camera):
         self.SetTemperatureWithLock(-80.0)
 
     def ShutDown(self):
+        """Close the camera and uninitialise the Picam library."""
         if self.bolRunning == False:
             return
         if self.picam.Picam_CloseCamera(self.CameraHandle) != 0:
@@ -332,12 +398,26 @@ class Pixis(Camera):
         self.bolRunning = False
 
     def SetExposureTime(self, time):
+        """Set the exposure time.
 
+        Args:
+            time: Exposure time in milliseconds.
+        """
         param_name = "PicamParameter_ExposureTime"
         param_value = time  #in milliseconds
         self.set_parameter(parameter_name=param_name, parameter_value=param_value)
 
     def SetTemperatureWithLock(self, temperature):
+        """Set the sensor set-point and block until the temperature locks.
+
+        Args:
+            temperature: Target sensor temperature in degrees Celsius.
+
+        Note:
+            This method references the module-level global ``p`` (defined only
+            in the ``__main__`` block) instead of ``self``, so it raises
+            ``NameError`` when used as an instance method outside that script.
+        """
         self.__SetSensorTemperatureSetPoint(temperature)
         status_code = p.GetTemperatureStatus()
         while PicamSensorTemperatureStatus[status_code] != "PicamSensorTemperatureStatus_Locked":
@@ -353,25 +433,33 @@ class Pixis(Camera):
         return
 
     def GetSensorTemperatureReading(self):
+        """Return the current sensor temperature reading in degrees Celsius."""
         param_name = "PicamParameter_SensorTemperatureReading"
         return self.get_parameter(param_name)
 
     def __SetSensorTemperatureSetPoint(self, temperature):
-        '''
-            Do not use this method if you want to wait for temperature to stabilize, use SetTemperatureWithLock
-        '''
+        """Set the sensor temperature set-point without waiting for a lock.
+
+        Use :meth:`SetTemperatureWithLock` instead if you need to wait for the
+        temperature to stabilise.
+
+        Args:
+            temperature: Target sensor temperature in degrees Celsius.
+        """
         param_name = "PicamParameter_SensorTemperatureSetPoint"
         return self.set_parameter(parameter_name=param_name, parameter_value=temperature)
 
     def GetTemperatureStatus(self):
-        '''
-        See picam_constants.PicamSensorTemperatureStatus for
-            int <-> status mappings
-        '''
+        """Return the sensor temperature status code.
+
+        See ``picam_constants.PicamSensorTemperatureStatus`` for the
+        int-to-status mapping.
+        """
         param_name = "PicamParameter_SensorTemperatureStatus"
         return self.get_parameter(param_name)
 
     def GetExposureTime(self):
+        """Return the current exposure time in milliseconds."""
         param_name = "PicamParameter_ExposureTime"
         #function call: PicamEnumeratedType_CoolingFanStatus
         return self.get_parameter(parameter_name=param_name)
@@ -379,15 +467,23 @@ class Pixis(Camera):
         # return self.get_parameter(parameter=33685527, label="exposure time")
 
     def GetSensorType(self):
+        """Return the sensor type code."""
         param_name = "PicamParameter_SensorType"
         return self.get_parameter(parameter_name=param_name)
 
     def GetIntensifierStatus(self):
+        """Return the intensifier status code."""
         param_name = "PicamParameter_IntensifierStatus"
         return self.get_parameter(parameter_name=param_name)
 
     def GetCurrentFrame(self):
+        """Acquire one frame and return it as a numpy array.
 
+        Starts the camera first if it is not already running.
+
+        Returns:
+            numpy.ndarray: The acquired frame, or ``None`` if acquisition fails.
+        """
         if self.bolRunning == False:
             self.StartUp()
 

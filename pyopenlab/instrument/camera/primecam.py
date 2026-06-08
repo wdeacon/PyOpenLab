@@ -1,9 +1,5 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Created on Thu Sep 12 15:35:06 2019
-
-@author: np-albali
-"""
+"""Camera driver for the Photometrics Prime BSI, built on the ``pyvcam`` PVCAM bindings."""
 
 from functools import wraps
 
@@ -26,8 +22,15 @@ except RuntimeError:
 
 
 def disarmer(f):
-    '''pauses live view during the calling of these functions
-    '''
+    """Decorate a setter so live view is paused while it runs and resumed afterwards.
+
+    Args:
+        f: The function (typically a property setter) to wrap.
+
+    Returns:
+        The wrapped function which toggles ``live_view`` off before the call and back
+        on afterwards if it was originally on.
+    """
 
     @wraps(f)
     def inner_func(self, *args, **kwargs):
@@ -43,6 +46,18 @@ def disarmer(f):
 
 
 class PrimeBSI(Camera):
+    """Photometrics Prime BSI scientific CMOS camera.
+
+    Wraps a ``pyvcam`` :class:`Camera` instance, mirroring its properties onto this class
+    so they are accessible directly (see :meth:`_populate_properties`).
+
+    Attributes:
+        notified_properties: Property names surfaced in the GUI as notified properties.
+        disarmed_properties: Property names whose setters require live view to be paused.
+        metadata_property_names: Property names included in captured metadata.
+        pixel_max: Maximum pixel value the sensor reports.
+    """
+
     notified_properties = ('gain',)  # properties that are in the gui
     disarmed_properties = ('gain', 'exp_time')  # properties that break live view if changed
     metadata_property_names = ('exposure', 'gain')
@@ -57,9 +72,13 @@ class PrimeBSI(Camera):
         self._populate_properties()
 
     def _populate_properties(self):
-        ''' adds all the properties from TLCamera to Kiralux, for easy access.
-        
-        '''
+        """Copy the underlying pyvcam camera's properties onto this class.
+
+        Each property of the wrapped camera that does not already exist on this class is
+        added as a property that delegates to the camera instance. Properties named in
+        :attr:`disarmed_properties` get their setters wrapped with :func:`disarmer`, and
+        those in :attr:`notified_properties` become :class:`NotifiedProperty` instances.
+        """
 
         def prop_factory(prime_prop, notified=False, disarmed=False):  # to get around late binding
 
@@ -90,7 +109,8 @@ class PrimeBSI(Camera):
                     # decorate the setter and return a
                     # notified property appropriately.
     @NotifiedProperty
-    def exposure(self):  # always in ms
+    def exposure(self):
+        """Exposure time in milliseconds (converted from microseconds when needed)."""
         if self.exp_res_index:  # us
             return self.exp_time // 1_000
         return self.exp_time
@@ -102,6 +122,12 @@ class PrimeBSI(Camera):
         self.exp_time = int(val)
 
     def raw_snapshot(self):
+        """Capture a single frame from the camera.
+
+        Returns:
+            tuple: ``(True, frame)`` where ``frame`` is the pixel data, polled from the
+            live stream if live view is active, otherwise grabbed directly.
+        """
         if self.live_view:
             frame = self._camera.poll_frame()[0]['pixel_data']
         else:
@@ -110,6 +136,11 @@ class PrimeBSI(Camera):
 
     @Camera.live_view.setter
     def live_view(self, live_view):
+        """Start or stop continuous acquisition.
+
+        Args:
+            live_view (bool): ``True`` to begin live acquisition, ``False`` to stop it.
+        """
         if live_view == self._live_view:
             return  # small redundancy with Camera.live_view
         Camera.live_view.fset(self, live_view)
@@ -119,10 +150,30 @@ class PrimeBSI(Camera):
             self._camera.finish()
 
     def color_image(self, **kwargs):
+        """Return a captured frame placed in the red channel of an otherwise zero RGB image.
+
+        Args:
+            **kwargs: Forwarded to :meth:`raw_image`.
+
+        Returns:
+            numpy.ndarray: An ``(H, W, 3)`` array with the frame in channel 0.
+        """
         r = self.raw_image(**kwargs)
         return np.append(r[:, :, None], np.zeros(r.shape + (2,)), axis=-1)
 
     def stack(self, exposures=(10, 100, 1000), **kwargs):
+        """Capture a stack of images, one per requested exposure time.
+
+        Live view is disabled for the duration and restored afterwards.
+
+        Args:
+            exposures: Iterable of exposure times (ms) to capture in turn.
+            **kwargs: Forwarded to :meth:`raw_image`.
+
+        Returns:
+            ArrayWithAttrs: Array of shape ``(len(exposures), *frame_shape)`` carrying an
+            ``exposures`` attribute listing the exposure times used.
+        """
         live_view = self.live_view
         self.live_view = False
         for i, e in enumerate(exposures):
@@ -144,6 +195,23 @@ class PrimeBSI(Camera):
 
     @classmethod
     def combine(cls, stack):
+        """Combine an exposure stack into a single HDR-style image.
+
+        Near-saturated pixels are masked out, then each frame is normalised by its
+        exposure time and the frames are averaged (ignoring the masked values).
+
+        Args:
+            stack (ArrayWithAttrs): Output of :meth:`stack`, carrying an ``exposures``
+                attribute.
+
+        Returns:
+            numpy.ndarray: The exposure-normalised, averaged image.
+
+        Note:
+            ``cls.pixel_max`` is a scalar (``2047.``) but this method subscripts it as
+            ``cls.pixel_max[1]``, which raises ``TypeError`` at runtime. Left unchanged
+            pending clarification of the intended saturation threshold.
+        """
         exposures = stack.attrs['exposures']
         stack[stack >= cls.pixel_max[1] * 0.9] = np.nan
 
@@ -157,7 +225,7 @@ class PrimeBSI(Camera):
 
 
 class PrimeCameraControlWidget(CameraControlWidget):
-    """A control widget for the Thorlabs camera, with extra buttons."""
+    """A control widget for the Prime BSI camera, with extra buttons."""
 
     def __init__(self, camera):
         super().__init__(camera, auto_connect=False)

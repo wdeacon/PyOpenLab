@@ -45,15 +45,34 @@ from pyopenlab.utils.image_with_location import locate_feature_in_image
 from pyopenlab.utils.notified_property import DumbNotifiedProperty
 
 
-def distance(p1, p2):  # between two ndarrays
+def distance(p1, p2):
+    """Return the squared Euclidean distance between two coordinate arrays.
+
+    Args:
+        p1: First point, as a numpy array.
+        p2: Second point, as a numpy array.
+
+    Returns:
+        The sum of squared element-wise differences between ``p1`` and ``p2``.
+    """
     return ((p1 - p2)**2).sum()
 
 
 # Autofocus merit functions
 def af_merit_squared_laplacian(image):
-    """Return the mean squared Laplacian of an image - a sharpness metric.
+    """Return the summed squared Laplacian of an image, used as a sharpness metric.
 
-    The image will be converted to grayscale if its shape is MxNx3"""
+    The image is converted to grayscale if its shape is MxNx3.
+
+    Args:
+        image: A 2D grayscale or 3D (MxNx3) colour image.
+
+    Returns:
+        The sum of the squared Laplacian over the image; larger means sharper.
+
+    Raises:
+        AssertionError: If the image is not 2D or 3D.
+    """
     if len(image.shape) == 3:
         image = np.mean(image, axis=2, dtype=image.dtype)
     assert len(image.shape) == 2, "The image is the wrong shape - must be 2D or 3D"
@@ -99,6 +118,15 @@ class CameraWithLocation(Instrument):
 
     @property
     def pixel_to_sample_matrix(self):
+        """The 4x4 affine matrix mapping homogeneous pixel coordinates to sample coordinates.
+
+        Returns:
+            numpy.ndarray: A 4x4 matrix combining the calibrated pixel-to-sample displacement with
+            an offset so that the datum pixel maps to the current sample location.
+
+        Raises:
+            AssertionError: If the system has not been calibrated.
+        """
         here = self.datum_location
         assert self.pixel_to_sample_displacement is not None, "The CameraWithLocation must be calibrated before use!"
         datum_displacement = np.dot(ensure_3d(self.datum_pixel), self.pixel_to_sample_displacement)
@@ -134,7 +162,17 @@ class CameraWithLocation(Instrument):
         return self._add_position_metadata(self.camera.gray_image(*args, **kwargs))
 
     def color_image(self, ignore_filter=False, *args, **kwargs):
-        """Return a colour image from the camera, including position metadata"""
+        """Return a colour image from the camera, including position metadata.
+
+        Args:
+            ignore_filter: If True, skip the camera's ``filter_function`` even when image filtering
+                is enabled.
+            *args: Forwarded to the underlying camera's ``color_image``.
+            **kwargs: Forwarded to the underlying camera's ``color_image``.
+
+        Returns:
+            ImageWithLocation: The colour image with position metadata attached.
+        """
         image = self.camera.color_image(*args, **kwargs)
         if (ignore_filter == False and self.filter_images == True and
                 self.camera.filter_function is not None):
@@ -143,13 +181,29 @@ class CameraWithLocation(Instrument):
 
     @staticmethod
     def crop_centered(image, size=(100, 100)):
+        """Crop an image to a centred region of the given size.
+
+        Args:
+            image: The image to crop.
+            size: ``(height, width)`` of the crop in pixels, or None to return the image unchanged.
+
+        Returns:
+            The centred crop, or the original image if ``size`` is None.
+        """
         if size is None:
             return image
         return image[image.shape[0] // 2 - size[0] // 2:image.shape[0] // 2 + size[0] // 2,
                      image.shape[1] // 2 - size[1] // 2:image.shape[1] // 2 + size[1] // 2]
 
     def thumb_image(self, size=(100, 100)):
-        """Return a cropped "thumb" from the CWL with size  """
+        """Return a small centred thumbnail crop of the current colour image.
+
+        Args:
+            size: ``(height, width)`` of the thumbnail in pixels.
+
+        Returns:
+            The centred crop of the current colour image.
+        """
         image = self.color_image()
         return self.crop_centered(image, size=size)
 
@@ -163,6 +217,14 @@ class CameraWithLocation(Instrument):
         self.stage.move_rel(*args, **kwargs)
 
     def move_to_pixel(self, x, y):
+        """Move the stage so that the given pixel of the latest frame comes to the datum point.
+
+        Does nothing if the system has not been calibrated (the pixel-to-sample matrix is identity).
+
+        Args:
+            x: Pixel x-coordinate in the latest raw frame.
+            y: Pixel y-coordinate in the latest raw frame.
+        """
         iwl = ImageWithLocation(self.camera.latest_raw_frame)
         iwl.attrs['datum_pixel'] = self.datum_pixel
         #        self.use_previous_datum_location = True
@@ -179,7 +241,15 @@ class CameraWithLocation(Instrument):
 
     @property
     def datum_location(self):
-        """The location in the sample of the datum point (i.e. the current stage position, corrected for drift)"""
+        """The sample location of the datum point (current stage position, corrected for drift).
+
+        Returns:
+            The current stage position, minus the drift estimate if one is set.
+
+        Note:
+            The final ``return`` statement after the if/else is unreachable dead code; the value is
+            always returned from inside the branches.
+        """
         if self.drift_estimate == None:
             return self.stage.position
         else:
@@ -208,24 +278,31 @@ class CameraWithLocation(Instrument):
                         max_allowed_movement=4,
                         autofocus_first=False,
                         autofocus_args={}):
-        """Bring the feature in the supplied image to the centre of the camera
+        """Bring the feature in the supplied image to the centre of the camera.
 
-        Strictly, what this aims to do is move the sample such that the datum pixel of the "feature" image is on the
-        datum pixel of the camera.  It does this by first (unless instructed not to) moving to the datum point as
-        defined by the image.  It then compares the image from the camera with the feature, and adjusts the position.
+        This aims to move the sample such that the datum pixel of the ``feature`` image is on the
+        datum pixel of the camera. It does this by first (unless instructed not to) moving to the
+        datum point defined by the image, then comparing the camera image with the feature and
+        iteratively adjusting the position.
 
-        feature : ImageWithLocation or numpy.ndarray
-            The feature that we want to move to.
-        ignore_position : bool (optional, default False)
-            Set this to true to skip the initial move using the image's metadata.
-        margin : int (optional)
-            The maximum error, in pixels, that we can cope with (this sets the size of the search area we use to look
-            for the feature in the camera image, it is (2*range + 1) in both X and Y.  Set to 0 to use the maximum
-            possible search area (given by the difference in size between the feature image and the camera image)
-        tolerance : float (optional)
-            Once the error between our current position and the feature's position is below this threshold, we stop.
-        max_iterations : int (optional)
-            The maximum number of moves we make to fine-tune the position.
+        Args:
+            feature: The feature to move to, as an ``ImageWithLocation`` or ``numpy.ndarray``.
+            ignore_position: If True, skip the initial move using the image's metadata.
+            ignore_z_pos: If True, ignore the feature's recorded z value on the initial move.
+            margin: Maximum error, in pixels, we can cope with. Sets the size of the search area
+                used to locate the feature (``2*margin + 1`` in both X and Y). Set to 0 to use the
+                maximum possible search area.
+            tolerance: Stop once the error between the current and the feature's position is below
+                this threshold.
+            max_iterations: Maximum number of moves made to fine-tune the position.
+            max_allowed_movement: Abort if the located feature is further than this from the current
+                camera position.
+            autofocus_first: If True, run an autofocus before centring.
+            autofocus_args: Keyword arguments forwarded to :meth:`autofocus` when
+                ``autofocus_first`` is True.
+
+        Returns:
+            bool: True if the feature was centred to within ``tolerance``, otherwise False.
         """
         if (feature.datum_pixel[0] < 0 or feature.datum_pixel[0] > np.shape(feature)[0] or
                 feature.datum_pixel[1] < 0 or feature.datum_pixel[1] > np.shape(feature)[1]):
@@ -281,6 +358,13 @@ class CameraWithLocation(Instrument):
 
     #
     def move_to_feature_pixel(self, x, y, image=None):
+        """Extract the feature at a pixel and centre the camera on it.
+
+        Args:
+            x: Pixel x-coordinate of the feature.
+            y: Pixel y-coordinate of the feature.
+            image: Image to take the feature from. If None, a fresh colour image is acquired.
+        """
         if self.pixel_to_sample_matrix is not None:
             if image is None:
                 image = self.color_image()
@@ -298,15 +382,28 @@ class CameraWithLocation(Instrument):
                   exposure_factor=1.0,
                   use_thumbnail=None,
                   update_progress=lambda p: p):
-        """Move to a range of Z positions and measure focus, then move to the best one.
+        """Move to a range of Z positions, measure focus at each, then move to the best one.
 
-        Arguments:
-        dz : np.array (optional, defaults to values specified in af_step_size and af_steps
-            Z positions, relative to the current position, to move to and measure focus.
-        merit_function : function, optional
-            A function that takes an image and returns a focus score, which we maximise.
-        update_progress : function, optional
-            This will be called each time we take an image - for use with run_function_modally.
+        Args:
+            dz: Z positions, relative to the current position, to move to and measure focus. If
+                None, defaults to a range derived from ``af_step_size`` and ``af_steps``.
+            merit_function: A function that takes an image and returns a focus score to maximise.
+            method: How to select the best focus from the scores. One of ``'centre_of_mass'``,
+                ``'parabola'`` or anything else (which falls back to the position of the maximum
+                score).
+            noise_floor: Fraction of the score range below which scores are ignored (used by the
+                centre-of-mass method).
+            exposure_factor: The camera exposure is divided by this during the scan and restored
+                afterwards.
+            use_thumbnail: If True, use a thumbnail crop for scoring; if None, defer to
+                ``self.use_thumbnail``.
+            update_progress: Called with the step number each time an image is taken; for use with
+                ``run_function_modally``.
+
+        Returns:
+            tuple: ``(displacement, positions, powers)`` where ``displacement`` is the move from the
+            initial position, ``positions`` are the sampled stage positions and ``powers`` are the
+            corresponding focus scores.
         """
         self.camera.exposure = self.camera.exposure / exposure_factor
         if dz is None:
@@ -375,9 +472,19 @@ class CameraWithLocation(Instrument):
                         trigger_full_af=True,
                         update_progress=lambda p: p,
                         **kwargs):
-        """Do a quick 3-step autofocus, performing a full autofocus if needed
+        """Do a quick 3-step autofocus, escalating to a full autofocus if needed.
 
-        dz is a single number - we move this far above and below the current position."""
+        Args:
+            dz: A single distance to move above and below the current position for the quick scan.
+            full_dz: Z positions to use for the full autofocus, if one is triggered.
+            trigger_full_af: If True, run a full autofocus when the quick scan moves by at least
+                ``dz``.
+            update_progress: Progress callback, forwarded to :meth:`autofocus`.
+            **kwargs: Additional keyword arguments forwarded to the full :meth:`autofocus`.
+
+        Returns:
+            tuple: ``(displacement, positions, powers)`` from whichever autofocus ran last.
+        """
         shift, pos, powers = self.autofocus(np.array([-dz, 0, dz]),
                                             method="parabola",
                                             update_progress=update_progress)
@@ -391,26 +498,33 @@ class CameraWithLocation(Instrument):
         run_function_modally(self.autofocus, progress_maximum=self.af_steps + 1)
 
     def quick_autofocus_gui(self):
-        """Run an autofocus using default parameters, with a GUI progress bar."""
+        """Run a quick autofocus using default parameters, with a GUI progress bar."""
         run_function_modally(self.quick_autofocus, progress_maximum=self.af_steps + 1)
 
     def calibrate_xy(self, update_progress=lambda p: p, step=None, min_step=1e-5, max_step=1000):
-        """Make a series of moves in X and Y to determine the XY components of the pixel-to-sample matrix.
+        """Make moves in X and Y to determine the XY components of the pixel-to-sample matrix.
 
-        Arguments:
-        step : float, optional (default None)
-            The amount to move the stage by.  This should move the sample by approximately 1/10th of the field of view.
-            If it is left as None, we will attempt to auto-determine the step size (see below).
-        min_step : float, optional
-            If we auto-determine the step size, start with this step size.  It's deliberately tiny.
-        max_step : float, optional
-            If we're auto-determining the step size, fail if it looks like it's more than this.
+        If no step is given, this starts by gingerly moving the stage a tiny amount, repeating with
+        exponentially increasing distance until a reasonable movement is seen. This means the
+        calibration distance rarely needs to be set by hand.
 
-        This starts by gingerly moving the stage a tiny amount.  That is repeated, increasing the distance exponentially
-        until we see a reasonable movement.  This means we shouldn't need to worry too much about setting the distance
-        we use for calibration.
+        Args:
+            update_progress: Called with a step number as calibration proceeds; for use with
+                ``run_function_modally``.
+            step: Amount to move the stage by, which should shift the sample by roughly 1/10th of
+                the field of view. If None, the step size is auto-determined (see above).
+            min_step: Starting (deliberately tiny) step size used when auto-determining the step.
+            max_step: Fail if the auto-determined step grows beyond this.
 
-        NB this currently assumes the stage deals with backlash correction for us.
+        Returns:
+            tuple: ``(pixel_to_sample_displacement, location_shifts, pixel_shifts,
+            fractional_error)``.
+
+        Raises:
+            AssertionError: If the stage reaches ``max_step`` before any movement is detected.
+
+        Note:
+            This currently assumes the stage handles backlash correction itself.
         """
         #,bonus_arg = None,
         # First, acquire a template image:
@@ -487,14 +601,14 @@ class CameraWithLocation(Instrument):
         return self.pixel_to_sample_displacement, location_shifts, pixel_shifts, fractional_error
 
     def load_calibration(self):
-        """Acquire a new spectrum and use it as a reference."""
+        """Load the saved pixel-to-sample displacement from the config file."""
         self.pixel_to_sample_displacement = self.config_file['pixel_to_sample_displacement'][:]
 
     def get_qt_ui(self):
-        """Create a QWidget that controls the camera.
+        """Create the full Qt UI (controls plus preview) for this CameraWithLocation.
 
-        Specifying control_only=True returns just the controls for the camera.
-        Otherwise, you get both the controls and a preview window.
+        Returns:
+            CameraWithLocationUI: The user interface widget.
         """
         return CameraWithLocationUI(self)
 
@@ -504,7 +618,11 @@ class CameraWithLocation(Instrument):
 
 
 class CameraWithLocationControlUI(QtWidgets.QWidget):
-    """The control box for a CameraWithLocation"""
+    """The control box for a :class:`CameraWithLocation`, with calibration and autofocus controls.
+
+    Args:
+        cwl: The :class:`CameraWithLocation` to control.
+    """
     calibration_distance = DumbNotifiedProperty(0)
 
     def __init__(self, cwl):
@@ -540,11 +658,16 @@ class CameraWithLocationControlUI(QtWidgets.QWidget):
             step=None if self.calibration_distance <= 0 else float(self.calibration_distance))
 
     def load_calibration_gui(self):
+        """Load the saved calibration into the wrapped CameraWithLocation."""
         self.cwl.load_calibration()
 
 
 class CameraWithLocationUI(QtWidgets.QWidget):
-    """Generic user interface for a camera."""
+    """Full user interface for a :class:`CameraWithLocation`: image preview plus tabbed controls.
+
+    Args:
+        cwl: The :class:`CameraWithLocation` to display and control.
+    """
 
     def __init__(self, cwl):
         assert isinstance(cwl, CameraWithLocation), "instrument must be a CameraWithLocation"
@@ -570,7 +693,13 @@ class CameraWithLocationUI(QtWidgets.QWidget):
 
 
 class AcquireGridOfImages(ExperimentWithProgressBar):
-    """Use a CameraWithLocation to acquire a grid of image tiles that can later be stitched together"""
+    """Acquire a grid of image tiles with a CameraWithLocation, for later stitching.
+
+    Args:
+        camera_with_location: The :class:`CameraWithLocation` to acquire tiles with.
+        completion_function: Optional callable invoked once the scan finishes.
+        **kwargs: Forwarded to :class:`ExperimentWithProgressBar`.
+    """
 
     def __init__(self, camera_with_location=None, completion_function=None, **kwargs):
         super(AcquireGridOfImages, self).__init__(**kwargs)
@@ -584,6 +713,17 @@ class AcquireGridOfImages(ExperimentWithProgressBar):
                        autofocus=False,
                        *args,
                        **kwargs):
+        """Set up the scan parameters and destination data group before running.
+
+        Args:
+            n_tiles: ``(nx, ny)`` number of tiles in each direction.
+            overlap_pixels: Number of pixels of overlap between adjacent tiles.
+            data_group: Existing data group to store tiles in. If None, a new ``tiled_image_%d``
+                group is created.
+            autofocus: Whether to autofocus at each tile.
+            *args: Unused; accepted for interface compatibility.
+            **kwargs: Unused; accepted for interface compatibility.
+        """
         self.autofocus = autofocus
         self.progress_maximum = n_tiles[0] * n_tiles[1]
         self.overlap_pixels = overlap_pixels
@@ -591,7 +731,15 @@ class AcquireGridOfImages(ExperimentWithProgressBar):
             "tiled_image_%d") if data_group is None else data_group
 
     def run(self, n_tiles=(1, 1), autofocus_args=None):
-        """Acquire a grid of images with the specified overlap."""
+        """Acquire a grid of images with the specified overlap, snake-scanning across the grid.
+
+        Args:
+            n_tiles: ``(nx, ny)`` number of tiles in each direction.
+            autofocus_args: If not None, keyword arguments passed to ``cwl.autofocus`` at each tile.
+
+        Returns:
+            The data group containing the acquired tiles.
+        """
         self.update_progress(0)
         centre_image = self.cwl.color_image()
         scan_step = np.array(centre_image.shape[:2]) - self.overlap_pixels

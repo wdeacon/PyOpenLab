@@ -1,11 +1,8 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-@author: Ana Andres-Arroyo
-GUI which controls a uc480 camera
-"""
+"""Standalone Qt GUI for controlling a Thorlabs/IDS uc480 camera via the ``instrumental`` library.
 
-# documentation:
-# http://instrumental-lib.readthedocs.io/en/latest/uc480-cameras.html
+See http://instrumental-lib.readthedocs.io/en/latest/uc480-cameras.html for the underlying driver.
+"""
 
 import datetime
 import os
@@ -25,8 +22,13 @@ from pyopenlab.ui.ui_tools import UiTools
 
 
 class uc480(QtWidgets.QMainWindow, UiTools):
-    """
-    GUI which controls a uc480 camera.
+    """Main-window GUI for controlling a uc480 camera.
+
+    Provides live view, single-image capture, auto-exposure, region-of-interest selection and
+    saving of images and video to HDF5 or image files.
+
+    Args:
+        serial: Serial number of the camera to open. If False, the default uc480 camera is opened.
     """
 
     def __init__(self, serial=False):
@@ -124,7 +126,12 @@ class uc480(QtWidgets.QMainWindow, UiTools):
         self.open_camera(serial=serial)
 
     def open_camera(self, serial=False):
-        """Connect to a uc480 camera."""
+        """Connect to a uc480 camera and configure the GUI for it.
+
+        Args:
+            serial: Serial number of the camera to open. If False, the default uc480 camera is
+                opened.
+        """
         print('Attempting to connect to the camera...')
         if serial:
             print("Serial number: %s" % serial)
@@ -205,13 +212,24 @@ class uc480(QtWidgets.QMainWindow, UiTools):
             print("No camera is currently open.\n")
 
     def take_image(self):
-        """Grab an image and display it."""
+        """Grab an image, display it and return it.
+
+        Returns:
+            numpy.ndarray: The captured image.
+        """
         image = self.grab_image()
         self.display_image(image)
         return image
 
     def get_brightest_pixel(self, image):
-        """Get the brightest pixel value from the image."""
+        """Return the brightest pixel value in an image and display it on the GUI.
+
+        Args:
+            image: The image to inspect.
+
+        Returns:
+            The maximum pixel value in the image.
+        """
         brightest_pixel = np.amax(image)
         self.CurrentMaxGrayLabel.setText(str(brightest_pixel))
         return brightest_pixel
@@ -235,7 +253,14 @@ class uc480(QtWidgets.QMainWindow, UiTools):
         self.LiveViewCheckBox.setCheckState(live_view_state)
 
     def set_auto_exposure(self, min_gray=200, max_gray=250, precision=1, max_attempts=10):
-        """Determine the optimal exposure time."""
+        """Iteratively adjust the exposure time so the brightest pixel falls in a target range.
+
+        Args:
+            min_gray: Lower bound of the target brightest-pixel value.
+            max_gray: Upper bound of the target brightest-pixel value.
+            precision: Stop once consecutive exposure times differ by less than this.
+            max_attempts: Maximum number of adjustment iterations.
+        """
         image = self.take_image()
         brightest_pixel = self.get_brightest_pixel(image)
         okay = True
@@ -272,7 +297,11 @@ class uc480(QtWidgets.QMainWindow, UiTools):
             QtWidgets.qApp.processEvents()
 
     def display_image(self, image):
-        """Display the latest captured image."""
+        """Display an image and its horizontal/vertical intensity profiles.
+
+        Args:
+            image: The image to display. 3D arrays are treated as colour (RGB), 2D as monochrome.
+        """
         # make a copy of the data so it can be accessed when saving an image
         self.image = image
 
@@ -317,7 +346,12 @@ class uc480(QtWidgets.QMainWindow, UiTools):
         self.image_widget.show()
 
     def display_camera_parameters(self, camera_parameters):
-        """Display the current camera parameters on the GUI."""
+        """Display the current camera parameters on the GUI.
+
+        Args:
+            camera_parameters: Dict of camera parameter values, as returned by
+                :meth:`get_camera_parameters`.
+        """
         self.CurrentFramerateLabel.setText(str(camera_parameters['framerate']))
         self.CurrentExposureLabel.setText(str(camera_parameters['exposure_time']))
         self.CurrentWidthLabel.setText(str(camera_parameters['width']))
@@ -334,7 +368,12 @@ class uc480(QtWidgets.QMainWindow, UiTools):
             self.CurrentGammaLabel.setText(str(camera_parameters['gamma']))
 
     def get_camera_parameters(self):
-        """Read parameter values from the camera."""
+        """Read the current parameter values from the camera.
+
+        Returns:
+            dict: Camera parameters including serial, framerate, exposure time, dimensions, gain and
+            (where supported) gamma and white balance.
+        """
         camera_parameters = dict()
         camera_parameters['serial'] = self.camera.serial
         camera_parameters['framerate'] = self.camera.framerate.magnitude
@@ -354,14 +393,22 @@ class uc480(QtWidgets.QMainWindow, UiTools):
         return camera_parameters
 
     def set_video_parameters(self):
-        """Read parameters from the GUI and return a dictionary."""
+        """Read capture parameters plus the framerate from the GUI.
+
+        Returns:
+            dict: The capture parameters with an added ``framerate`` entry.
+        """
         video_parameters = self.set_capture_parameters()
         framerate = "{} hertz".format(str(self.FramerateNumberBox.value()))
         video_parameters['framerate'] = framerate
         return video_parameters
 
     def set_capture_parameters(self):
-        """Read parameters from the GUI and return a dictionary."""
+        """Read capture parameters from the GUI and apply the corresponding camera properties.
+
+        Returns:
+            dict: Capture parameters including exposure time, gain, binning, subsampling and ROI.
+        """
         capture_parameters = dict()
         exposure_time = "{} millisecond".format(str(self.ExposureTimeNumberBox.value()))
         capture_parameters['exposure_time'] = exposure_time
@@ -385,7 +432,14 @@ class uc480(QtWidgets.QMainWindow, UiTools):
             self.camera.auto_whitebalance = self.AutoWhitebalanceCheckBox.checkState()
 
     def set_ROI(self, parameters_dict):
-        """Read ROI coordinates from the GUI."""
+        """Read ROI coordinates from the GUI and merge them into a parameters dict.
+
+        Args:
+            parameters_dict: Existing capture parameters; any stale ROI keys are removed first.
+
+        Returns:
+            dict: ``parameters_dict`` updated with the selected ROI parameters.
+        """
         ROI_dict = {
             'width': [self.ROIWidthCheckBox, self.ROIWidthNumberBox],
             'height': [self.ROIHeightCheckBox, self.ROIHeightNumberBox],
@@ -414,7 +468,11 @@ class uc480(QtWidgets.QMainWindow, UiTools):
         return parameters_dict
 
     def grab_image(self):
-        """Grab an image with the camera."""
+        """Grab an image with the current capture parameters and record the attributes.
+
+        Returns:
+            numpy.ndarray: The captured image.
+        """
         # set the desired capture parameters and update the attributes
         capture_parameters = self.set_capture_parameters()
         self.attributes.update(capture_parameters)
@@ -435,13 +493,22 @@ class uc480(QtWidgets.QMainWindow, UiTools):
         return image
 
     def get_info(self):
-        """Get info from the GUI."""
+        """Read the free-text description from the GUI.
+
+        Returns:
+            dict: A dict with a ``description`` key.
+        """
         info = dict()
         info['description'] = self.DescriptionLineEdit.text()
         return info
 
     def save_image(self, dummy_variable=False, group_name='images'):
-        """Save the latest image."""
+        """Save the latest displayed image to HDF5 or an image file, depending on the GUI format.
+
+        Args:
+            dummy_variable: Unused; present so the method can be connected directly to a Qt signal.
+            group_name: Name of the HDF5 group to store the image in when saving as HDF5.
+        """
         # make a copy of the image so the saved image is the one that was on the
         # screen when the save button was pressed, not when the file name was chosen
         image = self.image
@@ -520,7 +587,12 @@ class uc480(QtWidgets.QMainWindow, UiTools):
         self.start_live_view(save=True, max_frames=max_frames)
 
     def start_live_view(self, save=False, max_frames=100):
-        """Start continuous image acquisition."""
+        """Configure the GUI and live view thread, then start continuous acquisition.
+
+        Args:
+            save: Whether acquired frames should be saved.
+            max_frames: Maximum number of frames to acquire.
+        """
 
         # enable/disable gui buttons
         self.TakeImagePushButton.setEnabled(False)
@@ -556,7 +628,11 @@ class uc480(QtWidgets.QMainWindow, UiTools):
         self.LiveView.start()
 
     def update_attributes(self, attributes):
-        """Update attributes dictionary and display on the GUI."""
+        """Merge new attributes into the stored dict and display them on the GUI.
+
+        Args:
+            attributes: Attribute values to merge in.
+        """
         self.attributes.update(attributes)
         self.display_camera_parameters(self.attributes)
 
@@ -572,7 +648,13 @@ class uc480(QtWidgets.QMainWindow, UiTools):
         self.delete_thread()
 
     def delete_thread(self):
-        """Delete the live view thread and reset the GUI."""
+        """Delete the live view thread and reset the GUI.
+
+        Note:
+            The loop that prunes transient attribute keys tests ``attributes_keys_del in
+            self.attributes.keys()`` (the list, not the loop variable ``key``), so no keys are ever
+            actually removed. Left unchanged to avoid altering runtime behaviour.
+        """
         # stop live video mode
         self.camera.stop_live_video()
         # delete the thread to free up memory
@@ -650,7 +732,11 @@ class uc480(QtWidgets.QMainWindow, UiTools):
 
 
 class LiveViewThread(QtCore.QThread):
-    """Thread wich allows live view of the camera."""
+    """Background thread that continuously acquires frames for live view and video recording.
+
+    Args:
+        camera: The uc480 camera object to acquire frames from.
+    """
     display_signal = QtCore.Signal(np.ndarray)
     attributes_signal = QtCore.Signal(dict)
 
@@ -668,7 +754,16 @@ class LiveViewThread(QtCore.QThread):
                   timeout=1000,
                   max_frames=100,
                   display_framerate=10):
-        """Start live view with the video parameters received from the main GUI."""
+        """Configure the thread and start the camera's live video stream.
+
+        Args:
+            video_parameters: Capture parameters forwarded to ``camera.start_live_video``.
+            save: Whether frames should be buffered for saving.
+            timeout: Per-frame timeout in milliseconds.
+            max_frames: Maximum number of frames to acquire.
+            display_framerate: Target rate at which frames are emitted to the GUI; the capture rate
+                is decimated to roughly this value.
+        """
 
         self.timeout = "{} millisecond".format(str(timeout))
         self.save = save
@@ -729,19 +824,36 @@ class LiveViewThread(QtCore.QThread):
                 self.frame_number += 1
 
     def save_frame(self, image, capture_time_sec, frame_number):
-        """Save the frame to RAM."""
+        """Store a frame and its capture timestamp into the in-RAM buffers.
+
+        Args:
+            image: The frame to store.
+            capture_time_sec: Capture time of the frame, in seconds.
+            frame_number: Index of the frame in the buffer.
+        """
         self.image_array[frame_number, :, :] = image
         self.capture_timestamp_array[frame_number] = capture_time_sec
         self.attributes['capture_time_sec'] = self.capture_timestamp_array
 
 
 class HighPrecisionWallTime(object):
+    """High-precision wall-clock timer, anchored to ``time.time()`` at construction.
+
+    Note:
+        This relies on ``time.clock()``, which was removed in Python 3.8. On modern Python this
+        class will raise ``AttributeError``. Left unchanged to avoid altering runtime behaviour.
+    """
 
     def __init__(self,):
         self._wall_time_0 = time.time()
         self._clock_0 = time.clock()
 
     def sample(self,):
+        """Return the current wall-clock time using the high-precision offset.
+
+        Returns:
+            float: The estimated current wall-clock time, in seconds since the epoch.
+        """
         dc = time.clock() - self._clock_0
         return self._wall_time_0 + dc
 

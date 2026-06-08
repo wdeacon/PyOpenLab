@@ -1,4 +1,9 @@
 ﻿# -*- coding: utf-8 -*-
+"""TCP/IP (RemoteEx) wrapper for Hamamatsu streak cameras.
+
+Implements :class:`StreakSdk`, a VISA-backed driver speaking the RemoteEx protocol
+documented in the RemoteEx Programmers Handbook, plus the streak error codes.
+"""
 
 import os
 import pprint
@@ -20,6 +25,14 @@ SLEEPING_TIME = 0.1
 
 
 class StreakError(Exception):
+    """Exception raised for non-success RemoteEx error codes.
+
+    Attributes:
+        error_code (int): The numeric RemoteEx error code.
+        error_name (str): The human-readable description of the code.
+        msg: The command/context that produced the error.
+        reply: The full reply text from the camera.
+    """
 
     def __init__(self, code, msg, reply):
         if isinstance(code, str):
@@ -46,12 +59,15 @@ class StreakSdk(VisaInstrument):
     """
 
     def __init__(self, address, start_app=False, get_all_parameters=False, **kwargs):
-        """
+        """Open the command and data sockets to the RemoteEx server.
 
-        :param address: tuple of the streak TCP address (TCP_IP,TCP_PORT)
-        :param kwargs: optional dictionary keys, also passed to pyopenlab.Instrument
-            CloseAppWhenDone:  closes the streak GUI when you delete the Python class instance
-            get_all_parameters:  gets the values of all the parameters on startup
+        Args:
+            address (tuple): The streak TCP address as ``(TCP_IP, TCP_PORT)``; the data
+                socket uses ``TCP_PORT + 1``.
+            start_app (bool): If ``True``, start the HPDTA GUI on connect.
+            get_all_parameters (bool): If ``True``, query every parameter on startup.
+            **kwargs: Forwarded to the VISA instrument. ``CloseAppWhenDone`` closes the
+                streak GUI when this instance is deleted.
         """
         visa_address = 'TCPIP::%s::%d::SOCKET' % address
         settings = dict(read_termination='\r',
@@ -92,10 +108,10 @@ class StreakSdk(VisaInstrument):
         super(StreakSdk, self).__del__()
 
     def reopen_connection(self):
-        """For some reason, sometimes the remote app crashes, and it's useful to restart the connection without
-        restarting the local python app
+        """Tear down and re-establish the command and data sockets.
 
-        :return:
+        Useful when the remote app crashes, so the connection can be restarted without
+        restarting the local Python process.
         """
         if hasattr(self, 'instr'):
             del self.instr
@@ -125,12 +141,15 @@ class StreakSdk(VisaInstrument):
         self.clear_read_buffer()
 
     def query(self, msg, *args, **kwargs):
-        """Light wrapper to add logging and handshaking
+        """Send a query, logging it and validating the handshake reply.
 
-        :param msg:
-        :param args:
-        :param kwargs:
-        :return:
+        Args:
+            msg (str): The command string to send.
+            *args: Positional arguments forwarded to the underlying query.
+            **kwargs: Keyword arguments forwarded to the underlying query.
+
+        Returns:
+            The reply portion of the handshaked response.
         """
         self._logger.debug("write: %s" % msg)
         full_reply = super(StreakSdk, self).query(msg, *args, **kwargs)
@@ -139,13 +158,23 @@ class StreakSdk(VisaInstrument):
         return reply
 
     def _handshake(self, message, full_reply, *args, **kwargs):
-        """Checks command was executed without errors
+        """Validate that a command executed without errors.
 
-        Most times a command is sent to the streak, it replies with a message containing an error code (see ERROR_CODES)
-        and the command name. This method returns the error message if there's been an error, or tries to handshake
-        again if there was no handshake message.
+        The streak replies with an error code (see ``ERROR_CODES``) and the command name.
+        Status-only replies (codes 4/5) are skipped by reading and handshaking again.
 
-        :return:
+        Args:
+            message (str): The original command sent.
+            full_reply (str): The raw reply received.
+            *args: Forwarded to :meth:`read` when re-handshaking.
+            **kwargs: Forwarded to :meth:`read` when re-handshaking.
+
+        Returns:
+            The reply payload on success, or ``None`` if the handshake failed (logged).
+
+        Raises:
+            StreakError: If the reply carries a genuine error code (handled internally and
+                logged, not propagated).
         """
         try:
             split_reply = full_reply.split(',', 2)
@@ -174,31 +203,33 @@ class StreakSdk(VisaInstrument):
             self._logger.warn('Handshake failed: %s' % e)
 
     def send_command(self, operation, *parameters, **kwargs):
-        """Simply parses a command and parameters into the expected TCPIP string command structure:
-            operation(parameter1, parameter2, parameter3...)
+        """Format a command and parameters into the RemoteEx string and send it.
 
-        :param operation: str
-        :param parameters: list of parameters to be passed to operation
-        :return:
+        The command structure is ``operation(parameter1, parameter2, ...)``.
+
+        Args:
+            operation (str): The RemoteEx operation name.
+            *parameters: Parameters to pass to the operation.
+            **kwargs: Forwarded to :meth:`query`.
+
+        Returns:
+            The reply from :meth:`query`.
         """
-
         self._logger.debug("send_command: %s, %s, %s" % (operation, parameters, kwargs))
         msg = '%s(%s)' % (operation, ','.join(map(str, parameters)))
         return self.query(msg, **kwargs)
 
     def _setup_parameter_dictionaries(self):
-        """Setting up a dictionary (self.parameters) that contains all the information for calling parameters, as well
-        as their values (once called)
+        """Build ``self.parameters``, describing how to get/set every streak parameter.
 
-        Streak parameters are hierarchical (e.g. there are 7 parameters related to the Application). Some have one level
-        (like Application) but others have two levels (e.g. Camera has Binning inside Setup, but Exposure inside one of
-        Live/Acquire/AI/PC).
+        Streak parameters are hierarchical: some have a single level (e.g. Application),
+        others two (e.g. Camera has Binning under Setup, Exposure under Live/Acquire/AI/PC).
+        Each entry stores its get/set/info command names and a value tree.
 
-        TODO: make parameters into CameraParameters that can then be bundled into metadata
-            Problem: some parameters do not have names amenable to being attributes (with spaces, stops, slashes)
-        TODO: handle unavailable parameters and devices
-
-        :return:
+        Note:
+            TODO (pre-existing): turn parameters into CameraParameters for metadata bundling
+            (blocked by names containing spaces/dots/slashes), and handle unavailable
+            parameters and devices.
         """
         self.parameters = dict()
 
@@ -358,23 +389,26 @@ class StreakSdk(VisaInstrument):
         self.list_dev_params()
 
     def get_parameter(self, base_name=None, sub_level=None, sub_sub_level=None):
-        """Gets and returns streak parameter(s)
+        """Get one or more streak parameters.
 
-        If either sub_level or sub_sub_level are None, returns all the values at that hierarchy
+        If a level is left as ``None``, all values at that point in the hierarchy are
+        returned as a nested dictionary.
 
-        >>>> streak.get_parameter()  # returns ALL the streak parameters
+        Args:
+            base_name (str, optional): Top-level group (e.g. ``'Devices'``). ``None``
+                returns every parameter.
+            sub_level (str, optional): Second-level key (e.g. ``'TD'``).
+            sub_sub_level (str, optional): Third-level key (e.g. ``'Time Range'``).
 
-        >>>> streak.get_parameter('Devices', 'TD')
-        >>>> {'Time Range': '2', 'Mode': 'Operate', 'Gate Mode': 'Normal', 'MCP Gain': '11', 'Shutter': 'Open',
-              'Blanking Amp.': 'off', 'H Trig. mode': 'Cont', 'H Trig. status': 'Reset', 'H Trig. level': '0.5',
-              'H Trig. slope': 'Rising', 'FocusTimeOver': '5', 'Delay': '0'}
+        Returns:
+            The parameter value, or a dict of values for the requested subtree.
 
-        TODO: handle unrecognised/unavailable parameters/devices
+        Examples:
+            ``streak.get_parameter()`` returns all parameters.
+            ``streak.get_parameter('Devices', 'TD')`` returns the TD device's settings.
 
-        :param base_name: str
-        :param sub_level: str
-        :param sub_sub_level: str
-        :return:
+        Note:
+            TODO (pre-existing): handle unrecognised/unavailable parameters and devices.
         """
         self._logger.debug('Getting parameter: %s %s %s' % (base_name, sub_level, sub_sub_level))
         if base_name is None:
@@ -404,21 +438,24 @@ class StreakSdk(VisaInstrument):
             return return_dict
 
     def set_parameter(self, base_name, sub_level=None, sub_sub_level=None, value=None):
-        """Sets streak parameter(s)
+        """Set one or more streak parameters.
 
-        >>>> streak.set_parameter('General', 'ShowStreakControl', None, 1)
-        >>>> streak.set_parameter('General', value=dict(ShowStreakControl=1, ShowDelay1Control=0))
-        >>>> streak.set_parameter('Camera', 'Acquire', 'Exposure', '1 s')
+        Args:
+            base_name (str): Top-level group (e.g. ``'Camera'``).
+            sub_level (str, optional): Second-level key.
+            sub_sub_level (str, optional): Third-level key.
+            value: A scalar matching the parameter located by the given levels, or a dict
+                of key/value pairs to set across the chosen subtree. Must not be ``None``.
 
-        TODO: handle unrecognised/unavailable parameters/devices
+        Raises:
+            AssertionError: If ``base_name`` is unknown or ``value`` is ``None``.
 
-        :param base_name: str
-        :param sub_level: str
-        :param sub_sub_level: str
-        :param value: str/int/float or a dictionary of values. If a single value is given, it should correspond to the
-        parameter located by combining base_name, sublevel and subsublevel. If a dictionary, all key/value pairs should
-        be the same as those in base_name+sublevel
-        :return:
+        Examples:
+            ``streak.set_parameter('General', 'ShowStreakControl', None, 1)``
+            ``streak.set_parameter('Camera', 'Acquire', 'Exposure', '1 s')``
+
+        Note:
+            TODO (pre-existing): handle unrecognised/unavailable parameters and devices.
         """
         self._logger.debug('Setting parameter: %s %s %s %s' %
                            (base_name, sub_level, sub_sub_level, value))
@@ -445,17 +482,22 @@ class StreakSdk(VisaInstrument):
                 self.set_parameter(base_name, sub_level, sub_sub_level, values)
 
     def get_parameter_info(self, base_name, sub_level=None, sub_sub_level=None):
-        """
+        """Get the descriptor info for one or more streak parameters.
 
-        >>>> streak.get_parameter_info('Devices', 'TD', 'Time Range')
-        >>>> '-1,-1,Time Range,2,2,5,1,2,3,4,5'
+        Args:
+            base_name (str): Top-level group.
+            sub_level (str, optional): Second-level key.
+            sub_sub_level (str, optional): Third-level key.
 
-        # TODO: parse reply into more useful strings (need to read through the manual for this)
+        Returns:
+            The raw info string for the parameter, or a dict of such strings for a subtree.
 
-        :param base_name: str
-        :param sub_level: str
-        :param sub_sub_level: str
-        :return:
+        Examples:
+            ``streak.get_parameter_info('Devices', 'TD', 'Time Range')`` returns a string
+            like ``'-1,-1,Time Range,2,2,5,1,2,3,4,5'``.
+
+        Note:
+            TODO (pre-existing): parse the reply into more useful structures.
         """
         self._logger.debug('Getting parameter info: %s %s %s' %
                            (base_name, sub_level, sub_sub_level))
@@ -486,36 +528,36 @@ class StreakSdk(VisaInstrument):
     '''General commands'''
 
     def stop(self):
-        """
-        Stops the command currently executed. Not currently available due to the VISA communication being locked
-        :return:
+        """Stop the command currently being executed.
+
+        Note:
+            Not currently usable because the VISA communication is locked during commands.
         """
         self.send_command('Stop')
 
     def shutdown(self):
-        """
-        This command shuts down the application and the RemoteEx program. Response is sent before shutdown.
-        The usefulness of this command is limited because it cannot be sent once the application has hung. Restarting of
-        the remote application if an error has occurred should be done by other means (example: Power off and on the
-        computer from remote and starting the RemoteEx from the autostart).
+        """Shut down the application and the RemoteEx program.
 
-        :return:
+        The response is sent before shutdown. This is of limited use once the application has
+        hung; recovery in that case must be done by other means (e.g. power-cycling the
+        remote computer and restarting RemoteEx from autostart).
         """
         self.send_command('Shutdown')
 
     '''Application commands'''
 
     def start_app(self, visible=1, ini_file=None):
-        """Starts the application on the remote computer
+        """Start the HPDTA application on the remote computer.
 
-        If the application has already been started this command returns immediately, otherwise it waits until it has
-        been started completely. This can take a while, so the timeout is increased to 2 minutes.
+        If already running, returns immediately; otherwise waits until startup completes
+        (the timeout is raised to 2 minutes for this).
 
-        :param visible: int or bool. If 0/False, initiates an invisible application (no window in remote computer). If
-            ommitted or any other value, initiates a visible application. Ignored if application is already running
-        :param ini_file: str. File location. If given, the application starts with the INI-File (new from version 8.3.0).
-            This parameter is also ignored if the application is already running.
-        :return:
+        Args:
+            visible (int or bool): ``0``/``False`` starts an invisible application (no
+                window on the remote computer); any other value starts it visibly. Ignored
+                if the application is already running.
+            ini_file (str, optional): If given, start with this INI file (RemoteEx 8.3.0+).
+                Also ignored if the application is already running.
         """
         timeout = self.instr.timeout
         self.instr.timeout = 120000
@@ -530,15 +572,12 @@ class StreakSdk(VisaInstrument):
     '''Acquisition commands'''
 
     def start_acquisition(self, mode='Acquire', wait=True):
-        """
-        This command starts an acquisition.
-        :param mode: one of the following:
-                'Live'      Live mode
-                'Acquire'   Acquire mode
-                'AI'        Analog integration
-                'PC'        Photon counting
-        :param wait: bool. Whether to wait until the acquisition is done
-        :return:
+        """Start an acquisition.
+
+        Args:
+            mode (str): One of ``'Live'`` (live mode), ``'Acquire'`` (acquire mode),
+                ``'AI'`` (analog integration) or ``'PC'`` (photon counting).
+            wait (bool): If ``True``, block until the acquisition has finished.
         """
         self.send_command('AcqStart', mode)
         if wait:
@@ -546,9 +585,13 @@ class StreakSdk(VisaInstrument):
                 time.sleep(0.1)
 
     def is_acquisition_busy(self):
-        """
-        This command returns the status of an acquisition.
-        :return:
+        """Report whether an acquisition is currently running.
+
+        Returns:
+            bool: ``True`` if busy, ``False`` if idle.
+
+        Raises:
+            ValueError: If the reported status is not recognised.
         """
         reply = self.send_command('AcqStatus').split(',')
         if reply[0] == 'idle':
@@ -559,42 +602,44 @@ class StreakSdk(VisaInstrument):
             raise ValueError('Unrecognised status: %s' % reply)
 
     def stop_acquisition(self, timeout=1000):
-        """
-        This command stops the currently running acquisition. It can have an optional parameter (available
-        from 8.2.0 pf5) indicating the timeout value (in ms) until this command should wait for an
-        acquisition to end. The range of this timeout value is [1...60000] and the default value is 1000 (if
-        not specified)
-        # TODO: somehow get the AcquisitionStop/SequenceStop functionality working. Threads in the background?
-        :param timeout:
-        :return: 0,AcqStop (Successfully stopped)
-                or
-                7,AcqStop,timeout (Timeout while waiting for stop)
+        """Stop the currently running acquisition.
+
+        Args:
+            timeout (int): Milliseconds to wait for the acquisition to end, in the range
+                [1...60000] (RemoteEx 8.2.0 pf5+). Defaults to 1000.
+
+        Note:
+            TODO (pre-existing): get the AcquisitionStop/SequenceStop functionality working,
+            perhaps with background threads. The reply is ``0,AcqStop`` on success or
+            ``7,AcqStop,timeout`` if it times out waiting for the stop.
         """
         self.send_command('AcqStop', timeout)
 
     '''Camera commands'''
 
     def get_live_bkg(self):
-        """
-        This command gets a new background image which is used for real time background subtraction (RTBS). It is only
-        available of LIVE mode is running.
-        :return:
+        """Capture a new background image for real-time background subtraction (RTBS).
+
+        Only available while LIVE mode is running.
         """
         self.send_command('CamGetLiveBG')
 
     '''External device commands (HPD-TA only)'''
 
     def list_dev_params(self, devices=None):
-        """Find list of device parameters
+        """Query the connected devices for their parameters and store them in self.parameters.
 
-        Queries the streak camera devices to find their parameters, and saves them into self.parameters
+        Devices reported as unavailable (error code 7) are marked ``'NotAvailable'``.
 
-        :param devices: iterable with one or more of
-                ['TD', 'Streak', 'Streakcamera', 'Spec', 'Spectrograph', 'Del', 'Delay', 'Delaybox',
-                    'Del1', 'Del2', 'Delay2', 'DelayBox2']
-        :return:
+        Args:
+            devices (iterable, optional): One or more device names from ``['TD', 'Streak',
+                'Streakcamera', 'Spec', 'Spectrograph', 'Del', 'Delay', 'Delaybox', 'Del1',
+                'Del2', 'Delay2', 'DelayBox2']``. Defaults to all known devices.
+
+        Raises:
+            ValueError: If a requested device name is not recognised.
+            StreakError: For SDK errors other than "not available".
         """
-
         if devices is None:
             devices = list(self.parameters['Devices']['value'].keys())
         for device in devices:
@@ -615,13 +660,16 @@ class StreakSdk(VisaInstrument):
     '''Correction commands'''
 
     def do_correction(self, destination='Current', type='BacksubShadingCurvature'):
-        """
+        """Apply image corrections to an image.
 
-        :param destination: either 'Current' or a number between 0 and 19
-        :param type: one of:
-         ['Backsub', 'Background', 'Shading', 'Curvature', 'BacksubShading', 'BacksubCurvature',
-         'BacksubShadingCurvature', 'DefectCorrect']
-        :return:
+        Args:
+            destination (str or int): ``'Current'`` or an image number between 0 and 19.
+            type (str): One of ``['Backsub', 'Background', 'Shading', 'Curvature',
+                'BacksubShading', 'BacksubCurvature', 'BacksubShadingCurvature',
+                'DefectCorrect']``.
+
+        Raises:
+            NotImplementedError: If ``type`` is ``'DefectCorrect'``.
         """
         if type == 'DefectCorrect':
             raise NotImplementedError
@@ -637,15 +685,15 @@ class StreakSdk(VisaInstrument):
                    filename='DefaultImage.tif',
                    overwrite=False,
                    directory=None):
-        """
+        """Save an image to disk on the remote computer.
 
-        :param image_index: image to be saved, either 'Current' or a number between 0 and 19
-        :param image_type: one of 'IMG' (ITEX file), 'TIF', 'TIFF', 'ASCII',
-                                'data2tiff', 'data2tif', 'display2tiff', 'display2tif'
-        :param filename: file path
-        :param overwrite: whether to overwrite existing files
-        :param directory:
-        :return:
+        Args:
+            image_index (str or int): Image to save, ``'Current'`` or a number 0-19.
+            image_type (str): One of ``'IMG'`` (ITEX), ``'TIF'``, ``'TIFF'``, ``'ASCII'``,
+                ``'data2tiff'``, ``'data2tif'``, ``'display2tiff'``, ``'display2tif'``.
+            filename (str): File name or path. Relative names are joined to ``directory``.
+            overwrite (bool): Whether to overwrite an existing file.
+            directory (str, optional): Directory for relative filenames; defaults to the cwd.
         """
         if directory is None:
             directory = os.getcwd()
@@ -654,37 +702,45 @@ class StreakSdk(VisaInstrument):
         self.send_command('ImgSave', image_index, image_type, filename, int(overwrite))
 
     def load_image(self, filename='DefaultImage.txt', image_type='ASCII'):
-        """
-        Not that not all file types which can be saved can also be loaded. Some file types are intended for export only.
-        Note: This load functions loads the image always into a new window independently of the setting of
-        the option AcquireToSameWindow. If the maximum number of windows is reached an error is
-        returned.
-        :param filename: path
-        :param image_type: one of 'IMG' (ITEX file), 'TIF', 'TIFF', 'ASCII',
-                                'data2tiff', 'data2tif', 'display2tiff', 'display2tif'
-        :return:
+        """Load an image from disk into a new window.
+
+        Not all saveable file types can be loaded; some are export-only. The image is always
+        loaded into a new window regardless of the AcquireToSameWindow option, and an error
+        is returned if the maximum number of windows is reached.
+
+        Args:
+            filename (str): File name or path; relative names are joined to the cwd.
+            image_type (str): One of ``'IMG'`` (ITEX), ``'TIF'``, ``'TIFF'``, ``'ASCII'``,
+                ``'data2tiff'``, ``'data2tif'``, ``'display2tiff'``, ``'display2tif'``.
         """
         if not os.path.isabs(filename):
             filename = os.path.join(os.getcwd(), filename)
         self.send_command('ImgLoad', image_type, filename)
 
     def delete_image(self, image_index='Current'):
-        """
-        Note1: This function deletes the specified images independent whether their content has been saved
-        or not. If you want to keep the content of the image please save the image before executing this
-        command.
-        Note2: This function does not delete images on hard disk.
-        :param image_index: 'Current', 'All' or a number between 0-19
-        :return:
+        """Delete image(s) from memory (not from disk).
+
+        Deletes the specified images whether or not their content has been saved; save first
+        if you want to keep them.
+
+        Args:
+            image_index (str or int): ``'Current'``, ``'All'`` or a number 0-19.
         """
         self.send_command('ImgDelete', image_index)
 
     def get_image_status(self, image_index='Current', *identifiers):
-        """
+        """Get and parse the status header of an image.
 
-        :param image_index: 'Current' or a number between 0-19
-        :param identifiers: section identifier and (optional) token identifier
-        :return:
+        Args:
+            image_index (str or int): ``'Current'`` or a number 0-19.
+            *identifiers: Optional section identifier and (optionally) token identifier to
+                narrow the query.
+
+        Returns:
+            dict: Nested ``{section: {key: value}}`` dictionary parsed from the reply.
+
+        Raises:
+            ValueError: If more than two identifiers are supplied.
         """
         if len(identifiers) == 0:
             reply = self.send_command('ImgStatusGet', image_index, 'All')
@@ -711,6 +767,7 @@ class StreakSdk(VisaInstrument):
 
     @property
     def current_index(self):
+        """Index of the currently selected image window."""
         return int(self.send_command('ImgIndexGet'))
 
     @current_index.setter
@@ -719,6 +776,7 @@ class StreakSdk(VisaInstrument):
 
     @property
     def default_directory(self):
+        """Default directory used by the remote application for image files."""
         return self.send_command('ImgDefaultDirGet')
 
     @default_directory.setter
@@ -726,10 +784,14 @@ class StreakSdk(VisaInstrument):
         self.send_command('ImgDefaultDirSet', path)
 
     def get_img_info(self, image_index='Current'):
-        """
-        This command returns the image size in pixels and the Bytes per pixel of a single pixel.
-        :param image_index:
-        :return:
+        """Return the size and pixel depth of an image.
+
+        Args:
+            image_index (str or int): ``'Current'`` or an image number.
+
+        Returns:
+            tuple: ``(shape, bytes_per_pixel)`` where ``shape`` is a 4-element list of pixel
+            bounds and ``bytes_per_pixel`` is the size of a single pixel.
         """
         response = self.send_command('ImgDataInfo', image_index, 'Size')
         response = [int(x) for x in response.split(',')]
@@ -738,19 +800,16 @@ class StreakSdk(VisaInstrument):
         return shape, bytes_per_pixel
 
     def get_image_data(self, image_index='Current', type='Data', *profile_params):
-        """
-        This command gets image, display or profile data of the select image.
-        The image data is transferred by the optional second TCP-IP channel. If this channel is not available
-        an error is issued.
-        :param image_index: 'Current' or number between 1-19
-        :param type:
-                - 'Data': raw image data (1,2 or 4 BPP)
-                - 'Display': display data (1 BPP)
-                - 'Profile': profile (4 bytes floating point values)
-        :param profile_params: five numbers:
-                - Profile type: 1 (line profile), 2 (horizontal bin), 3 (vertical bin)
-                - Coordinates: iX, iY, iDX, iDY
-        :return:
+        """Request image, display or profile data over the second TCP-IP channel.
+
+        An error is issued by the camera if the data channel is unavailable.
+
+        Args:
+            image_index (str or int): ``'Current'`` or a number 1-19.
+            type (str): ``'Data'`` (raw, 1/2/4 BPP), ``'Display'`` (1 BPP) or ``'Profile'``
+                (4-byte floats).
+            *profile_params: For ``'Profile'``, five numbers: profile type (1 line, 2
+                horizontal bin, 3 vertical bin) and coordinates iX, iY, iDX, iDY.
         """
         if type != 'Profile':
             self.send_command('ImgDataGet', image_index, type)
@@ -758,19 +817,17 @@ class StreakSdk(VisaInstrument):
             self.send_command('ImgDataGet', image_index, type, *profile_params)
 
     def dump_image_data(self, path, image_index='Current', type='Data', *profile_params):
-        """
-        This command gets image or display data of the select image and writes it to file (only binary data,
-        no header). It can be used to get image or profile data alternatively to using the second TCP-IP port.
-        :param path:
-        :param image_index:
-        :param type:
-                - 'Data': raw image data (1,2 or 4 BPP)
-                - 'Display': display data (1 BPP)
-                - 'Profile': profile (4 bytes floating point values)
-        :param profile_params: five numbers:
-                - Profile type: 1 (line profile), 2 (horizontal bin), 3 (vertical bin)
-                - Coordinates: iX, iY, iDX, iDY
-        :return:
+        """Write image, display or profile data to a binary file (no header) on the remote PC.
+
+        An alternative to fetching data over the second TCP-IP port.
+
+        Args:
+            path (str): Destination file path on the remote computer.
+            image_index (str or int): ``'Current'`` or an image number.
+            type (str): ``'Data'`` (raw, 1/2/4 BPP), ``'Display'`` (1 BPP) or ``'Profile'``
+                (4-byte floats).
+            *profile_params: For ``'Profile'``, five numbers: profile type (1 line, 2
+                horizontal bin, 3 vertical bin) and coordinates iX, iY, iDX, iDY.
         """
         if type != 'Profile':
             self.send_command('ImgDataDump', image_index, type, path)
@@ -793,12 +850,12 @@ class StreakSdk(VisaInstrument):
     '''Sequence commands'''
 
     def start_sequence(self, directory=None, wait=False):
-        """Starts a streak sequence
+        """Start a streak sequence acquisition.
 
-        :param directory: str or None. If not None, the images in the sequence will be automatically saved to the given
-            directory in the remote computer
-        :param wait: bool. If True, waits until the acquisition is finished before returning
-        :return:
+        Args:
+            directory (str, optional): If given, sequence images are automatically saved to
+                this directory on the remote computer.
+            wait (bool): If ``True``, block until the acquisition has finished.
         """
         if directory is not None:
             self.set_parameter('Sequence', 'StoreTo', 'HD <individual files - all modes>')
@@ -810,9 +867,18 @@ class StreakSdk(VisaInstrument):
                 time.sleep(0.5)
 
     def stop_sequence(self):
+        """Stop the currently running sequence acquisition."""
         self.send_command('SeqStop')
 
     def is_sequence_busy(self):
+        """Report whether a sequence is currently running.
+
+        Returns:
+            bool: ``True`` if busy, ``False`` if idle.
+
+        Raises:
+            ValueError: If the reported status is not recognised.
+        """
         reply = self.send_command('SeqStatus')
         split_reply = reply.split(',')
         if split_reply[0] == 'idle':
@@ -823,19 +889,28 @@ class StreakSdk(VisaInstrument):
             raise ValueError('Unrecognised sequence status: %s' % reply)
 
     def delete_sequence(self):
-        """
-        Deletes the current sequence from memory.
-        Note: This function does not delete a sequence on the hard disk.
-        :return:
-        """
+        """Delete the current sequence from memory (not from the hard disk)."""
         self.send_command('SeqDelete')
 
     def save_sequence(self, image_type='ASCII', filename='DefaultSequence.txt', overwrite=0):
+        """Save the current sequence to disk on the remote computer.
+
+        Args:
+            image_type (str): File type to write (e.g. ``'ASCII'``).
+            filename (str): File name or path; relative names are joined to the cwd.
+            overwrite: Whether to overwrite an existing file.
+        """
         if not os.path.isabs(filename):
             filename = os.path.join(os.getcwd(), filename)
         self.send_command('SeqSave', image_type, filename, overwrite)
 
     def load_sequence(self, image_type='ASCII', filename='DefaultSequence.txt'):
+        """Load a sequence from disk on the remote computer.
+
+        Args:
+            image_type (str): File type to read (e.g. ``'ASCII'``).
+            filename (str): File name or path; relative names are joined to the cwd.
+        """
         if not os.path.isabs(filename):
             filename = os.path.join(os.getcwd(), filename)
         self.send_command('SeqLoad', image_type, filename)
@@ -843,15 +918,28 @@ class StreakSdk(VisaInstrument):
     '''My commands'''
 
     def capture(self, mode='Acquire', save=False, delete=False, save_kwargs=None):
-        """Utility function that takes an image and returns the data array
+        """Acquire an image (or sequence) and optionally return it as a numpy array.
 
-        # TODO: test capturing and returning a sequence
+        In ``'Acquire'`` mode, unless ``save`` is set the pixel data is read back over the
+        data socket and returned as a 2D array. In ``'Sequence'`` mode the sequence is run
+        (and optionally deleted) but no array is returned.
 
-        :param mode:
-        :param save:
-        :param delete:
-        :param save_kwargs:
-        :return:
+        Args:
+            mode (str): ``'Acquire'`` or ``'Sequence'``.
+            save (bool): If ``True``, save the image instead of reading it back.
+            delete (bool): If ``True``, delete the image/sequence after handling it.
+            save_kwargs (dict, optional): Keyword arguments forwarded to :meth:`save_image`
+                when ``save`` is set.
+
+        Returns:
+            numpy.ndarray or None: The captured image in ``'Acquire'`` read-back mode,
+            otherwise ``None``.
+
+        Raises:
+            ValueError: If ``mode`` is not recognised.
+
+        Note:
+            TODO (pre-existing): test capturing and returning a sequence.
         """
         if mode == 'Acquire':
             self.start_acquisition(mode)

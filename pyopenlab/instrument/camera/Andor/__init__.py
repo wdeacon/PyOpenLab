@@ -1,4 +1,9 @@
 ﻿# -*- coding: utf-8 -*-
+"""Camera driver and Qt control GUI for Andor cameras (CCD/EMCCD spectrometers).
+
+Combines :class:`AndorBase` (the ctypes SDK wrapper in ``andor_sdk``) with the pyopenlab
+scaled-ROI camera mixin, and provides the :class:`AndorUI` control panel.
+"""
 
 import os
 import re
@@ -19,6 +24,12 @@ from pyopenlab.utils.notified_property import register_for_property_changes
 
 
 class Andor(CameraRoiScale, AndorBase):
+    """High-level Andor camera driver with scaled-ROI support.
+
+    Attributes:
+        metadata_property_names: Property names included in captured-image metadata.
+    """
+
     metadata_property_names = (
         'Exposure',
         'x_axis',
@@ -26,6 +37,13 @@ class Andor(CameraRoiScale, AndorBase):
     )
 
     def __init__(self, settings_filepath=None, camera_index=None, **kwargs):
+        """Start the camera and initialise capture/background state.
+
+        Args:
+            settings_filepath (str, optional): Path to a parameter file to load on startup.
+            camera_index (int, optional): Index of the camera to open.
+            **kwargs: Accepted for compatibility; not otherwise used.
+        """
         super(Andor, self).__init__()
         self.start(camera_index)
 
@@ -46,9 +64,21 @@ class Andor(CameraRoiScale, AndorBase):
     '''Used functions'''
 
     def get_metadata(self, property_names=[], include_default_names=True, exclude=None):
-        """
-        Prevents printing a load of statements everytime the metadata is called.
-        TODO: rewrite the AndorProperties so that they are not unnecessarily verbose
+        """Collect metadata while suppressing the verbose per-property log output.
+
+        Temporarily raises the logger level to ``WARN`` around the base-class call.
+
+        Args:
+            property_names: Property names to include (see the base implementation).
+            include_default_names (bool): Whether to include the default metadata names.
+            exclude: Property names to exclude.
+
+        Returns:
+            dict: The collected metadata.
+
+        Note:
+            TODO (pre-existing): rewrite the Andor properties so they are not unnecessarily
+            verbose, removing the need for this log-level juggling.
         """
         level = self._logger.level
         self._logger.setLevel('WARN')
@@ -59,6 +89,16 @@ class Andor(CameraRoiScale, AndorBase):
     metadata = property(get_metadata)
 
     def raw_snapshot(self):
+        """Capture image(s) from the camera, reshaping and attaching metadata.
+
+        Honours :attr:`keep_shutter_open`, and flips the image horizontally when reading
+        out via the EM register (``OutAmp``) so orientation matches the conventional CCD
+        register. A single image is returned unwrapped from the leading axis.
+
+        Returns:
+            tuple: ``(True, image_with_metadata)`` on success. On failure the exception is
+            logged and ``None`` is returned implicitly.
+        """
         try:
             if self.keep_shutter_open:
                 i = self.Shutter  # initial shutter settings
@@ -80,19 +120,34 @@ class Andor(CameraRoiScale, AndorBase):
             self._logger.warn("Couldn't Capture because %s" % e)
 
     def Capture(self):
-        """takes a spectrum, and displays it"""
+        """Take a spectrum/image and update the latest frame for display."""
         return self.raw_image(update_latest_frame=True)
 
     def filter_function(self, frame):
+        """Subtract the stored background from a frame when background removal is enabled.
+
+        Args:
+            frame: The captured frame.
+
+        Returns:
+            The background-subtracted frame, or the frame unchanged if not backgrounded.
+        """
         if self.backgrounded:
             return frame - self.background
         else:
             return frame
 
     def get_camera_parameter(self, parameter_name):
+        """Return the value of the named Andor parameter."""
         return self.get_andor_parameter(parameter_name)
 
     def set_camera_parameter(self, parameter_name, *parameter_value):
+        """Set the named Andor parameter, logging (not raising) on failure.
+
+        Args:
+            parameter_name (str): Name of the Andor parameter to set.
+            *parameter_value: Value(s) to assign to the parameter.
+        """
         try:
             self.set_andor_parameter(parameter_name, *parameter_value)
         except Exception as e:
@@ -102,6 +157,7 @@ class Andor(CameraRoiScale, AndorBase):
 
     @property
     def roi(self):
+        """Region of interest as zero-based ``(x_min, x_max, y_min, y_max)`` pixels."""
         return tuple([x - 1 for x in self.Image[2:]])
 
     @roi.setter
@@ -111,6 +167,7 @@ class Andor(CameraRoiScale, AndorBase):
 
     @property
     def binning(self):
+        """Horizontal and vertical binning factors as ``(binx, biny)``."""
         return self.Image[:2]
 
     @binning.setter
@@ -121,10 +178,13 @@ class Andor(CameraRoiScale, AndorBase):
         self.Image = value + image[2:]
 
     def get_control_widget(self):
+        """Return a Qt control widget for this camera."""
         return AndorUI(self)
 
 
 class AndorUI(QtWidgets.QWidget, UiTools):
+    """Qt control panel for an :class:`Andor` camera, loaded from ``andor.ui``."""
+
     ImageUpdated = QtCore.Signal()
 
     def __init__(self, andor):
@@ -198,6 +258,12 @@ class AndorUI(QtWidgets.QWidget, UiTools):
         ), self.spinBoxOffset.value()
 
     def randomtrack_pixels(self):
+        """Parse the random-track pixel list from the GUI and apply it to the camera.
+
+        Raises:
+            AssertionError: If an odd number of pixel bounds is entered (tracks need
+                start/end pairs).
+        """
         numbers = [i for i in re.split(r',| ', self.randomtrack_pixels_lineEdit.text()) if i]
         pixels = list(map(int, numbers))
         assert not len(pixels) % 2, 'must be even number of inputs'
@@ -365,6 +431,12 @@ class AndorUI(QtWidgets.QWidget, UiTools):
                 'Changing the rows only works in Fast Kinetic or in Single Track mode')
 
     def exposure(self, input=None):
+        """Set the exposure time from the GUI, optionally scaling it by 5.
+
+        Args:
+            input (str, optional): ``'x'`` to multiply the current value by 5, ``'/'`` to
+                divide by 5, or ``None`` to use the value typed in the line edit.
+        """
         if input is None:
             expT = float(self.lineEditExpT.text())
         elif input == 'x':
@@ -409,6 +481,12 @@ class AndorUI(QtWidgets.QWidget, UiTools):
             self.Andor.backgrounded = False
 
     def Save(self):
+        """Save the current image and its attributes to the active data file.
+
+        Uses the filename and group selected in the GUI (defaulting to ``Andor_data`` in an
+        ``AndorData`` group), attaches the description and, if available, the wavelength
+        axis, and optionally all Andor parameters.
+        """
         if self.data_file is None:
             self.data_file = df.current()
         data = self.Andor.CurImage
@@ -472,7 +550,8 @@ class AndorUI(QtWidgets.QWidget, UiTools):
 
 
 class DisplayThread(QtCore.QThread):
-    """for displaying the temperature"""
+    """Background thread that polls and emits the camera temperature for the GUI."""
+
     ready = QtCore.Signal(float)
 
     def __init__(self, parent):
@@ -482,6 +561,11 @@ class DisplayThread(QtCore.QThread):
         self.refresh_rate = 1.  # every second
 
     def run(self):
+        """Poll the temperature at ``refresh_rate`` and emit it via the ``ready`` signal.
+
+        Runs while the live-temperature checkbox is ticked, or once if
+        :attr:`single_shot` is set.
+        """
         t0 = time.time()
         while self.parent.live_temperature_checkBox.isChecked() or self.single_shot:
             T = self.parent.get_temperature()

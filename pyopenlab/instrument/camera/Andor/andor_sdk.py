@@ -1,4 +1,9 @@
 ﻿# -*- coding: utf-8 -*-
+"""Low-level Andor SDK (atmcd) ctypes wrapper.
+
+Defines :class:`AndorBase`, which loads the Andor DLL and exposes its parameters through a
+generic get/set mechanism driven by the module-level ``parameters`` dictionary.
+"""
 from ctypes import *
 import os
 import platform
@@ -18,15 +23,23 @@ TEMPORARY_PREFIX = '_andortemporary'
 
 
 def to_bits(integer):
-    """ Returns a list of bits representing the integer in base 2. Used to parse over the capabilities
-    :param integer:
-    :return: list of 1s and 0s
+    """Return the binary representation of an integer as a list of bits (MSB first).
+
+    Used to parse the camera capability bitfields.
+
+    Args:
+        integer (int): The value to decompose.
+
+    Returns:
+        list[int]: List of 1s and 0s, most significant bit first.
     """
     bits = integer.bit_length()
     return [1 if integer & (1 << (bits - 1 - n)) else 0 for n in range(bits)]
 
 
 class AndorCapabilities(Structure):
+    """ctypes mirror of the Andor SDK ``AndorCapabilities`` struct (capability bitfields)."""
+
     _fields_ = [("ulSize", c_ulong), ("ulAcqModes", c_ulong), ("ulReadModes", c_ulong),
                 ("ulTriggerModes", c_ulong), ("ulCameraType", c_ulong), ("ulPixelMode", c_ulong),
                 ("ulSetFunctions", c_ulong), ("ulGetFunctions", c_ulong), ("ulFeatures", c_ulong),
@@ -34,6 +47,14 @@ class AndorCapabilities(Structure):
 
 
 class AndorWarning(Warning):
+    """Warning raised for non-success Andor SDK error codes.
+
+    Attributes:
+        error_code (int): The numeric SDK error code.
+        error_name (str): The human-readable name of the error code.
+        msg: The function/context that produced the error.
+        reply: The corresponding error reply text.
+    """
 
     def __init__(self, code, msg, reply):
         super(AndorWarning, self).__init__()
@@ -48,8 +69,11 @@ class AndorWarning(Warning):
 
 
 class AndorParameter(CameraParameter):
-    """Light wrapper of the CameraParameter that ensures the getting and setting of values takes care of possible
-    multiple values"""
+    """CameraParameter wrapper that handles parameters which may carry multiple values.
+
+    On get, a single-element tuple is unwrapped to its scalar value; on set, scalars are
+    wrapped into a one-element tuple.
+    """
 
     def __init__(self, parameter_name, doc=None, read_back=True):
         super(AndorParameter, self).__init__(parameter_name, doc=doc, read_back=read_back)
@@ -86,6 +110,15 @@ class AndorBase(object):
     """
 
     def start(self, camera_index=None):
+        """Load the Andor DLL for the current platform and prepare the parameter store.
+
+        Args:
+            camera_index (int, optional): Index of the camera to use. If ``None``, camera 0
+                is selected (with a warning if more than one camera is available).
+
+        Raises:
+            Exception: If the Windows architecture or operating system cannot be detected.
+        """
         if not hasattr(self, '_logger'):
             self._logger = LOGGER
 
@@ -123,7 +156,11 @@ class AndorBase(object):
             self.camera_index = camera_index
 
     def end(self):
-        """ Safe shutdown procedure """
+        """Safely shut down all initialized cameras.
+
+        For Classic/iCCD camera types the cooler is turned off and shutdown waits until the
+        sensor warms above -20 degrees before calling the SDK ``ShutDown``.
+        """
         for camera in self._initialized_cameras:
             self.CurrentCamera = camera
             # If the camera is a Classic or iCCD, wait for the temperature to be higher than -20 before shutting down
@@ -140,13 +177,17 @@ class AndorBase(object):
 
     @locked_action
     def _dll_wrapper(self, funcname, inputs=(), outputs=(), reverse=False):
-        """Handler for all the .dll calls of the Andor
+        """Handle all DLL calls to the Andor SDK, marshalling inputs and outputs.
 
-        :param funcname:    name of the dll function to be called
-        :param inputs:      inputs to be handed in to the dll function
-        :param outputs:     outputs to be expected from the dll
-        :param reverse:     bool. whether to have the inputs first or the outputs first when calling the dll
-        :return:
+        Args:
+            funcname (str): Name of the DLL function to call.
+            inputs: Inputs to pass to the DLL function (each a ``{'type', 'value'}`` dict).
+            outputs: ctypes objects to receive the function's outputs.
+            reverse (bool): If ``True``, outputs are passed before inputs in the call.
+
+        Returns:
+            The output value(s): a single value if there is one output, otherwise a tuple.
+            :class:`AndorCapabilities` outputs are returned as a dict.
         """
         self._logger.debug('DLL call: %s, %s, %s' % (funcname, inputs, outputs))
         dll_input = ()
@@ -178,6 +219,19 @@ class AndorBase(object):
             return return_values
 
     def _error_handler(self, error, funcname='', *args):
+        """Log an SDK error and raise :class:`AndorWarning` for non-success codes.
+
+        ``GetTemperature`` is exempt (its non-success codes report cooling state), and code
+        20002 (``DRV_SUCCESS``) is treated as success.
+
+        Args:
+            error (int): The SDK error code returned by the call.
+            funcname (str): Name of the function that produced the error.
+            *args: The inputs/outputs of the call, included in the debug log.
+
+        Raises:
+            AndorWarning: If ``error`` is not a success code.
+        """
         self._logger.debug("[%s]: %s %s" % (funcname, ERROR_CODE[error], str(args)))
         if funcname == 'GetTemperature':
             return
@@ -185,14 +239,14 @@ class AndorBase(object):
             raise AndorWarning(error, funcname, ERROR_CODE[error])
 
     def set_andor_parameter(self, param_loc, *inputs):
-        """Parameter setter
+        """Set an Andor parameter using its descriptor in ``self.parameters``.
 
-        Using the information contained in the self.parameters dictionary, send a general parameter set command to the
-        Andor. The command name, and number of inputs and their types are stored in the self.parameters
+        The command name and the number/types of inputs are taken from the descriptor.
+        Parameters that the camera reports as unsupported are skipped and flagged.
 
-        :param param_loc: dictionary key of self.parameters
-        :param inputs: inputs required to set the particular parameter. Must be at least one
-        :return:
+        Args:
+            param_loc (str): Key of the parameter in ``self.parameters``.
+            *inputs: Value(s) required to set the parameter (at least one).
         """
 
         if len(inputs) == 1 and type(inputs[0]) == tuple:
@@ -253,14 +307,18 @@ class AndorBase(object):
             self._parameters[param_loc] = getattr(self, '_' + param_loc)
 
     def get_andor_parameter(self, param_loc, *inputs):
-        """Parameter getter
+        """Get an Andor parameter using its descriptor in ``self.parameters``.
 
-        Using the information contained in the self.parameters dictionary, send a general parameter get command to the
-        Andor. The command name, and number of inputs and their types are stored in the self.parameters
+        The command name and the number/types of inputs are taken from the descriptor.
+        Some parameters are resolved from other properties or from a cached value rather
+        than a direct DLL call.
 
-        :param param_loc: dictionary key of self.parameters
-        :param inputs: optional inputs for getting the specific parameter
-        :return:
+        Args:
+            param_loc (str): Key of the parameter in ``self.parameters``.
+            *inputs: Optional inputs required to query the specific parameter.
+
+        Returns:
+            The current parameter value(s), or ``None`` if it has never been set.
         """
         if 'not_supported' in self.parameters[param_loc]:
             self._logger.debug('Ignoring get %s because it is not supported' % param_loc)
@@ -316,22 +374,25 @@ class AndorBase(object):
             return None
 
     def get_andor_parameters(self):
-        """Gets all the parameters that can be gotten
+        """Read every parameter and return them as a name-to-value dictionary.
 
-        :return: an up to date parameters dict containing only values and names
+        Returns:
+            dict: An up-to-date mapping of parameter names to their current values.
         """
         param_dict = dict()
         for param in self.parameters:
             param_dict[param] = getattr(self, param)
-        return
+        return param_dict
 
     def set_andor_parameters(self, parameter_dictionary):
-        """Sets all parameters tha can be set
+        """Set every settable parameter from a dictionary, skipping unknown/None values.
 
-        :param parameter_dictionary: dictionary of parameters to be set
-        :return:
+        Args:
+            parameter_dictionary (dict): Mapping of parameter names to values to set.
+
+        Raises:
+            AssertionError: If ``parameter_dictionary`` is not a dict.
         """
-
         assert isinstance(parameter_dictionary, dict)
         for name, value in list(parameter_dictionary.items()):
             if not hasattr(self, name):
@@ -358,20 +419,22 @@ class AndorBase(object):
 
     @camera_index.setter
     def camera_index(self, value):
-        """Ensures the DLL is changed every time the camera_index is changed.
-        CameraHandle calls the value of camera_index"""
+        # Switching index must re-point the DLL at the right camera and re-initialize, since
+        # CameraHandle is resolved from camera_index.
         self._camera_index = value
         self.CurrentCamera = self.CameraHandle
         self.initialize()
 
     @property
     def capabilities(self):
-        """Parsing of the Andor capabilities
+        """Decode the raw capability bitfields into human-readable lists.
 
-        Transforming bit values contained in the self.Capabilities attribute into human-understandable parameters, as
-        given by the manual
+        Translates the bit values in the ``Capabilities`` attribute into the named modes
+        and features documented in the Andor manual.
 
-        :return:
+        Returns:
+            dict: Capabilities keyed by category (acquisition modes, read modes, trigger
+            modes, camera type, pixel modes, set/get functions, features, etc.).
         """
         capabilities = dict(AcqModes=[],
                             ReadModes=[],
@@ -461,13 +524,14 @@ class AndorBase(object):
         return capabilities
 
     def abort(self):
+        """Abort the current acquisition, ignoring any resulting SDK warning."""
         try:
             self._dll_wrapper('AbortAcquisition')
         except AndorWarning:
             pass
 
     def initialize(self):
-        """Sets the initial parameters for the Andor typical for our experiments"""
+        """Initialize the camera and apply the default parameters used for our experiments."""
         if self.CurrentCamera not in self._initialized_cameras:
             self._initialized_cameras += [self.CurrentCamera]
             self._dll_wrapper('Initialize', outputs=(c_char(),))
@@ -494,16 +558,18 @@ class AndorBase(object):
 
     @locked_action
     def capture(self):
-        """Capture an image
+        """Capture image(s), wrapping the SDK acquisition sequence.
 
-        Wraps the three steps required for a camera acquisition: StartAcquisition, WaitForAcquisition and
-        GetAcquiredData. The function also takes care of ensuring that the correct shape of array is passed to the
-        GetAcquiredData call, according to the currently set parameters of the camera.
+        Runs StartAcquisition, WaitForAcquisition and GetAcquiredData, computing the correct
+        array shape from the current acquisition/read-mode parameters.
 
-        :return:
-            np.array    2D or 3D array of the captured image(s)
-            int         number of images taken
-            tuple       shape of the images taken
+        Returns:
+            tuple: ``(image_data, num_of_images, image_shape)`` where ``image_data`` is a
+            flat list of pixel values, ``num_of_images`` is the number of frames and
+            ``image_shape`` is the per-frame shape.
+
+        Raises:
+            NotImplementedError: If the current acquisition mode or read mode is unsupported.
         """
         self._dll_wrapper('StartAcquisition')
         self._dll_wrapper('WaitForAcquisition')
@@ -584,13 +650,14 @@ class AndorBase(object):
 
     @Image.setter
     def Image(self, value):
-        """Ensures a valid image shape is passed
+        """Set the image geometry, snapping dimensions to valid multiples of the binning.
 
-        e.g. if binning is 2x2, and an image with an odd number of pixels along one direction is passed, this function
-        rounds it down to the nearest even number, providing a valid image shape
+        For example, with 2x2 binning a span with an odd number of pixels is rounded down to
+        the nearest valid (even) size. Also updates the isolated-crop parameters to match.
 
-        :param value:
-        :return:
+        Args:
+            value: Image geometry. Either the full ``(binx, biny, x1, x2, y1, y2)`` tuple,
+                or a 4-tuple ``(x1, x2, y1, y2)`` in which case the current binning is kept.
         """
         if len(value) == 4:
             image = self._parameters['Image']
@@ -611,13 +678,11 @@ class AndorBase(object):
 
     @locked_action
     def set_fast_kinetics(self, n_rows=None):
-        """Set the parameters for the Fast Kinetic mode
+        """Configure Fast Kinetic mode using the current timing/read-mode/binning settings.
 
-        Uses the already set parameters of exposure time, ReadMode, and binning as defaults to be passed to the Fast
-        Kinetic parameter setter
-
-        :param n_rows: int. Number of rows to use
-        :return:
+        Args:
+            n_rows (int, optional): Number of rows per sub-image. Defaults to the value
+                already stored in the FastKinetics parameter.
         """
 
         if n_rows is None:
@@ -635,6 +700,18 @@ class AndorBase(object):
 
     @locked_action
     def SetRandomTracks(self, number_tracks_and_pixels):
+        """Configure random-track read mode.
+
+        Args:
+            number_tracks_and_pixels (tuple): ``(number_tracks, pixels)`` where ``pixels``
+                is a flat list of start/end row pairs (two entries per track).
+
+        Returns:
+            The SDK return code from ``SetRandomTracks``.
+
+        Raises:
+            AssertionError: If ``pixels`` does not contain exactly two entries per track.
+        """
         number_tracks, pixels = number_tracks_and_pixels
         assert len(pixels) / number_tracks == 2
         self._RandomTracks = number_tracks, pixels
@@ -644,18 +721,23 @@ class AndorBase(object):
         return self.dll.SetRandomTracks(number_tracks, byref(c_pixels))
 
     def GetRandomTracks(self):
+        """Return the last-set random-track ``(number_tracks, pixels)`` tuple."""
         return self._RandomTracks
 
     RandomTracks = property(GetRandomTracks, SetRandomTracks)
 
     @property
     def status(self):
+        """Current camera status as a human-readable SDK error-code name."""
         error = self._dll_wrapper('GetStatus', outputs=(c_int(),))
         return ERROR_CODE[error]
 
     @locked_action
     def wait_for_driver(self):
-        """This function is here because the dll.WaitForAcquisition does not work when in Accumulate mode"""
+        """Block until the driver is no longer acquiring.
+
+        Needed because the SDK ``WaitForAcquisition`` does not work in Accumulate mode.
+        """
         status = c_int()
         self.dll.GetStatus(byref(status))
         while ERROR_CODE[status.value] == 'DRV_ACQUIRING':
@@ -664,6 +746,7 @@ class AndorBase(object):
 
     @property
     def cooler(self):
+        """Whether the TEC cooler is currently on (truthy) or off."""
         return self._dll_wrapper('IsCoolerOn', outputs=(c_int(),))
 
     @cooler.setter
@@ -674,6 +757,11 @@ class AndorBase(object):
             self._dll_wrapper('CoolerOFF')
 
     def get_series_progress(self):
+        """Return the number of completed frames in the current kinetic series.
+
+        Returns:
+            int or None: The series count, or ``None`` if the SDK call did not succeed.
+        """
         acc = c_long()
         series = c_long()
         error = self.dll.GetAcquisitionProgress(byref(acc), byref(series))
@@ -683,6 +771,11 @@ class AndorBase(object):
             return None
 
     def get_accumulation_progress(self):
+        """Return the number of completed accumulations in the current acquisition.
+
+        Returns:
+            int or None: The accumulation count, or ``None`` if the SDK call did not succeed.
+        """
         acc = c_long()
         series = c_long()
         error = self.dll.GetAcquisitionProgress(byref(acc), byref(series))
@@ -692,6 +785,11 @@ class AndorBase(object):
             return None
 
     def save_params_to_file(self, filepath=None):
+        """Save all current parameters to an ``AndorSettings`` dataset in an HDF5 file.
+
+        Args:
+            filepath (str, optional): Destination file. If ``None``, a new file is created.
+        """
         if filepath is None:
             data_file = df.create_file(set_current=False, mode='a')
         else:
@@ -700,6 +798,11 @@ class AndorBase(object):
         data_file.close()
 
     def load_params_from_file(self, filepath=None):
+        """Load parameters from the ``AndorSettings`` dataset of an HDF5 file and apply them.
+
+        Args:
+            filepath (str, optional): Source file. If ``None``, a file picker is opened.
+        """
         if filepath is None:
             data_file = df.open_file(set_current=False, mode='r')
         else:

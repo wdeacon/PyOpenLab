@@ -1,6 +1,8 @@
 ﻿# -*- coding: utf-8 -*-
-"""
-Subclass of Camera that has units for its axis. The GUI also provides crosshairs for defining ROIs
+"""Camera subclass with scaled, unit-aware axes and crosshair-based ROI selection.
+
+The GUI provides crosshairs for defining regions of interest, and the display widget keeps the
+scaled axes and ROI selection consistent regardless of the camera's binning.
 """
 
 from weakref import WeakSet
@@ -18,14 +20,20 @@ from pyopenlab.utils.gui import QtWidgets
 
 
 class CameraRoiScale(Camera):
-    """
-    Camera with two main features:
-        - Scaled axes with whatever units the user wants. Subclasses may overwrite the pos_to_unit method, or provide
-        an array (x_axis or y_axis) as a lookup table.
+    """Camera with scaled, unit-aware axes and crosshair-based ROI selection.
 
-        - ROI selection using crosshairs. Subclasses should overwrite the roi method, e.g. to set ROI in the camera hardware
+    The class provides two main features:
 
-    This class also handles binning, and keeps the scaled axes and ROI selection unaffected by the binning
+    - Scaled axes with whatever units the user wants. Subclasses may provide an array (``x_axis``
+      or ``y_axis``) as a lookup table.
+    - ROI selection using crosshairs. Subclasses should overwrite the ``roi`` property, e.g. to set
+      the ROI in the camera hardware.
+
+    Binning is handled here too: the scaled axes and ROI selection are kept unaffected by binning.
+
+    Args:
+        crosshair_origin: Corner the crosshair coordinates are measured from. One of
+            ``'top_left'``, ``'top_right'``, ``'bottom_left'`` or ``'bottom_right'``.
     """
 
     def __init__(self, crosshair_origin='top_left'):
@@ -54,19 +62,23 @@ class CameraRoiScale(Camera):
 
     @property
     def roi(self):
-        """
-        If the camera supports setting a ROI in hardware, the user should overwrite this property
+        """The current region of interest.
 
-        :return: 4-tuple of integers. Pixel positions xmin, xmax, ymin, ymax
+        If the camera supports setting a ROI in hardware, subclasses should overwrite this property.
+
+        Returns:
+            tuple[int, int, int, int]: Pixel positions ``(xmin, xmax, ymin, ymax)``.
         """
         return self._roi
 
     @roi.setter
     def roi(self, value):
-        """
-        By default, setting a ROI will make a filter function that indexes the frame to the given ROI.
+        """Set the region of interest.
 
-        :return: 4-tuple of integers. Pixel positions xmin, xmax, ymin, ymax
+        By default this installs a ``filter_function`` that crops each frame down to the given ROI.
+
+        Args:
+            value: 4-tuple of integers, the pixel positions ``(xmin, xmax, ymin, ymax)``.
         """
         self._roi = value
 
@@ -77,9 +89,11 @@ class CameraRoiScale(Camera):
 
     @property
     def gui_roi(self):
-        """
+        """The ROI defined by the crosshairs in the preview widget.
 
-        :return: 4-tuple of integers. x, y positions of the two crosshairs in the preview widget
+        Returns:
+            tuple[int, int, int, int]: The x, y positions of the two crosshairs in the preview
+            widget. Defaults to ``(0, 1, 0, 1)`` if no ROI has been drawn.
         """
         assert len(self._preview_widgets) == 1
         for wdg in self._preview_widgets:
@@ -90,21 +104,18 @@ class CameraRoiScale(Camera):
 
     @property
     def binning(self):
-        """
-        The binning property is passed to the display widgets to keep the scaling and units constant, independent of
-        binning.
+        """The camera binning, passed to the display widgets to keep scaling and units constant.
 
-        By default, it is assumed the camera does not support binning, so the property returns (1, 1) and has no setter.
-        A subclass should overwrite this if the camera supports binnig
-        :return:
+        By default the camera is assumed not to support binning, so this returns ``(1, 1)`` and has
+        no setter. Subclasses should overwrite this if the camera supports binning.
+
+        Returns:
+            tuple[int, int]: The binning factors ``(x, y)``.
         """
         return 1, 1
 
     def update_widgets(self):
-        """
-        Setting the position, scale, axis values and units, and crosshair sizes of the _preview_widgets
-        :return:
-        """
+        """Push position, scale, axis values/units and crosshair sizes to the preview widgets."""
         if self._preview_widgets is not None:
             for widgt in self._preview_widgets:
                 if isinstance(widgt, DisplayWidgetRoiScale):
@@ -145,6 +156,11 @@ class CameraRoiScale(Camera):
         super(CameraRoiScale, self).update_widgets()
 
     def get_preview_widget(self):
+        """Create and register a new preview widget for this camera.
+
+        Returns:
+            DisplayWidgetRoiScale: The newly created preview widget.
+        """
         self._logger.debug('Getting preview widget')
         if self._preview_widgets is None:
             self._preview_widgets = WeakSet()
@@ -155,6 +171,15 @@ class CameraRoiScale(Camera):
 
 
 class DisplayWidgetRoiScale(ExtendedImageView):
+    """Preview widget for :class:`CameraRoiScale`.
+
+    Displays either an image (2D/3D frames) or up to four line plots (1D spectra or stacks of a few
+    rows), with scaled, unit-aware axes and a histogram.
+
+    Args:
+        scale: Pixel scale ``(x, y)`` applied to displayed images.
+        offset: Pixel offset ``(x, y)`` of the displayed image, used to honour the camera ROI.
+    """
     _max_num_line_plots = 4
     update_data_signal = QtCore.Signal(np.ndarray)
 
@@ -202,6 +227,7 @@ class DisplayWidgetRoiScale(ExtendedImageView):
         self.axis_values['left'] = value
 
     def update_axes(self):
+        """Apply the stored axis values and unit labels to the widget's GUI axes."""
         gui_axes = self.get_axes()
         for ax, name in zip(gui_axes, ["bottom", "left", "top", "right"]):
             if self.axis_values[name] is not None:
@@ -215,10 +241,10 @@ class DisplayWidgetRoiScale(ExtendedImageView):
                 setattr(ax, 'axis_values', value)
 
     def toggle_displays(self, boolean=False):
-        """Toggle between an Image display and a Plot widget for Line displays
+        """Toggle between an image display and a plot widget for line displays.
 
-        :param boolean: if True, display lines. If False, display images
-        :return:
+        Args:
+            boolean: If True, display line plots. If False, display images.
         """
         if boolean:
             self.LineDisplay.show()
@@ -229,6 +255,12 @@ class DisplayWidgetRoiScale(ExtendedImageView):
             self.ui.splitter.setSizes([self.height() - 35, 0, 35])
 
     def _update_image(self, newimage):
+        """Render a new frame, choosing line plots or an image based on its shape.
+
+        Args:
+            newimage: The frame to display. 1D arrays and 2D arrays with fewer rows than
+                ``_max_num_line_plots`` are shown as line plots; everything else as an image.
+        """
         scale = self._pxl_scale
         offset = self._pxl_offset
 
@@ -247,19 +279,38 @@ class DisplayWidgetRoiScale(ExtendedImageView):
                           scale=scale)
 
     def update_image(self, newimage):
+        """Thread-safely request a display update by emitting the new frame as a Qt signal.
+
+        Args:
+            newimage: The frame to display.
+        """
         self.update_data_signal.emit(newimage)
 
 
 class DummyCameraRoiScale(CameraRoiScale):
-    """A Dummy CameraRoiScale camera  """
+    """A dummy :class:`CameraRoiScale` that generates random data for testing.
+
+    Args:
+        data: The kind of data to generate. One of ``'spectrum'``, ``'color_time'``, ``'time'``,
+            ``'image'`` or ``'color'``.
+    """
 
     def __init__(self, data='spectrum'):
         super(DummyCameraRoiScale, self).__init__()
         self.data_type = data
 
     def raw_snapshot(self, update_latest_frame=True):
-        """Returns a True, stating a succesful snapshot, followed by a (100,100)
-        picture randomly generated image"""
+        """Generate a random frame of the configured ``data_type``.
+
+        Args:
+            update_latest_frame: Unused; accepted for compatibility with the base interface.
+
+        Returns:
+            tuple[bool, numpy.ndarray]: ``True`` (success) and the generated frame.
+
+        Raises:
+            NotImplementedError: If ``data_type`` is not a recognised value.
+        """
         if self.data_type == 'spectrum':
             ran = 100 * ArrayWithAttrs(np.random.random(1600))
         elif self.data_type == 'color_time':
