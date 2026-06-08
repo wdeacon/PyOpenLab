@@ -111,6 +111,8 @@ def attribute_bundler(attrs):
     def bundle_attrs(array):
         return ArrayWithAttrs(array, attrs=attrs)
 
+    return bundle_attrs
+
 
 class DummyHDF5Group(dict):
     """A dict that mimics an h5py Group for testing and offline data handling.

@@ -43,19 +43,23 @@ def locked_action_decorator(wait_for_lock=True):
             #First: make sure the lock object exists
             if not hasattr(self, "_pyopenlab_action_lock"):
                 self._pyopenlab_action_lock = threading.RLock()
+            acquired = False
             try:
                 if wait_for_lock:
                     self._pyopenlab_action_lock.acquire(
                     )  #this will wait until we can lock the device
+                    acquired = True
                 else:  #if "wait for lock" is false, just return false if it's busy
-                    if not self._pyopenlab_action_lock.acquire(block=False):
+                    acquired = self._pyopenlab_action_lock.acquire(blocking=False)
+                    if not acquired:
                         print("Could not acquire action lock, giving up.")
                         return False
                 return function(self, *args, **kwargs)
             except Exception as e:
                 raise e  #don't attempt to handle errors, just pass them on
             finally:
-                self._pyopenlab_action_lock.release()  #don't leave the thing locked
+                if acquired:  #only release a lock we actually took
+                    self._pyopenlab_action_lock.release()
 
         return locked_action
 
