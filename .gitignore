@@ -71,3 +71,6 @@ pyopenlab/ui/open_browser_cmd_ee306.bat
 
 env/
 pyopenlab/instrument/camera/camera_with_location_car72.py
+# Claude Code worktrees (isolated per-session checkouts)
+.claude/worktrees/
+.claude/settings.local.json
